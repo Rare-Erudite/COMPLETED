@@ -1,0 +1,8 @@
+node_modules/
+dist/
+server-build/
+.rare/
+data/backups/
+*.log
+.env
+.DS_Store
