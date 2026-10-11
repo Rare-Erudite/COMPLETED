@@ -1074,9 +1074,29 @@ app.post('/api/v1/providers/active', (req, res) => {
   try {
     const { providerId } = req.body;
     engine.providers.setActiveProvider(providerId);
+    if (providerId === 'local-transformers') {
+      providerRegistry.setPreferredProvider('local-transformers');
+    }
     res.json({ success: true, activeProvider: providerId });
   } catch (err: any) {
     res.status(400).json({ success: false, error: { message: err.message } });
+  }
+});
+
+app.post('/api/v1/providers/load-local', async (_req, res) => {
+  try {
+    const localProvider = engine.providers.getProvider('local-transformers') as any;
+    const success = await localProvider.loadModel();
+    engine.providers.setActiveProvider('local-transformers');
+    providerRegistry.setPreferredProvider('local-transformers');
+    res.json({
+      success: true,
+      loaded: success,
+      manifest: localProvider.manifest,
+      activeProvider: 'local-transformers',
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: { message: err.message } });
   }
 });
 

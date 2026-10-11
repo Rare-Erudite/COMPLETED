@@ -3,18 +3,21 @@ import { OfflineCognitiveEngine } from './OfflineCognitiveEngine.js';
 import { OllamaProvider } from './OllamaProvider.js';
 import { GeminiCoprocessorProvider } from './GeminiCoprocessorProvider.js';
 import { RareIntelligenceProvider } from './RareIntelligenceProvider.js';
+import { LocalTransformersServerProvider } from './LocalTransformersServerProvider.js';
 import { MemoryStore } from '../storage/MemoryStore.js';
 import { ToolExecutor } from '../tools/ToolExecutor.js';
 
 export class ProviderRegistry {
   private offlineEngine: OfflineCognitiveEngine;
+  private localTransformersProvider: LocalTransformersServerProvider;
   private ollamaProvider: OllamaProvider;
   private geminiProvider: GeminiCoprocessorProvider;
   private rareIntelligenceProvider: RareIntelligenceProvider;
-  private preferredProviderId: string = 'rare-offline-cognitive';
+  private preferredProviderId: string = 'local-transformers';
 
   constructor(memoryStore: MemoryStore, toolExecutor: ToolExecutor) {
     this.offlineEngine = new OfflineCognitiveEngine(memoryStore, toolExecutor);
+    this.localTransformersProvider = new LocalTransformersServerProvider();
     this.ollamaProvider = new OllamaProvider();
     this.geminiProvider = new GeminiCoprocessorProvider();
     // Optional bridge to the companion RARE-INTELLIGENCE engine. Inert unless
@@ -33,6 +36,7 @@ export class ProviderRegistry {
 
   public async getAllProviders(): Promise<ModelInfo[]> {
     const list = await Promise.all([
+      this.localTransformersProvider.getInfo(),
       this.offlineEngine.getInfo(),
       this.ollamaProvider.getInfo(),
       this.geminiProvider.getInfo(),
@@ -42,6 +46,14 @@ export class ProviderRegistry {
   }
 
   public async getActiveProvider(): Promise<{ provider: IModelProvider; info: ModelInfo }> {
+    // 0. If local neural transformers model is preferred or available
+    if (this.preferredProviderId === 'local-transformers' && (await this.localTransformersProvider.isAvailable())) {
+      return {
+        provider: this.localTransformersProvider,
+        info: await this.localTransformersProvider.getInfo(),
+      };
+    }
+
     // 1. If user explicitly preferred local Ollama or Ollama is online and preferred
     if (this.preferredProviderId === 'local-ollama' && (await this.ollamaProvider.isAvailable())) {
       return {
@@ -74,7 +86,15 @@ export class ProviderRegistry {
       };
     }
 
-    // 3. Check if local Ollama daemon is detected and available
+    // 3. Check if local neural transformers model is available (has weights)
+    if (await this.localTransformersProvider.isAvailable()) {
+      return {
+        provider: this.localTransformersProvider,
+        info: await this.localTransformersProvider.getInfo(),
+      };
+    }
+
+    // 4. Check if local Ollama daemon is detected and available
     if (await this.ollamaProvider.isAvailable()) {
       return {
         provider: this.ollamaProvider,
@@ -82,7 +102,7 @@ export class ProviderRegistry {
       };
     }
 
-    // 4. Default: RARE Native Offline Cognitive Engine (Zero External API Key required)
+    // 5. Default: RARE Native Offline Cognitive Engine (Zero External API Key required)
     return {
       provider: this.offlineEngine,
       info: await this.offlineEngine.getInfo(),

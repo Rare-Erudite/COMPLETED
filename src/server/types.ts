@@ -1,5 +1,6 @@
 export type ProviderType =
   | 'offline_cognitive'
+  | 'local_transformers'
   | 'local_ollama'
   | 'openai_compatible'
   | 'gemini_coprocessor'

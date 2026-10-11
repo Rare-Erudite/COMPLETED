@@ -6,6 +6,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { IModelProvider } from './base.js';
 import {
   ModelGenerationConfig,
@@ -63,15 +64,21 @@ export class LocalTransformersProvider implements IModelProvider {
     if (process.env.MODELS_CACHE_DIR) {
       return path.resolve(process.env.MODELS_CACHE_DIR);
     }
-    if (fs.existsSync('/tmp')) {
-      return '/tmp/models_cache';
+    const home = os.homedir();
+    if (process.platform === 'win32') {
+      return path.resolve(process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'rare-intelligence', 'models');
     }
-    return path.resolve(process.cwd(), 'data/models_cache');
+    return path.resolve(process.env.XDG_CACHE_HOME || path.join(home, '.cache'), 'rare-intelligence', 'models');
+  }
+
+  public getModelPath(): string {
+    return path.resolve(this.getCacheDir(), this.modelIdentifier);
   }
 
   public hasCachedWeights(): boolean {
     const candidateDirs = [
       this.getCacheDir(),
+      path.resolve(os.homedir(), '.cache', 'rare-intelligence', 'models'),
       '/tmp/models_cache',
       path.resolve(process.cwd(), 'data/models_cache'),
     ];
@@ -83,7 +90,8 @@ export class LocalTransformersProvider implements IModelProvider {
       if (fs.existsSync(candidatePath)) {
         try {
           const stat = fs.statSync(candidatePath);
-          if (stat.size > 50_000_000) return true;
+          // Complete quantized ONNX Q4 weights for Qwen2.5-0.5B are ~786MB (750MB uncompressed)
+          if (stat.size >= 700_000_000) return true;
         } catch {
           // ignore
         }
