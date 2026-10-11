@@ -1,0 +1,45 @@
+[
+  {
+    "id": "upd_100_stable",
+    "version": "1.0.0",
+    "releaseDate": "2026-10-08T04:52:33.070Z",
+    "channel": "public",
+    "title": "RARE Core Intelligence 1.0 General Release",
+    "description": "Official release of RARE with native offline cognitive engine, persistent cross-chat memory, VisionCraft image synthesis, and multi-agent builder.",
+    "changelog": [
+      "Zero external API key requirement for general conversations and reasoning",
+      "Integrated 12 autonomous tool primitives with audit logging and sandbox safety",
+      "Persistent cross-chat memory and customizable appearance themes",
+      "Standalone APK package ready for Android installation and offline sharing",
+      "Universal PWA support with WebAPK launcher icon and offline cache"
+    ],
+    "mandatory": false,
+    "packageUrl": "/api/download/apk",
+    "apkSize": "24.8 MB",
+    "publishedBy": "RARE Core Engineering",
+    "targetRoles": [
+      "all"
+    ]
+  },
+  {
+    "id": "upd_110_dev_preview",
+    "version": "1.1.0-dev",
+    "releaseDate": "2026-10-10T00:52:33.070Z",
+    "channel": "developer",
+    "title": "Developer Preview: Autonomous Self-Development & Live OTA Push",
+    "description": "Developer-only early access release featuring privileged self-development engine telemetry, real-time OTA update deployment, and atomic rollback snapshots.",
+    "changelog": [
+      "Privileged Developer Space OTA push system: publish builds to Public or Developer channels",
+      "Self-development trajectory dataset inspection and automated verification loops",
+      "Fine-grained benchmark evaluation suite across 6 empirical cognitive vectors",
+      "Dual-channel distribution router ensuring unreleased features remain restricted to developers"
+    ],
+    "mandatory": false,
+    "packageUrl": "/api/download/apk",
+    "apkSize": "25.2 MB",
+    "publishedBy": "Self-Development Engine",
+    "targetRoles": [
+      "developer"
+    ]
+  }
+]

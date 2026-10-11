@@ -1,0 +1,1 @@
+- [Replit deployment persistence](replit-production-storage.md) — do not publish RARE's file-backed user state without a durable-storage plan and informed data-loss approval.

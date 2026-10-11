@@ -1,0 +1,214 @@
+RARE-THE-SIXTH — Complete Backend Repair, Deployment, and Verification
+
+Mission
+
+You are the senior full-stack engineer responsible for repairing and deploying my existing RARE-THE-SIXTH application.
+
+GitHub repository: "Rare-Erudite/RARE-THE-SIXTH"
+
+The application uses Vite, React 19, TypeScript, and an Express backend. The backend is intended to serve both the frontend and the API through one Node.js server.
+
+My immediate problem is that the Settings screen contains a field called Cloud Backend Server Endpoint, but the URL is missing or not properly configured. I need the application to connect reliably to a real, publicly accessible backend and use its online services correctly.
+
+Do not simply explain what I should do. Inspect the existing repository, make the necessary repairs, execute the available tests, deploy the application if deployment access and authorization are available, and provide a factual verification report.
+
+1. Protect the existing project
+
+Before changing anything:
+
+1. Inspect the GitHub repository, its current branch, directory structure, package configuration, environment variables, server implementation, API client, Settings UI, tests, and deployment configuration.
+2. Preserve the existing RARE application, its architecture, features, UI, model providers, tools, memory system, agent orchestration, project-building capabilities, and existing functionality.
+3. Create a recoverable checkpoint or branch before making changes.
+4. Identify unfinished work and existing errors.
+5. Do not replace RARE with a starter template, simplified demo, mock application, or unrelated implementation.
+6. Do not remove features merely to make compilation or tests pass.
+7. Do not overwrite production secrets, delete user data, or make destructive database changes.
+
+If a critical requirement is ambiguous, inspect the code and existing documentation first. Ask me only when an essential decision cannot safely be determined from the repository.
+
+2. Repair the backend runtime
+
+Inspect "server.ts", "package.json", "tsconfig.json", "vite.config.ts", and all relevant server files.
+
+Verify and fix, as necessary:
+
+- The correct Node.js runtime and TypeScript execution strategy.
+- The development command and production start command.
+- The frontend build command.
+- The Express server initialization and middleware ordering.
+- API routing, JSON request handling, error handling, and CORS.
+- Production serving of the compiled frontend from "dist/".
+- The configured listening port, using the hosting platform's assigned "PORT" environment variable when available.
+- Binding to "0.0.0.0" where required by the hosting environment.
+- Graceful startup failures and shutdown behavior.
+- Correct handling of missing environment variables and configuration errors.
+
+Do not assume that "node server.ts" is a valid production command simply because it appears in "package.json". Verify compatibility with the actual Node.js runtime. Use a reliable, reproducible production build and start strategy appropriate to the project's dependencies and TypeScript configuration.
+
+Preserve the unified Express architecture if it is suitable. Do not introduce a second independent backend unless the existing architecture genuinely requires one.
+
+3. Fix the Cloud Backend Server Endpoint
+
+Inspect and repair "src/api.ts", "src/App.tsx", and the Settings components.
+
+The Cloud Backend Server Endpoint field must:
+
+1. Display the correct effective backend URL rather than an unexplained blank value.
+2. Automatically use the current application origin when the frontend and backend are served from the same deployed origin.
+3. Support a separately hosted backend URL when required.
+4. Save and restore a manually configured URL reliably.
+5. Validate URL syntax and reject invalid values.
+6. Normalize trailing slashes consistently.
+7. Provide a working Reset Default action.
+8. Provide a Test Connection action that calls the actual backend.
+9. Display truthful connection states, response details, and latency.
+10. Display clear errors when the server is unavailable, misconfigured, or returns an invalid response.
+11. Avoid claiming that the backend is active merely because a URL exists.
+12. Work correctly on the web application and in the Android APK.
+
+Inspect the current storage mechanism. If the frontend uses "localStorage", account for the fact that local storage is scoped to an origin and is not shared automatically between browsers, domains, or native application storage environments.
+
+Use the appropriate existing configuration mechanisms rather than introducing conflicting URL sources.
+
+Do not expose secrets in frontend environment variables or bundle server credentials into the APK.
+
+4. Implement and verify real health endpoints
+
+Inspect the existing health routes before modifying them.
+
+Provide a reliable endpoint such as "/api/health" and, if appropriate for the existing application, "/api/status".
+
+The health endpoint should return valid JSON with a successful HTTP status when the server is healthy. Include a meaningful status and timestamp.
+
+The status endpoint may report configured providers and service availability, but distinguish carefully between:
+
+- The Express server being operational.
+- An AI provider being configured.
+- An AI provider being reachable.
+- A request actually succeeding.
+- Persistent storage being operational.
+
+Do not report a database, memory service, image service, voice service, reasoning service, or cloud AI provider as connected unless that claim is supported by a real check.
+
+Health endpoints must not disclose API keys, secrets, private user data, or sensitive internal configuration.
+
+5. Connect actual online services
+
+Inspect the model providers and integrations already implemented in RARE.
+
+Verify that:
+
+- The Gemini provider uses supported model identifiers and the project's actual SDK.
+- "GEMINI_API_KEY" and other required secrets are read server-side.
+- Missing credentials produce clear and actionable errors.
+- Online model requests reach the real provider when configured.
+- Offline functionality remains available where the architecture supports it.
+- API failures, rate limits, timeouts, and invalid responses are handled correctly.
+- Memory, tools, research, and other services use their real implementations rather than silently returning fabricated success responses.
+
+Do not assume that passing unit tests proves that external services are reachable. Perform real integration tests when credentials and network access are available.
+
+Never invent credentials, fabricate API responses, bypass authentication, or claim an external integration works when it has not been tested.
+
+6. Configure and perform a real deployment
+
+First determine which deployment target is actually available.
+
+Prefer a single full-stack deployment if the existing architecture supports it. The frontend and Express API should use the same public origin when hosted together.
+
+Replit deployment is an option, but do not assume that a development workspace URL is a permanent production endpoint. Verify the actual deployment URL and its availability.
+
+Check:
+
+- The production build succeeds.
+- The production start command launches the Express server.
+- The host's assigned port is respected.
+- The application is accessible over HTTPS.
+- "/api/health" and "/api/status" return the expected responses on the deployed URL.
+- Frontend requests reach the deployed API.
+- The server does not depend on development-only Vite middleware in production.
+- Required secrets and environment variables are configured safely.
+- The deployment remains usable after a restart.
+
+If deployment requires a paid plan, billing authorization, GitHub permission, domain configuration, or credentials that I have not supplied, do not bypass the restriction or claim deployment succeeded. Complete all work possible without that missing authorization and state exactly what remains.
+
+Do not deploy a duplicate application unnecessarily.
+
+7. Make the Android APK work
+
+Inspect the Android build and API configuration.
+
+Ensure that the APK can connect to the actual public HTTPS backend URL, not "localhost", "127.0.0.1", or a temporary development preview URL.
+
+Check:
+
+- Where the API base URL is obtained at runtime.
+- Whether the existing Android architecture uses a WebView, native HTTP client, or another mechanism.
+- Whether the endpoint configuration persists correctly.
+- HTTPS requirements and Android network-security settings.
+- CORS requirements where applicable to the actual client.
+- Timeout, retry, offline, and server-unavailable behavior.
+- Whether the APK requires a rebuild to embed a changed URL.
+
+Do not assume that web browser "window.location.origin" works correctly in a native Android context. Implement platform-appropriate behavior while preserving the existing architecture.
+
+8. Run comprehensive tests
+
+Run the existing tests and add or repair tests where necessary.
+
+At minimum, verify:
+
+1. Dependency installation.
+2. TypeScript compilation and type checking.
+3. Frontend production build.
+4. Server startup.
+5. Health endpoint response.
+6. Status endpoint response.
+7. Backend URL default detection.
+8. Manual URL saving, restoration, and reset.
+9. Successful connection testing.
+10. Invalid URL and unreachable server handling.
+11. API routing and error responses.
+12. Existing model-provider and offline-engine tests.
+13. Memory, tools, checkpointing, and benchmark tests.
+14. Production frontend serving.
+15. Real deployed endpoint behavior, if deployment is available.
+16. Real external AI integration, if credentials are available.
+17. Android connectivity and APK build, if the required Android toolchain is available.
+
+Run relevant tests more than once after repairs. Investigate failures rather than hiding them, weakening assertions, deleting tests, or marking failed tests as passed.
+
+Clearly separate unit-test results, local HTTP tests, external-service integration tests, and deployed production tests.
+
+Do not claim a test passed unless you actually ran it and observed the result.
+
+9. Final acceptance criteria
+
+Consider the repair complete only when the applicable criteria have been verified:
+
+- The original RARE project remains intact.
+- The frontend and backend start using a documented, reproducible configuration.
+- The Cloud Backend Server Endpoint field displays the correct effective URL.
+- The connection test reaches a real health endpoint and reports truthful results.
+- The production server serves both the frontend and API correctly.
+- The deployed URL is real and publicly reachable, if deployment has been completed.
+- The Android APK uses a reachable backend endpoint rather than a development-only address.
+- Existing tests pass, or remaining failures are documented precisely.
+- No mock or placeholder is represented as a working production service.
+
+10. Final report
+
+Provide a concise but complete report containing:
+
+1. Root cause of the original blank backend URL.
+2. Files changed and what each change accomplishes.
+3. Actual development, build, and production start commands.
+4. The actual public production URL, if deployed.
+5. The health and status endpoint URLs.
+6. Test commands, results, failures, and repeat-run results.
+7. Which external integrations were tested with real credentials.
+8. Whether Android connectivity was verified.
+9. Any remaining blockers, required secrets, deployment permissions, or paid services.
+10. The exact next action required from me, if anything remains.
+
+Final instruction: Work methodically and make the complete set of necessary repairs rather than stopping after the first successful build. Minimize unnecessary output and avoid spending effort on cosmetic changes unrelated to this problem. Prioritize a working, verifiable application over a success message. Never invent a backend URL or claim deployment or connectivity has been verified without evidence.

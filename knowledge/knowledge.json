@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "category": "architecture_principle",
+      "title": "Self-building core, not the full app",
+      "text": "This codebase is RARE's development engine. Future RARE features are capabilities built by it, not hand-added to the core.",
+      "id": "kb-20260911T190541-0001-41b6",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "architecture_principle",
+      "title": "Mandatory change sequence",
+      "text": "Understand -> Plan -> Check risk -> Approve if necessary -> Snapshot -> Modify -> Validate -> Repair -> Accept/Rollback.",
+      "id": "kb-20260911T190541-0002-100e",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "architecture_principle",
+      "title": "Provider independence",
+      "text": "No code outside rare_core/reasoning/providers may reference a specific AI provider. Local/free/self-hostable first.",
+      "id": "kb-20260911T190541-0003-6ab2",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "architecture_principle",
+      "title": "Local-first, offline tolerant",
+      "text": "Basic self-development must work without internet; degrade gracefully when a model or tool is unavailable.",
+      "id": "kb-20260911T190541-0004-1a1f",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "coding_convention",
+      "title": "Standard library only",
+      "text": "Core code uses only the Python 3.9+ standard library so it runs on Windows, Android (Termux/Pydroid) and can be packaged as EXE/APK.",
+      "id": "kb-20260911T190541-0005-583b",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "coding_convention",
+      "title": "Typed, explicit, structured errors",
+      "text": "Use type hints, dataclasses, explicit interfaces and RareError subclasses; no hidden global state; no giant modules.",
+      "id": "kb-20260911T190541-0006-8785",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "folder_convention",
+      "title": "Capabilities layout",
+      "text": "capabilities/<id>/ with capability.json, __init__.py, core.py and tests/ (unittest).",
+      "id": "kb-20260911T190541-0007-4a34",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "folder_convention",
+      "title": "Paths are POSIX and project-relative",
+      "text": "Every stored path uses forward slashes relative to the project root so state can move between PC and phone.",
+      "id": "kb-20260911T190541-0008-d2b2",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "module_responsibility",
+      "title": "Bootstrap and recovery are protected",
+      "text": "rare_core/bootstrap/ and rare_recovery.py start the system and restore checkpoints; the engine may never modify them.",
+      "id": "kb-20260911T190541-0009-a7be",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "dependency_policy",
+      "title": "Dependencies need approval",
+      "text": "Adding a third-party dependency is a medium-risk action requiring approval and must not break Android/EXE packaging.",
+      "id": "kb-20260911T190541-0010-467d",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "security_rule",
+      "title": "No shell, no secrets in logs",
+      "text": "Commands run as argv lists from an allow-list, never via a shell; secrets are redacted and scrubbed from child processes.",
+      "id": "kb-20260911T190541-0011-262c",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "security_rule",
+      "title": "Models propose, users authorise",
+      "text": "Risk is derived from concrete paths/commands; only user channels hold approval authority.",
+      "id": "kb-20260911T190541-0012-a4dd",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "testing_rule",
+      "title": "Nothing is done until validated",
+      "text": "A change is accepted only after its checks pass; untested changes are checkpointed as experimental, never known-good.",
+      "id": "kb-20260911T190541-0013-43cf",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "build_instruction",
+      "title": "Run the checks",
+      "text": "python -m unittest discover -s tests -t .  and  python -m rare_core selftest",
+      "id": "kb-20260911T190541-0014-2ee1",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    },
+    {
+      "category": "deployment_requirement",
+      "title": "Future packaging",
+      "text": "Keep core logic separate from platform adapters, UI, storage and integrations so the same engine can ship in Windows EXE and Android APK.",
+      "id": "kb-20260911T190541-0015-e021",
+      "source": "seed",
+      "created": "2026-09-11T19:05:41.371Z"
+    }
+  ]
+}

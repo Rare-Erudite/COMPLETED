@@ -1,0 +1,146 @@
+[
+  {
+    "id": "chk_1791742620555_k070",
+    "timestamp": "2026-10-11T18:17:00.557Z",
+    "description": "Initial baseline known-good state",
+    "status": "known_good",
+    "filesCount": 4,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "package.json",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791742620555_k070",
+    "hash": "9b8148ca4f9ced7b65d61dfce89cf099d3ed9d7850c87cb36f285994b57b374e"
+  },
+  {
+    "id": "chk_1791742673241_0v1o",
+    "timestamp": "2026-10-11T18:17:53.242Z",
+    "description": "Automated test snapshot",
+    "status": "experimental",
+    "filesCount": 4,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "package.json",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791742673241_0v1o",
+    "hash": "9b8148ca4f9ced7b65d61dfce89cf099d3ed9d7850c87cb36f285994b57b374e"
+  },
+  {
+    "id": "chk_1791742673249_cf4f",
+    "timestamp": "2026-10-11T18:17:53.251Z",
+    "description": "Pre-change snapshot for: \"Modify core engine loop without authoriz\"",
+    "status": "experimental",
+    "filesCount": 3,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791742673249_cf4f",
+    "hash": "29c3db98f136045dd0101723756c84425e4d32d529059e1a93974b77f26b9082"
+  },
+  {
+    "id": "chk_1791742673251_trn3",
+    "timestamp": "2026-10-11T18:17:53.253Z",
+    "description": "Pre-change snapshot for: \"Verify system integrity and baseline che\"",
+    "status": "experimental",
+    "filesCount": 3,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791742673251_trn3",
+    "hash": "29c3db98f136045dd0101723756c84425e4d32d529059e1a93974b77f26b9082"
+  },
+  {
+    "id": "chk_1791742822822_1tku",
+    "timestamp": "2026-10-11T18:20:22.824Z",
+    "description": "Automated test snapshot",
+    "status": "experimental",
+    "filesCount": 4,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "package.json",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791742822822_1tku",
+    "hash": "97a52d6cc6741d934bc567a8f6690931a95c677df1a04ecf230f2fc55516a532"
+  },
+  {
+    "id": "chk_1791742822832_6ik8",
+    "timestamp": "2026-10-11T18:20:22.835Z",
+    "description": "Pre-change snapshot for: \"Modify core engine loop without authoriz\"",
+    "status": "experimental",
+    "filesCount": 3,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791742822832_6ik8",
+    "hash": "1cfbbad32116b34b1ba218df0d3e0c339edd12f59865fffb6dba07e6500e60c5"
+  },
+  {
+    "id": "chk_1791742822836_n2gt",
+    "timestamp": "2026-10-11T18:20:22.838Z",
+    "description": "Pre-change snapshot for: \"Verify system integrity and baseline che\"",
+    "status": "experimental",
+    "filesCount": 3,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791742822836_n2gt",
+    "hash": "1cfbbad32116b34b1ba218df0d3e0c339edd12f59865fffb6dba07e6500e60c5"
+  },
+  {
+    "id": "chk_1791742893395_vjgb",
+    "timestamp": "2026-10-11T18:21:33.396Z",
+    "description": "Automated test snapshot",
+    "status": "experimental",
+    "filesCount": 4,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "package.json",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791742893395_vjgb",
+    "hash": "2e1418fd3eee916007141daf25835af9ee4cf19703c0acf51f1ab6e1d2fe8a97"
+  },
+  {
+    "id": "chk_1791742893402_afdz",
+    "timestamp": "2026-10-11T18:21:33.404Z",
+    "description": "Pre-change snapshot for: \"Modify core engine loop without authoriz\"",
+    "status": "experimental",
+    "filesCount": 3,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791742893402_afdz",
+    "hash": "89a0daed2903f8d8f45386f9eb1f11ae9f3906c52bd30027e9726ed8d57626ba"
+  },
+  {
+    "id": "chk_1791742893405_a40r",
+    "timestamp": "2026-10-11T18:21:33.407Z",
+    "description": "Pre-change snapshot for: \"Verify system integrity and baseline che\"",
+    "status": "experimental",
+    "filesCount": 3,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791742893405_a40r",
+    "hash": "89a0daed2903f8d8f45386f9eb1f11ae9f3906c52bd30027e9726ed8d57626ba"
+  }
+]

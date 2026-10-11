@@ -1,0 +1,235 @@
+[
+  {
+    "id": "conv_main",
+    "title": "General Inquiries",
+    "created_at": "2026-10-10T03:16:54.770Z",
+    "messages": [
+      {
+        "id": "msg_1",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal intelligence and development assistant.\n\nWhat would you like to work on today?\n• Projects / Build: Build web, mobile, or desktop software with coordinated specialist agents.\n• Documents: Manage, read, edit, or transcribe audio documents.\n• Research: Investigate technical, academic, or factual topics with verified sources.",
+        "timestamp": "2026-10-10T03:16:54.771Z"
+      },
+      {
+        "id": "msg_1791605819950_u",
+        "role": "user",
+        "content": "Hello RARE! Can you tell me what shoes we discussed earlier?",
+        "timestamp": "2026-10-10T04:16:59.951Z"
+      },
+      {
+        "id": "msg_1791605825323_b",
+        "role": "assistant",
+        "content": "Hello! In our current session, I don't have access to our past conversation history, so I can't recall which shoes we were discussing. \n\nIf you can remind me a little bit about what you were looking for—like the brand, style, or what you plan to use them for—I'd be happy to jump right back into it with you!",
+        "timestamp": "2026-10-10T04:17:05.323Z"
+      },
+      {
+        "id": "msg_1791605880678_u",
+        "role": "user",
+        "content": "What shoes were we discussing before?",
+        "timestamp": "2026-10-10T04:18:00.678Z"
+      },
+      {
+        "id": "msg_1791605880682_b",
+        "role": "assistant",
+        "content": "I recall our discussion about shoes: \"Discussion on custom high-top sneakers: obsidian black and cobalt blue colorway with gum sole, minimalist silhouette, premium breathable leather.\"\n\nWould you like to design a concept app for this, generate visuals, or discuss styling specifications?",
+        "timestamp": "2026-10-10T04:18:00.682Z"
+      },
+      {
+        "id": "msg_1791644440401_u",
+        "role": "user",
+        "content": "Hello RARE, please identify yourself",
+        "timestamp": "2026-10-10T15:00:40.402Z"
+      },
+      {
+        "id": "msg_1791644440405_b",
+        "role": "assistant",
+        "content": "Understood. I am processing your request through RARE's native core. Whether you want to discuss ideas, build software, transcribe audio, or manage documents, I am ready to proceed. What specific details would you like to focus on?",
+        "timestamp": "2026-10-10T15:00:40.405Z"
+      }
+    ]
+  },
+  {
+    "id": "conv_1791611115012",
+    "title": "New Chat",
+    "created_at": "2026-10-10T05:45:15.012Z",
+    "messages": [
+      {
+        "id": "msg_1791611115012",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images",
+        "timestamp": "2026-10-10T05:45:15.012Z"
+      }
+    ]
+  },
+  {
+    "id": "conv_1791611115529",
+    "title": "New Chat",
+    "created_at": "2026-10-10T05:45:15.529Z",
+    "messages": [
+      {
+        "id": "msg_1791611115529",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images",
+        "timestamp": "2026-10-10T05:45:15.529Z"
+      }
+    ]
+  },
+  {
+    "id": "conv_1791611564329",
+    "title": "New Chat",
+    "created_at": "2026-10-10T05:52:44.329Z",
+    "messages": [
+      {
+        "id": "msg_1791611564329",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images",
+        "timestamp": "2026-10-10T05:52:44.329Z"
+      }
+    ]
+  },
+  {
+    "id": "conv_1791611564606",
+    "title": "New Chat",
+    "created_at": "2026-10-10T05:52:44.606Z",
+    "messages": [
+      {
+        "id": "msg_1791611564606",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images",
+        "timestamp": "2026-10-10T05:52:44.606Z"
+      }
+    ]
+  },
+  {
+    "id": "conv_1791612010673",
+    "title": "New Chat",
+    "created_at": "2026-10-10T06:00:10.673Z",
+    "messages": [
+      {
+        "id": "msg_1791612010673",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images",
+        "timestamp": "2026-10-10T06:00:10.673Z"
+      }
+    ]
+  },
+  {
+    "id": "conv_1791612010982",
+    "title": "New Chat",
+    "created_at": "2026-10-10T06:00:10.982Z",
+    "messages": [
+      {
+        "id": "msg_1791612010982",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images",
+        "timestamp": "2026-10-10T06:00:10.982Z"
+      }
+    ]
+  },
+  {
+    "id": "conv_1791613267619",
+    "title": "User1 Work Chat",
+    "userId": "user1@gmail.com",
+    "created_at": "2026-10-10T06:21:07.619Z",
+    "messages": [
+      {
+        "id": "msg_1791613267620",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images",
+        "timestamp": "2026-10-10T06:21:07.620Z"
+      }
+    ]
+  },
+  {
+    "id": "conv_1791613267636",
+    "title": "User2 Private Chat",
+    "userId": "user2@gmail.com",
+    "created_at": "2026-10-10T06:21:07.636Z",
+    "messages": [
+      {
+        "id": "msg_1791613267636",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images",
+        "timestamp": "2026-10-10T06:21:07.636Z"
+      }
+    ]
+  },
+  {
+    "id": "conv_1791646424023",
+    "title": "Test Verification Chat",
+    "userId": "guest",
+    "created_at": "2026-10-10T15:33:44.023Z",
+    "messages": [
+      {
+        "id": "msg_1791646424023",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images",
+        "timestamp": "2026-10-10T15:33:44.023Z"
+      },
+      {
+        "id": "msg_1791646427733_u",
+        "role": "user",
+        "content": "Hello RARE, please run a quick status check.",
+        "timestamp": "2026-10-10T15:33:47.733Z"
+      },
+      {
+        "id": "msg_1791646427738_b",
+        "role": "assistant",
+        "content": "Understood. I am processing your request through RARE's native core. Whether you want to discuss ideas, build software, transcribe audio, or manage documents, I am ready to proceed. What specific details would you like to focus on?",
+        "timestamp": "2026-10-10T15:33:47.738Z"
+      }
+    ]
+  },
+  {
+    "id": "conv_1791742753584",
+    "title": "Test Chat",
+    "userId": "guest",
+    "created_at": "2026-10-11T18:19:13.584Z",
+    "messages": [
+      {
+        "id": "msg_1791742753584",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images",
+        "timestamp": "2026-10-11T18:19:13.584Z"
+      },
+      {
+        "id": "msg_1791742763734_u",
+        "role": "user",
+        "content": "Tell me about your build capabilities and how you retain memory.",
+        "timestamp": "2026-10-11T18:19:23.734Z"
+      },
+      {
+        "id": "msg_1791742763740_b",
+        "role": "assistant",
+        "content": "Here are key facts currently recorded in our persistent memory store:\n\n• [fact] eval_fact_1791742676406: Deterministic test token: 8aitap\n• [fact] Test tool memory statement\n• [fact] eval_fact_1791656516655: Deterministic test token: rrxkf5\n• [fact] Test tool memory statement\n• [fact] eval_fact_1791649374465: Deterministic test token: 9rx2d2\n\nYou can inspect, update, or remove any memory record in Settings → Memory at any time.",
+        "timestamp": "2026-10-11T18:19:23.740Z"
+      }
+    ]
+  },
+  {
+    "id": "conv_1791742886921",
+    "title": "Integrated Test",
+    "userId": "guest",
+    "created_at": "2026-10-11T18:21:26.921Z",
+    "messages": [
+      {
+        "id": "msg_1791742886921",
+        "role": "assistant",
+        "content": "Hello! I am RARE — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images",
+        "timestamp": "2026-10-11T18:21:26.921Z"
+      },
+      {
+        "id": "msg_1791742886941_u",
+        "role": "user",
+        "content": "What are your primary features as RARE?",
+        "timestamp": "2026-10-11T18:21:26.941Z"
+      },
+      {
+        "id": "msg_1791742886973_b",
+        "role": "assistant",
+        "content": "[SIMULATED INFERENCE RESPONSE]\nAnalyzed objective: \"What are your primary features as RARE?...\"\nSystem state is healthy. Verification gates active.",
+        "timestamp": "2026-10-11T18:21:26.973Z"
+      }
+    ]
+  }
+]

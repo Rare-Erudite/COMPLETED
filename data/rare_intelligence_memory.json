@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": 1791741397473,
+  "updatedAt": 1791742615430,
   "collections": {
     "memories": {
       "checkpoint_plan_4a2smky": {
@@ -120,6 +120,34 @@
     "checkpoints": {},
     "reports": [
       {
+        "runId": "diag_hia4vdm",
+        "timestamp": 1791742615430,
+        "targetSystem": "RARE-INTELLIGENCE Engine",
+        "version": "1.0.0-rc1",
+        "overallStatus": "REPAIRABLE",
+        "checksPerformedCount": 9,
+        "findings": [
+          {
+            "id": "find_gxio0",
+            "subsystem": "tool_registry",
+            "severity": "blocker",
+            "title": "Missing Core Registered Tools",
+            "evidence": "Tools not registered: [file_list]",
+            "suspectedRootCause": "Incomplete tool bootstrap.",
+            "isRepairable": true,
+            "suggestedRemediation": "Re-register missing built-in tools from builtin.ts."
+          }
+        ],
+        "remediationPlan": {
+          "recommendedAction": "Execute autonomous self-repair on 1 detected recoverable findings.",
+          "canAutoRepair": true,
+          "requiredPermissions": [
+            "WORKSPACE_WRITE"
+          ]
+        },
+        "durationMs": 7
+      },
+      {
         "runId": "diag_ohpvlyo",
         "timestamp": 1791741266154,
         "targetSystem": "RARE-INTELLIGENCE Engine",
@@ -179,5 +207,5 @@
     "repairs": [],
     "auditEvents": []
   },
-  "checksum": "b9e46aa1f51a0749622d3b4ba3e3adea220408f150814367214738fa3e56598f"
+  "checksum": "7a7333c14b49a780dda37365422e3b526ca429613b000e1a76555ae7a60c2749"
 }

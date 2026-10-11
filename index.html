@@ -2,15 +2,120 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
     <title>RARE-INTELLIGENCE Engine</title>
     <meta name="description" content="Modular, production-oriented autonomous AI intelligence engine with continuous capability evaluation, provider abstraction, tool orchestration, and memory persistence." />
     <meta property="og:title" content="RARE-INTELLIGENCE Engine" />
     <meta property="og:description" content="Modular, production-oriented autonomous AI intelligence engine with continuous capability evaluation, provider abstraction, tool orchestration, and memory persistence." />
-    <meta property="og:type" content="website" />
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#03040A" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="RARE" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <script>
+      // Gracefully handle and mock Vite dev HMR WebSocket in iframe/container sandbox
+      (function() {
+        if (typeof window !== 'undefined' && window.WebSocket) {
+          const OrigWebSocket = window.WebSocket;
+          class ViteHmrMockSocket extends EventTarget {
+            static CONNECTING = 0;
+            static OPEN = 1;
+            static CLOSING = 2;
+            static CLOSED = 3;
+
+            constructor(url, protocols) {
+              super();
+              this.url = String(url || '');
+              this.protocol = typeof protocols === 'string' ? protocols : (Array.isArray(protocols) ? protocols[0] : 'vite-hmr');
+              this.readyState = 1; // WebSocket.OPEN
+              this.binaryType = 'blob';
+              this.bufferedAmount = 0;
+              this.extensions = '';
+              setTimeout(() => {
+                const ev = new Event('open');
+                this.dispatchEvent(ev);
+                if (typeof this.onopen === 'function') this.onopen(ev);
+              }, 0);
+            }
+            send() {}
+            close(code = 1000, reason = '') {
+              this.readyState = 3;
+              const ev = new Event('close');
+              this.dispatchEvent(ev);
+              if (typeof this.onclose === 'function') this.onclose(ev);
+            }
+            get onopen() { return this._onopen; }
+            set onopen(fn) { this._onopen = fn; }
+            get onmessage() { return this._onmessage; }
+            set onmessage(fn) { this._onmessage = fn; }
+            get onerror() { return this._onerror; }
+            set onerror(fn) { this._onerror = fn; }
+            get onclose() { return this._onclose; }
+            set onclose(fn) { this._onclose = fn; }
+          }
+
+          function PatchedWebSocket(url, protocols) {
+            const isVite = (typeof protocols === 'string' && (protocols === 'vite-hmr' || protocols === 'vite-ping'))
+              || (Array.isArray(protocols) && protocols.some(function(p) { return typeof p === 'string' && p.includes('vite'); }))
+              || (typeof url === 'string' && (url.includes('vite-hmr') || url.includes('token=') || url.includes('/@vite')));
+            if (isVite) {
+              return new ViteHmrMockSocket(url, protocols);
+            }
+            return new OrigWebSocket(url, protocols);
+          }
+          PatchedWebSocket.prototype = OrigWebSocket.prototype;
+          PatchedWebSocket.CONNECTING = 0;
+          PatchedWebSocket.OPEN = 1;
+          PatchedWebSocket.CLOSING = 2;
+          PatchedWebSocket.CLOSED = 3;
+          window.WebSocket = PatchedWebSocket;
+        }
+
+        const isViteWsError = (str) => {
+          if (!str) return false;
+          const s = String(str);
+          return s.includes('WebSocket') || s.includes('[vite]') || s.includes('closed without opened') || s.includes('vite-hmr') || s.includes('GSI_LOGGER');
+        };
+
+        const origConsoleError = console.error;
+        console.error = function(...args) {
+          if (args.some(arg => isViteWsError(arg?.message || arg?.stack || arg))) {
+            return;
+          }
+          origConsoleError.apply(console, args);
+        };
+
+        const origConsoleWarn = console.warn;
+        console.warn = function(...args) {
+          if (args.some(arg => isViteWsError(arg?.message || arg?.stack || arg))) {
+            return;
+          }
+          origConsoleWarn.apply(console, args);
+        };
+
+        window.addEventListener('error', (event) => {
+          if (isViteWsError(event.message) || isViteWsError(event.error?.message) || isViteWsError(event.error?.stack)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', (event) => {
+          const reasonMsg = event.reason?.message || event.reason?.stack || String(event.reason || '');
+          if (isViteWsError(reasonMsg)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+      })();
+    </script>
   </head>
-  <body>
+  <body class="bg-[#03040A] text-slate-100 antialiased selection:bg-indigo-500 selection:text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
