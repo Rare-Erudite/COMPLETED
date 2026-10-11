@@ -1,0 +1,183 @@
+{
+  "version": 1,
+  "updatedAt": 1791741397473,
+  "collections": {
+    "memories": {
+      "checkpoint_plan_4a2smky": {
+        "key": "checkpoint_plan_4a2smky",
+        "content": "Objective: \"Calculate sqrt(144) + 12\". Status: partially_completed. Score: 75%.",
+        "category": "checkpoint",
+        "tags": [
+          "task_run",
+          "partially_completed"
+        ],
+        "source": "engine_checkpoint",
+        "id": "mem_kv8qbyi",
+        "createdAt": 1791741397473,
+        "updatedAt": 1791741397473,
+        "isPersistent": true
+      }
+    },
+    "tasks": {
+      "plan_4a2smky": {
+        "id": "plan_4a2smky",
+        "objective": "Calculate sqrt(144) + 12",
+        "constraints": [
+          "Zero budget ($0.00) enforced",
+          "Truthful reporting only; no fabricated results",
+          "Bounded iteration limit"
+        ],
+        "steps": [
+          {
+            "id": "step_1_inspect",
+            "title": "Inspect Project & Runtime Context",
+            "description": "Check active environment, available tools, and read relevant workspace state.",
+            "dependencies": [],
+            "status": "completed",
+            "assignedTool": "system_status",
+            "toolArgs": {},
+            "verificationCriteria": "Runtime metrics and security perimeter verified.",
+            "repairAttempts": 0,
+            "toolResult": {
+              "success": true,
+              "output": {
+                "platform": "linux",
+                "nodeVersion": "v22.23.2",
+                "uptimeSeconds": 10,
+                "memory": {
+                  "heapUsedMb": 77,
+                  "heapTotalMb": 102,
+                  "rssMb": 577
+                },
+                "cwd": "/app/applet"
+              },
+              "durationMs": 0,
+              "permissionUsed": "READ_ONLY",
+              "auditRecord": {
+                "timestamp": 1791741397470,
+                "sanitizedArgs": {}
+              }
+            },
+            "output": "{\"platform\":\"linux\",\"nodeVersion\":\"v22.23.2\",\"uptimeSeconds\":10,\"memory\":{\"heapUsedMb\":77,\"heapTotalMb\":102,\"rssMb\":577},\"cwd\":\"/app/applet\"}",
+            "verificationPassed": true,
+            "verificationNotes": "Tool executed successfully within sandbox."
+          },
+          {
+            "id": "step_2_compute",
+            "title": "Execute Precise Mathematical Evaluation",
+            "description": "Run safe AST-based calculator tool without arbitrary code execution.",
+            "dependencies": [
+              "step_1_inspect"
+            ],
+            "status": "completed",
+            "assignedTool": "calculator_eval",
+            "toolArgs": {
+              "expression": "3.14159265 * 42"
+            },
+            "verificationCriteria": "Finite numerical result computed and verified.",
+            "repairAttempts": 0,
+            "toolResult": {
+              "success": true,
+              "output": {
+                "expression": "3.14159265 * 42",
+                "result": 131.9468913
+              },
+              "durationMs": 1,
+              "permissionUsed": "READ_ONLY",
+              "auditRecord": {
+                "timestamp": 1791741397470,
+                "sanitizedArgs": {
+                  "expression": "3.14159265 * 42"
+                }
+              }
+            },
+            "output": "{\"expression\":\"3.14159265 * 42\",\"result\":131.9468913}",
+            "verificationPassed": true,
+            "verificationNotes": "Tool executed successfully within sandbox."
+          },
+          {
+            "id": "step_final_verify",
+            "title": "Verify Results & Synthesize Truthful Report",
+            "description": "Audit output against non-negotiable zero-budget constraints and check for incomplete work.",
+            "dependencies": [
+              "step_1_inspect",
+              "step_2_compute"
+            ],
+            "status": "failed",
+            "verificationCriteria": "All dependencies completed, no fabricated assertions, zero incurred cost.",
+            "repairAttempts": 0,
+            "error": "LocalTransformersProvider: Model \"Qwen 2.5 0.5B Instruct (ONNX Q4)\" is not loaded in memory. Status: Uninitialized. Use loadModel() or switch provider before requesting local neural inference."
+          }
+        ],
+        "status": "partially_completed",
+        "createdAt": 1791741397469,
+        "updatedAt": 1791741397472,
+        "iterationLimit": 10,
+        "currentIteration": 4
+      }
+    },
+    "conversations": {},
+    "checkpoints": {},
+    "reports": [
+      {
+        "runId": "diag_ohpvlyo",
+        "timestamp": 1791741266154,
+        "targetSystem": "RARE-INTELLIGENCE Engine",
+        "version": "1.0.0-rc1",
+        "overallStatus": "REPAIRABLE",
+        "checksPerformedCount": 9,
+        "findings": [
+          {
+            "id": "find_x1e5n",
+            "subsystem": "tool_registry",
+            "severity": "blocker",
+            "title": "Missing Core Registered Tools",
+            "evidence": "Tools not registered: [file_list]",
+            "suspectedRootCause": "Incomplete tool bootstrap.",
+            "isRepairable": true,
+            "suggestedRemediation": "Re-register missing built-in tools from builtin.ts."
+          }
+        ],
+        "remediationPlan": {
+          "recommendedAction": "Execute autonomous self-repair on 1 detected recoverable findings.",
+          "canAutoRepair": true,
+          "requiredPermissions": [
+            "WORKSPACE_WRITE"
+          ]
+        },
+        "durationMs": 7
+      },
+      {
+        "runId": "diag_io38676",
+        "timestamp": 1791741254454,
+        "targetSystem": "RARE-INTELLIGENCE Engine",
+        "version": "1.0.0-rc1",
+        "overallStatus": "REPAIRABLE",
+        "checksPerformedCount": 9,
+        "findings": [
+          {
+            "id": "find_mdt2n",
+            "subsystem": "tool_registry",
+            "severity": "blocker",
+            "title": "Missing Core Registered Tools",
+            "evidence": "Tools not registered: [file_list]",
+            "suspectedRootCause": "Incomplete tool bootstrap.",
+            "isRepairable": true,
+            "suggestedRemediation": "Re-register missing built-in tools from builtin.ts."
+          }
+        ],
+        "remediationPlan": {
+          "recommendedAction": "Execute autonomous self-repair on 1 detected recoverable findings.",
+          "canAutoRepair": true,
+          "requiredPermissions": [
+            "WORKSPACE_WRITE"
+          ]
+        },
+        "durationMs": 11
+      }
+    ],
+    "repairs": [],
+    "auditEvents": []
+  },
+  "checksum": "b9e46aa1f51a0749622d3b4ba3e3adea220408f150814367214738fa3e56598f"
+}

@@ -182,7 +182,7 @@ export class ProjectBuildEngine {
       const fullPath = path.resolve(process.cwd(), relPath);
       const dir = path.dirname(fullPath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(fullPath, content, 'utf-8');
+      fs.writeFileSync(fullPath, String(content), 'utf-8');
     }
 
     return true;

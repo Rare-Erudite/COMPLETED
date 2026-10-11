@@ -1,8 +1,9 @@
 node_modules/
+build/
 dist/
-server-build/
-.rare/
-data/backups/
-*.log
-.env
+coverage/
 .DS_Store
+*.log
+data/models_cache/
+.env*
+!.env.example

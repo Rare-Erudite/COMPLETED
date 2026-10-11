@@ -63,6 +63,22 @@ export class SecurityGuard {
   }
 
   /**
+   * Helper alias for checking path containment within workspace root.
+   */
+  public isPathContained(targetPath: string, rootDir: string = this.allowedWorkspaceRoot): boolean {
+    const resolved = path.resolve(rootDir, targetPath);
+    const rel = path.relative(rootDir, resolved);
+    return !rel.startsWith('..') && !path.isAbsolute(rel);
+  }
+
+  /**
+   * Helper alias for redactSecrets.
+   */
+  public redactSecrets(text: string): string {
+    return this.sanitizeSecrets(text);
+  }
+
+  /**
    * Verifies that the caller has granted sufficient permission for the requested tool tier.
    */
   public verifyPermission(
