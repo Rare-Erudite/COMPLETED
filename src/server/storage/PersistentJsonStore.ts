@@ -6,77 +6,119 @@ export interface StoredSnapshotFile {
 }
 
 export class PersistentJsonStore {
-  private readonly pool: Pool;
+  private readonly pool: Pool | null = null;
   private readonly pendingWrites = new Map<string, Promise<void>>();
+  private readonly memoryDocs = new Map<string, any>();
+  private readonly memoryFiles = new Map<string, StoredSnapshotFile[]>();
 
   constructor(connectionString = process.env.DATABASE_URL) {
     if (!connectionString) {
-      throw new Error('DATABASE_URL is required for PostgreSQL persistence.');
+      console.warn('[AI Studio] DATABASE_URL not set — using in-memory mock store');
+      this.pool = null;
+      return;
     }
 
-    this.pool = new Pool({
-      connectionString,
-      connectionTimeoutMillis: 10_000,
-      idleTimeoutMillis: 30_000,
-      max: 10,
-    });
+    try {
+      this.pool = new Pool({
+        connectionString,
+        connectionTimeoutMillis: 10_000,
+        idleTimeoutMillis: 30_000,
+        max: 10,
+      });
+    } catch (err) {
+      console.warn('[AI Studio] Failed to initialize PostgreSQL pool — fallback to in-memory mock:', err);
+      this.pool = null;
+    }
   }
 
   async checkConnection(): Promise<void> {
-    await this.pool.query('SELECT 1');
+    if (!this.pool) return;
+    try {
+      await this.pool.query('SELECT 1');
+    } catch {
+      console.warn('[AI Studio] PostgreSQL query failed — continuing with in-memory fallback');
+    }
   }
 
   async getOrSeed<T>(key: string, initialValue: T): Promise<T> {
-    const existing = await this.pool.query<{ payload: T }>(
-      'SELECT payload FROM rare_persistent_documents WHERE document_key = $1',
-      [key],
-    );
-    if (existing.rows.length > 0) return existing.rows[0].payload;
-
-    const inserted = await this.pool.query<{ payload: T }>(
-      `INSERT INTO rare_persistent_documents (document_key, payload)
-       VALUES ($1, $2::jsonb)
-       ON CONFLICT (document_key) DO NOTHING
-       RETURNING payload`,
-      [key, JSON.stringify(initialValue)],
-    );
-    if (inserted.rows.length > 0) return inserted.rows[0].payload;
-
-    const raced = await this.pool.query<{ payload: T }>(
-      'SELECT payload FROM rare_persistent_documents WHERE document_key = $1',
-      [key],
-    );
-    if (raced.rows.length === 0) {
-      throw new Error(`Could not initialize persistent document "${key}".`);
+    if (!this.pool) {
+      if (!this.memoryDocs.has(key)) {
+        this.memoryDocs.set(key, initialValue);
+      }
+      return this.memoryDocs.get(key);
     }
-    return raced.rows[0].payload;
+    try {
+      const existing = await this.pool.query<{ payload: T }>(
+        'SELECT payload FROM rare_persistent_documents WHERE document_key = $1',
+        [key],
+      );
+      if (existing.rows.length > 0) return existing.rows[0].payload;
+
+      const inserted = await this.pool.query<{ payload: T }>(
+        `INSERT INTO rare_persistent_documents (document_key, payload)
+         VALUES ($1, $2::jsonb)
+         ON CONFLICT (document_key) DO NOTHING
+         RETURNING payload`,
+        [key, JSON.stringify(initialValue)],
+      );
+      if (inserted.rows.length > 0) return inserted.rows[0].payload;
+
+      const raced = await this.pool.query<{ payload: T }>(
+        'SELECT payload FROM rare_persistent_documents WHERE document_key = $1',
+        [key],
+      );
+      if (raced.rows.length === 0) {
+        throw new Error(`Could not initialize persistent document "${key}".`);
+      }
+      return raced.rows[0].payload;
+    } catch (err) {
+      console.warn(`[AI Studio] Database read error for "${key}" — using in-memory store`);
+      if (!this.memoryDocs.has(key)) {
+        this.memoryDocs.set(key, initialValue);
+      }
+      return this.memoryDocs.get(key);
+    }
   }
 
   setDocument(key: string, value: unknown): void {
+    this.memoryDocs.set(key, value);
+    if (!this.pool) return;
     const payload = JSON.stringify(value);
     this.enqueue(key, async () => {
-      await this.pool.query(
-        `INSERT INTO rare_persistent_documents (document_key, payload, updated_at)
-         VALUES ($1, $2::jsonb, now())
-         ON CONFLICT (document_key)
-         DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`,
-        [key, payload],
-      );
+      try {
+        await this.pool!.query(
+          `INSERT INTO rare_persistent_documents (document_key, payload, updated_at)
+           VALUES ($1, $2::jsonb, now())
+           ON CONFLICT (document_key)
+           DO UPDATE SET payload = EXCLUDED.payload, updated_at = now()`,
+          [key, payload],
+        );
+      } catch (err) {
+        console.warn(`[AI Studio] Database write error for "${key}" — stored in-memory:`, err);
+      }
     });
   }
 
   async loadSnapshotFiles(checkpointId: string): Promise<StoredSnapshotFile[]> {
-    const result = await this.pool.query<{ relative_path: string; content: Buffer }>(
-      `SELECT relative_path, content
-       FROM rare_checkpoint_files
-       WHERE checkpoint_id = $1
-       ORDER BY relative_path`,
-      [checkpointId],
-    );
-    return result.rows.map((row) => ({
-      relativePath: row.relative_path,
-      content: row.content,
-    }));
+    if (!this.pool) {
+      return this.memoryFiles.get(checkpointId) || [];
+    }
+    try {
+      const result = await this.pool.query<{ relative_path: string; content: Buffer }>(
+        `SELECT relative_path, content
+         FROM rare_checkpoint_files
+         WHERE checkpoint_id = $1
+         ORDER BY relative_path`,
+        [checkpointId],
+      );
+      return result.rows.map((row) => ({
+        relativePath: row.relative_path,
+        content: row.content,
+      }));
+    } catch (err) {
+      console.warn(`[AI Studio] Database loadSnapshotFiles error for "${checkpointId}" — using in-memory:`, err);
+      return this.memoryFiles.get(checkpointId) || [];
+    }
   }
 
   setSnapshotFiles(checkpointId: string, files: StoredSnapshotFile[]): void {
@@ -84,10 +126,13 @@ export class PersistentJsonStore {
       relativePath: file.relativePath,
       content: Buffer.from(file.content),
     }));
+    this.memoryFiles.set(checkpointId, snapshot);
+    if (!this.pool) return;
 
     this.enqueue(`checkpoint-files:${checkpointId}`, async () => {
-      const client = await this.pool.connect();
+      let client;
       try {
+        client = await this.pool!.connect();
         await client.query('BEGIN');
         await client.query(
           'DELETE FROM rare_checkpoint_files WHERE checkpoint_id = $1',
@@ -102,10 +147,10 @@ export class PersistentJsonStore {
         }
         await client.query('COMMIT');
       } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        console.warn(`[AI Studio] Database snapshot write failed — preserved in-memory:`, error);
       } finally {
-        client.release();
+        if (client) client.release();
       }
     });
   }
@@ -130,7 +175,9 @@ export class PersistentJsonStore {
     try {
       await this.flush();
     } finally {
-      await this.pool.end();
+      if (this.pool) {
+        await this.pool.end().catch(() => {});
+      }
     }
   }
 

@@ -47,7 +47,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
 
     const systemInstruction = `${options?.systemPrompt || 'You are RARE, a helpful personal assistant and software builder.'}\n\nContext:\n${context || ''}`;
 
-    const candidateModels = ['gemini-3.5-flash', 'gemini-3.8-flash'];
+    const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3.8-flash'];
     let lastError: any = null;
 
     for (const modelId of candidateModels) {
