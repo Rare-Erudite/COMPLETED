@@ -531,5 +531,30 @@
     "importance": 5,
     "source": "user_stated",
     "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791749296458_xjdms",
+    "timestamp": "2026-10-11T20:08:16.458Z",
+    "kind": "fact",
+    "text": "Test tool memory statement",
+    "tags": [
+      "test_tool"
+    ],
+    "importance": 3,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791749298147_ijyfn",
+    "timestamp": "2026-10-11T20:08:18.147Z",
+    "kind": "fact",
+    "text": "eval_fact_1791749298147: Deterministic test token: 21l2v8",
+    "tags": [
+      "eval_suite",
+      "test_token"
+    ],
+    "importance": 5,
+    "source": "user_stated",
+    "verifiedByUser": true
   }
 ]
