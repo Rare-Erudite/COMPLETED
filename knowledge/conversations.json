@@ -211,5 +211,25 @@
         "timestamp": "2026-10-12T10:43:43.696Z"
       }
     ]
+  },
+  {
+    "id": "test_prod_check",
+    "title": "What is RARE?",
+    "userId": "guest",
+    "created_at": "2026-10-12T11:32:49.193Z",
+    "messages": [
+      {
+        "id": "msg_1791804769193_u",
+        "role": "user",
+        "content": "What is RARE?",
+        "timestamp": "2026-10-12T11:32:49.193Z"
+      },
+      {
+        "id": "msg_1791804782197_b",
+        "role": "assistant",
+        "content": "That's me! I'm RARE—your personal AI companion, researcher, and full-stack software builder. \n\nI'm here to collaborate with you on whatever you're working on, whether that's diving into deep research, designing and writing code, building out full-stack projects, or just bouncing ideas around. \n\nWhat brings you here today? Anything exciting you're looking to build or explore?",
+        "timestamp": "2026-10-12T11:33:02.197Z"
+      }
+    ]
   }
 ]

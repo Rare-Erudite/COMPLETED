@@ -20,7 +20,13 @@ import { engine } from './src/engine/engine.ts';
 
 const app = express();
 const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
-const PORT = 3000;
+const PORT = process.argv.includes('--port')
+  ? Number(process.argv[process.argv.indexOf('--port') + 1])
+  : (process.env.NODE_ENV !== 'production' && !process.argv.includes('--production') && process.env.PORT === '8080')
+    ? 3000
+    : process.env.PORT === undefined
+      ? 5000
+      : Number(process.env.PORT);
 process.env.RARE_INTELLIGENCE_URL = process.env.RARE_INTELLIGENCE_URL || `http://127.0.0.1:${PORT}`;
 const durableStateStore = new DurableStateStore();
 let persistentStorage: PersistentJsonStore | undefined;
