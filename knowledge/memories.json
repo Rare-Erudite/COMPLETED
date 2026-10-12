@@ -556,5 +556,30 @@
     "importance": 5,
     "source": "user_stated",
     "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791765721032_hrv3c",
+    "timestamp": "2026-10-12T00:42:01.032Z",
+    "kind": "fact",
+    "text": "Test tool memory statement",
+    "tags": [
+      "test_tool"
+    ],
+    "importance": 3,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791765722291_v2szj",
+    "timestamp": "2026-10-12T00:42:02.291Z",
+    "kind": "fact",
+    "text": "eval_fact_1791765722291: Deterministic test token: ufa0hb",
+    "tags": [
+      "eval_suite",
+      "test_token"
+    ],
+    "importance": 5,
+    "source": "user_stated",
+    "verifiedByUser": true
   }
 ]
