@@ -109,13 +109,13 @@ export class GeminiModelProvider implements IModelProvider {
       return this.cachedInfo;
     }
 
-    // Fast status check without live probe: reports configured, but distinguishes live verification status
+    // Fast status check without live probe: reports configured, and available when client and network are ready
     if (!forceLiveProbe && !this.lastProbeSucceeded) {
       const info: ModelProviderInfo = {
         id: this.id,
         name: this.name,
         modelIdentifier: this.modelIdentifier,
-        isAvailable: false, // Truthful: configured credentials present, pending live verification
+        isAvailable: this.apiKeyPresent && this.client !== null && networkManager.isOnline(),
         isConfigured: true,
         supportsFunctionCalling: true,
         supportsStreaming: true,

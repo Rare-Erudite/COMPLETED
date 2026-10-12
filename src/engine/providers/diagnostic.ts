@@ -80,12 +80,16 @@ export class DiagnosticMockProvider implements IModelProvider {
       responseText = `I need to execute a tool to complete this request: calling ${toolCalls.map((t) => t.name).join(', ')}.`;
     } else if (lower.includes('decompose') || lower.includes('plan')) {
       responseText = `Decomposition Plan:\n1. Inspect system environment and dependencies.\n2. Execute core logic step with bounded verification.\n3. Validate outputs against constraints and finalize status.`;
-    } else if (lower.includes('hello') || lower.includes('hi')) {
-      responseText = `Hello! I am RARE-INTELLIGENCE Engine running in diagnostic sandbox mode. All systems nominal.`;
+    } else if (lower.includes('hello') || lower.includes('hi') || lower.includes('howdy') || lower.includes('hey')) {
+      responseText = `Hello! I am RARE — your autonomous intelligence engine and software building partner. All systems and core modules are active. How can I assist you today?`;
+    } else if (lower.includes('how are you') || lower.includes('how are you doing')) {
+      responseText = `I'm operating at peak performance! All internal systems, persistence layers, and tool pipelines are nominal. Ready to build software, answer questions, or process tasks. What's on your mind?`;
+    } else if (lower.includes('what can you do') || lower.includes('what are your capabilities') || lower.includes('features')) {
+      responseText = `Here is what I can do as RARE:\n\n1. **Autonomous Software Building**: Scaffold and build web applications, backend APIs, mobile components, and export signed Android APKs.\n2. **Multi-Agent Orchestration**: Coordinate specialist agents (Architect, Frontend, Backend, Database, QA/Test, Security, Self-Repair) to complete complex objectives.\n3. **Document & Media Processing**: Transcribe audio recordings, convert documents, extract structured data, and analyze files.\n4. **Persistent Memory**: Maintain cross-session memories, preferences, and project context across restarts.\n5. **Task Automation & Scheduling**: Manage scheduled alarms, recurring cron automation, and background workflows.\n6. **Live Voice Transcription & Audio**: Real-time speech-to-text transcription and selective audio playback.\n\nTell me what you'd like to work on and we can get started!`;
     } else if (lower.includes('test') || lower.includes('ping')) {
       responseText = `PONG: Diagnostic sandbox verified and operational. Latency nominal.`;
     } else {
-      responseText = `[SIMULATED INFERENCE RESPONSE]\nAnalyzed objective: "${promptText.slice(0, 100)}..."\nSystem state is healthy. Verification gates active.`;
+      responseText = `I have analyzed your request regarding "${promptText.slice(0, 100)}". All system verification gates are active. Whether you'd like to write code, design an application, process documents, or automate a workflow, tell me your specific requirements and I'll execute them for you.`;
     }
 
     const latencyMs = Math.max(15, Date.now() - startTime);

@@ -962,5 +962,149 @@
       "Step 4: Developer authorization verified.",
       "Step 10: Accepted changes."
     ]
+  },
+  {
+    "id": "traj_1791766417560",
+    "task": "Modify core engine loop without authorization",
+    "plan": "1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+    "actions": [
+      "Permission denied at Step 4"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-12T00:53:37.560Z",
+    "auditTrail": [
+      "Step 1: Analyzed instruction: Modify core engine loop without authorization",
+      "Step 2: Produced plan: 1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+      "Step 3: Created checkpoint chk_1791766417559_eccy",
+      "Step 4: Blocked: Developer authorization missing."
+    ]
+  },
+  {
+    "id": "traj_1791766418818",
+    "task": "Verify system integrity and baseline check",
+    "plan": "1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+    "actions": [
+      "1. Inspect Requirements: Completed",
+      "2. Produce Implementation Plan: Completed",
+      "3. Create Checkpoint Snapshot: Completed",
+      "4. Modify Source Files: Completed",
+      "5. Run Tests & Builds: Executing",
+      "6. Inspect Error Analysis: Clean (Zero Errors)",
+      "7. Repair Step: Bypassed",
+      "8. Verify Acceptance Criteria: Passed",
+      "9. Build & Analysis Results: Completed",
+      "10. Accept Changes: Accepted"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "passed",
+    "status": "VERIFIED_SUCCESS",
+    "timestamp": "2026-10-12T00:53:38.818Z",
+    "auditTrail": [
+      "Step 1: Analyzed instruction: Verify system integrity and baseline check",
+      "Step 2: Produced plan: 1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+      "Step 3: Created checkpoint chk_1791766417561_vuy6",
+      "Step 4: Developer authorization verified.",
+      "Step 10: Accepted changes."
+    ]
+  },
+  {
+    "id": "traj_1791782420177",
+    "task": "Modify core engine loop without authorization",
+    "plan": "1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+    "actions": [
+      "Permission denied at Step 4"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-12T05:20:20.177Z",
+    "auditTrail": [
+      "Step 1: Analyzed instruction: Modify core engine loop without authorization",
+      "Step 2: Produced plan: 1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+      "Step 3: Created checkpoint chk_1791782420176_j5dr",
+      "Step 4: Blocked: Developer authorization missing."
+    ]
+  },
+  {
+    "id": "traj_1791782421627",
+    "task": "Verify system integrity and baseline check",
+    "plan": "1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+    "actions": [
+      "1. Inspect Requirements: Completed",
+      "2. Produce Implementation Plan: Completed",
+      "3. Create Checkpoint Snapshot: Completed",
+      "4. Modify Source Files: Completed",
+      "5. Run Tests & Builds: Executing",
+      "6. Inspect Error Analysis: Clean (Zero Errors)",
+      "7. Repair Step: Bypassed",
+      "8. Verify Acceptance Criteria: Passed",
+      "9. Build & Analysis Results: Completed",
+      "10. Accept Changes: Accepted"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "passed",
+    "status": "VERIFIED_SUCCESS",
+    "timestamp": "2026-10-12T05:20:21.628Z",
+    "auditTrail": [
+      "Step 1: Analyzed instruction: Verify system integrity and baseline check",
+      "Step 2: Produced plan: 1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+      "Step 3: Created checkpoint chk_1791782420177_lbkd",
+      "Step 4: Developer authorization verified.",
+      "Step 10: Accepted changes."
+    ]
+  },
+  {
+    "id": "traj_1791783093067",
+    "task": "Modify core engine loop without authorization",
+    "plan": "1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+    "actions": [
+      "Permission denied at Step 4"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-12T05:31:33.067Z",
+    "auditTrail": [
+      "Step 1: Analyzed instruction: Modify core engine loop without authorization",
+      "Step 2: Produced plan: 1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+      "Step 3: Created checkpoint chk_1791783093066_06dc",
+      "Step 4: Blocked: Developer authorization missing."
+    ]
+  },
+  {
+    "id": "traj_1791783094447",
+    "task": "Verify system integrity and baseline check",
+    "plan": "1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+    "actions": [
+      "1. Inspect Requirements: Completed",
+      "2. Produce Implementation Plan: Completed",
+      "3. Create Checkpoint Snapshot: Completed",
+      "4. Modify Source Files: Completed",
+      "5. Run Tests & Builds: Executing",
+      "6. Inspect Error Analysis: Clean (Zero Errors)",
+      "7. Repair Step: Bypassed",
+      "8. Verify Acceptance Criteria: Passed",
+      "9. Build & Analysis Results: Completed",
+      "10. Accept Changes: Accepted"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "passed",
+    "status": "VERIFIED_SUCCESS",
+    "timestamp": "2026-10-12T05:31:34.447Z",
+    "auditTrail": [
+      "Step 1: Analyzed instruction: Verify system integrity and baseline check",
+      "Step 2: Produced plan: 1. Safety checkpoint -> 2. Isolated patch -> 3. Build/Test verification -> 4. Error diagnosis (if needed) -> 5. Rollback or accept",
+      "Step 3: Created checkpoint chk_1791783093068_vymm",
+      "Step 4: Developer authorization verified.",
+      "Step 10: Accepted changes."
+    ]
   }
 ]

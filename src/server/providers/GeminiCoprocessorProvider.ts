@@ -3,9 +3,25 @@ import { IModelProvider, ModelInfo, GenerationOptions, GenerationResult } from '
 
 export class GeminiCoprocessorProvider implements IModelProvider {
   private apiKey: string | null = null;
+  private client: GoogleGenAI | null = null;
 
   constructor() {
     this.apiKey = process.env.GEMINI_API_KEY || null;
+  }
+
+  private getClient(): GoogleGenAI {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key || key.trim().length <= 5) {
+      throw new Error('GEMINI_API_KEY is not configured.');
+    }
+    if (!this.client || this.apiKey !== key) {
+      this.apiKey = key;
+      this.client = new GoogleGenAI({
+        apiKey: key,
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+      });
+    }
+    return this.client;
   }
 
   public async getInfo(): Promise<ModelInfo> {
@@ -33,37 +49,37 @@ export class GeminiCoprocessorProvider implements IModelProvider {
   public async generate(
     prompt: string,
     context?: string,
-    options?: GenerationOptions
+    options?: GenerationOptions & { thinkHarder?: boolean }
   ): Promise<GenerationResult> {
-    const key = process.env.GEMINI_API_KEY;
-    if (!key || key.trim().length <= 5) {
-      throw new Error('GEMINI_API_KEY is not configured.');
-    }
-
-    const ai = new GoogleGenAI({
-      apiKey: key,
-      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-    });
+    const ai = this.getClient();
 
     const systemInstruction = `${options?.systemPrompt || 'You are RARE, a helpful personal assistant and software builder.'}\n\nContext:\n${context || ''}`;
 
-    const candidateModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3.8-flash'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest'];
     let lastError: any = null;
+
+    const isDeepReasoning = options?.thinkHarder === true;
+    const genConfig: any = {
+      systemInstruction,
+      temperature: options?.temperature ?? 0.7,
+    };
+
+    // If deep reasoning is NOT requested, disable thinking delay for ultra-fast responses
+    if (!isDeepReasoning) {
+      genConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
 
     for (const modelId of candidateModels) {
       try {
         const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`Gemini API timeout on ${modelId}`)), 7000)
+          setTimeout(() => reject(new Error(`Gemini API timeout on ${modelId}`)), 25000)
         );
 
         const response: any = await Promise.race([
           ai.models.generateContent({
             model: modelId,
             contents: prompt,
-            config: {
-              systemInstruction,
-              temperature: options?.temperature ?? 0.7,
-            },
+            config: genConfig,
           }),
           timeoutPromise,
         ]);
@@ -71,7 +87,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
         const reply = response.text || 'Understood.';
         return {
           reply,
-          thought: `[Gemini Neural Coprocessor: ${modelId}] Remote cloud neural inference verified.`,
+          thought: isDeepReasoning ? `[Gemini Neural Coprocessor: ${modelId}] Extended reasoning verified.` : undefined,
           modelUsed: modelId,
           providerType: 'gemini_coprocessor',
         };

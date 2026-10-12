@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { ThemeConfig } from './theme';
 import { usePWAInstall } from './usePWAInstall';
+import { getBackendUrl } from './api';
 
 interface DownloadAppModalProps {
   t: ThemeConfig;
@@ -54,11 +55,13 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
 
   // Real APK File Download handler (Fetches blob to guarantee real .apk binary)
   const handleDownloadApk = async () => {
+    const backend = getBackendUrl();
+    const apkUrl = backend ? `${backend}/api/download/apk` : '/api/download/apk';
     try {
       setIsDownloadingApk(true);
       setDownloadSuccessMessage('Fetching signed release package...');
       
-      const response = await fetch('/api/download/apk');
+      const response = await fetch(apkUrl);
       if (!response.ok) {
         throw new Error(`Server returned HTTP ${response.status}`);
       }
@@ -80,7 +83,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
       console.error('APK direct fetch failed, triggering fallback download:', err);
       // Fallback direct link navigation
       const a = document.createElement('a');
-      a.href = '/api/download/apk';
+      a.href = apkUrl;
       a.download = 'RARE-v1.0.0-release.apk';
       document.body.appendChild(a);
       a.click();
@@ -94,11 +97,13 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
 
   // Direct APK File Sharing handler (shares actual APK file via Xender, Bluetooth, Nearby Share)
   const handleShareApkFile = async () => {
+    const backend = getBackendUrl();
+    const apkUrl = backend ? `${backend}/api/download/apk` : '/api/download/apk';
     try {
       setIsSharingApk(true);
       setShareSuccessMessage('Preparing APK package for transfer...');
 
-      const response = await fetch('/api/download/apk');
+      const response = await fetch(apkUrl);
       if (!response.ok) {
         throw new Error(`Failed to fetch APK: ${response.statusText}`);
       }

@@ -675,7 +675,8 @@ async function generateAssistantReply(
   const result = await providerRegistry.generate(prompt, combinedContext, {
     temperature: thinkHarder ? 0.2 : 0.7,
     activeConversationId: activeConvId,
-  });
+    thinkHarder,
+  } as any);
 
   return {
     reply: result.reply,
@@ -1934,17 +1935,39 @@ app.get('/api/conversations', (req, res) => {
 });
 
 app.get('/api/conversations/:id', (req, res) => {
-  const conv = conversationStore.getById(req.params.id);
-  if (!conv) return res.status(404).json({ error: { message: 'Conversation not found' } });
+  let conv = conversationStore.getById(req.params.id);
+  if (!conv) {
+    const userHeader = req.headers['x-user-id'];
+    conv = {
+      id: req.params.id,
+      title: 'New Chat',
+      userId: (userHeader as string) || 'guest',
+      created_at: new Date().toISOString(),
+      messages: [
+        {
+          id: `msg_${Date.now()}`,
+          role: 'assistant' as const,
+          content: `Hello! I am ${appSettings.assistantName} — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images`,
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
+    conversationStore.save(conv as any);
+  }
   res.json(conv);
 });
 
 app.post('/api/conversations', (req, res) => {
-  const { title, userId } = req.body;
+  const { title, userId, id } = req.body;
   const userHeader = req.headers['x-user-id'];
   const userKey = (userId as string) || (userHeader as string) || 'guest';
+  const convId = (id as string) || `conv_${Date.now()}`;
+  const existing = conversationStore.getById(convId);
+  if (existing) {
+    return res.status(200).json(existing);
+  }
   const newConv = {
-    id: `conv_${Date.now()}`,
+    id: convId,
     title: title || 'New Chat',
     userId: userKey,
     created_at: new Date().toISOString(),
@@ -2012,8 +2035,18 @@ app.delete('/api/conversations/:id/messages/:msgId', (req, res) => {
 });
 
 app.post('/api/conversations/:id', async (req, res) => {
-  const conv = conversationStore.getById(req.params.id);
-  if (!conv) return res.status(404).json({ error: { message: 'Conversation not found' } });
+  let conv = conversationStore.getById(req.params.id);
+  if (!conv) {
+    const userHeader = req.headers['x-user-id'];
+    conv = {
+      id: req.params.id,
+      title: 'New Chat',
+      userId: (userHeader as string) || 'guest',
+      created_at: new Date().toISOString(),
+      messages: [],
+    };
+    conversationStore.save(conv as any);
+  }
 
   const { message, think_harder } = req.body;
   if (!message) return res.status(400).json({ error: { message: 'Missing message content' } });

@@ -17,6 +17,7 @@ export async function runRareIntelligenceBridgeTests() {
   const originalFetch = globalThis.fetch;
   const originalUrl = process.env.RARE_INTELLIGENCE_URL;
   const originalKey = process.env.RARE_INTELLIGENCE_API_KEY;
+  const originalGeminiKey = process.env.GEMINI_API_KEY;
 
   const memoryStore = new MemoryStore();
   const checkpointStore = new CheckpointStore();
@@ -26,6 +27,7 @@ export async function runRareIntelligenceBridgeTests() {
     // 1. Unconfigured — provider must be inert and the registry must keep working offline.
     delete process.env.RARE_INTELLIGENCE_URL;
     delete process.env.RARE_INTELLIGENCE_API_KEY;
+    delete process.env.GEMINI_API_KEY;
 
     const unconfigured = new RareIntelligenceProvider();
     assert.equal(unconfigured.isConfigured(), false, 'Provider must be inert without RARE_INTELLIGENCE_URL');
@@ -104,5 +106,7 @@ export async function runRareIntelligenceBridgeTests() {
     else process.env.RARE_INTELLIGENCE_URL = originalUrl;
     if (originalKey === undefined) delete process.env.RARE_INTELLIGENCE_API_KEY;
     else process.env.RARE_INTELLIGENCE_API_KEY = originalKey;
+    if (originalGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalGeminiKey;
   }
 }

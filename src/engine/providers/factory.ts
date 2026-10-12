@@ -258,7 +258,7 @@ export class ProviderManager {
     }
 
     // Online execution with Gemini
-    if (geminiEligible && this.activeProviderType === 'gemini') {
+    if (geminiEligible) {
       return {
         selectedProviderId: 'gemini',
         providerName: gemini.name,

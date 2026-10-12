@@ -71,22 +71,22 @@ export class ProviderRegistry {
     }
 
     // 2b. Explicit preference for the RARE-INTELLIGENCE engine bridge
-    if (this.preferredProviderId === 'rare-intelligence' && this.rareIntelligenceProvider.isConfigured()) {
+    if (this.preferredProviderId === 'rare-intelligence' && this.rareIntelligenceProvider.isConfigured() && (await this.rareIntelligenceProvider.isAvailable())) {
       return {
         provider: this.rareIntelligenceProvider,
         info: await this.rareIntelligenceProvider.getInfo(),
       };
     }
 
-    // 2c. RARE-INTELLIGENCE engine bridge — used only when configured and reachable
-    if (this.rareIntelligenceProvider.isConfigured() && (await this.rareIntelligenceProvider.isAvailable())) {
+    // 3. Genuine Cloud AI inference via Gemini Coprocessor (when GEMINI_API_KEY is present)
+    if (await this.geminiProvider.isAvailable()) {
       return {
-        provider: this.rareIntelligenceProvider,
-        info: await this.rareIntelligenceProvider.getInfo(),
+        provider: this.geminiProvider,
+        info: await this.geminiProvider.getInfo(),
       };
     }
 
-    // 3. Check if local neural transformers model is available (has weights)
+    // 4. Check if local neural transformers model is available (has weights)
     if (await this.localTransformersProvider.isAvailable()) {
       return {
         provider: this.localTransformersProvider,
@@ -94,7 +94,7 @@ export class ProviderRegistry {
       };
     }
 
-    // 4. Check if local Ollama daemon is detected and available
+    // 5. Check if local Ollama daemon is detected and available
     if (await this.ollamaProvider.isAvailable()) {
       return {
         provider: this.ollamaProvider,
@@ -102,7 +102,15 @@ export class ProviderRegistry {
       };
     }
 
-    // 5. Default: RARE Native Offline Cognitive Engine (Zero External API Key required)
+    // 6. RARE-INTELLIGENCE engine bridge — used when configured and reachable
+    if (this.rareIntelligenceProvider.isConfigured() && (await this.rareIntelligenceProvider.isAvailable())) {
+      return {
+        provider: this.rareIntelligenceProvider,
+        info: await this.rareIntelligenceProvider.getInfo(),
+      };
+    }
+
+    // 7. Default: RARE Native Offline Cognitive Engine (Zero External API Key required)
     return {
       provider: this.offlineEngine,
       info: await this.offlineEngine.getInfo(),

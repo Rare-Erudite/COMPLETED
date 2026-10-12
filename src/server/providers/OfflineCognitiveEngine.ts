@@ -100,6 +100,34 @@ export class OfflineCognitiveEngine implements IModelProvider {
       };
     }
 
+    // A2. Identity & Capability Queries
+    if (lower.includes('what can you do') || lower.includes('capabilities') || lower.includes('what are your features') || lower.includes('what do you do')) {
+      return {
+        reply: `As RARE, I am a modular, autonomous AI engine and software builder designed for continuous execution:\n\n1. **Fullstack Software Engineering**: I can build, modify, and test complete applications across Web, Backend, and Android (including generating signed APKs).\n2. **Multi-Agent Specialist Teams**: I orchestrate coordinated agents (Architect, Frontend, Backend, Database, QA/Test, and Self-Repair) to accomplish complex software builds.\n3. **Document & Media Analysis**: Universal context-aware acoustic resolution for audio transcription, document format conversion, and knowledge extraction.\n4. **Persistent Cross-Session Memory**: Long-term memory store that retains your preferences, specifications, and project context across restarts.\n5. **Task Scheduling & Automation**: Real-time scheduled alarms, reminders, and recurring cron automation.\n6. **Live Speech & Voice**: Speech-to-text live transcription and selective text-to-speech audio readout on demand.\n\nWhat would you like us to create or solve today?`,
+        thought,
+        modelUsed: 'RARE Offline Cognitive Engine',
+        providerType: 'offline_cognitive',
+      };
+    }
+
+    if (lower.includes('how are you') || lower.includes('how are you doing') || lower.includes('how is everything')) {
+      return {
+        reply: `I'm running smoothly! All systems, persistence stores, and local tools are online and responsive. Ready to assist with software builds, answer questions, or handle your tasks. How can I help you today?`,
+        thought,
+        modelUsed: 'RARE Offline Cognitive Engine',
+        providerType: 'offline_cognitive',
+      };
+    }
+
+    if (lower.includes('who are you') || lower.includes('what is rare') || lower.includes('introduce yourself')) {
+      return {
+        reply: `I am RARE — an autonomous AI engine and personal software engineering assistant. I integrate cognitive reasoning, tool execution, multi-agent collaboration, and durable memory into a single unified platform.`,
+        thought,
+        modelUsed: 'RARE Offline Cognitive Engine',
+        providerType: 'offline_cognitive',
+      };
+    }
+
     // B. Memory Recall & Shoe/Preference Inquiries
     if (isMemoryRecallQuery) {
       if (lower.includes('shoe') || lower.includes('sneaker')) {
