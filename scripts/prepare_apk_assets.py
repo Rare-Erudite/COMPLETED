@@ -1,30 +1,22 @@
 #!/usr/bin/env python3
+"""
+RARE APK Asset Packager
+Packages the offline knowledge corpus, models manifest, and runtime configuration
+for the standalone Android application.
+
+Does NOT generate synthetic dummy weights. Real local neural model weights
+are downloaded via the verified in-app downloader (onnx-community/Qwen2.5-0.5B-Instruct,
+INT4 Q4 ONNX, Apache-2.0) into persistent app storage.
+"""
+
 import os
 import json
-import hashlib
-
-def generate_deterministic_weights(filepath: str, size_mb: int, seed_tag: str):
-    """
-    Generates a deterministic quantized neural weight & acoustic prosody binary bank
-    so the standalone APK contains the complete on-device model & voice persona tables.
-    """
-    chunk_size = 1024 * 1024  # 1 MB
-    with open(filepath, "wb") as f:
-        for i in range(size_mb):
-            # Create high-entropy deterministic block from seed_tag + block index
-            seed = hashlib.sha512(f"{seed_tag}_block_{i}".encode("utf-8")).digest()
-            # Expand 64-byte digest across 1 MB with varied stride so deflate preserves the quantized table
-            buf = bytearray(chunk_size)
-            for j in range(0, chunk_size, 64):
-                h = hashlib.sha512(seed + j.to_bytes(4, "little")).digest()
-                buf[j:j+64] = h
-            f.write(buf)
 
 def generate_offline_model_assets(target_dir):
     os.makedirs(f"{target_dir}/models", exist_ok=True)
     os.makedirs(f"{target_dir}/knowledge", exist_ok=True)
 
-    print("[1/3] Generating RARE Standalone Knowledge & Reasoning Corpus...")
+    print("[1/2] Packaging RARE Standalone Knowledge & Reasoning Corpus...")
     knowledge = {
         "title": "RARE Standalone Core Knowledge & Compositional Reasoning Corpus",
         "version": "1.0.0-release",
@@ -38,16 +30,18 @@ def generate_offline_model_assets(target_dir):
             "live_environmental_and_web_sensors": {
                 "weather_and_climate": "Open-Meteo & Geolocation real-time temperature, rain detection, and wind telemetry",
                 "web_research_synthesis": "Multi-source DuckDuckGo Instant Answer & Wikipedia REST knowledge graph lookup",
-                "temporal_awareness": "Real-time Morning, Afternoon, Evening, and Night contextual greeting & scheduling"
+                "temporal_awareness": "Real-time contextual greeting & scheduling across time-of-day segments"
             },
             "human_voice_personas": {
                 "personas": [
-                    {"id": "aria_warm", "name": "Aria", "gender": "female", "style": "Warm & Conversational"},
-                    {"id": "marcus_calm", "name": "Marcus", "gender": "male", "style": "Calm & Deep"},
-                    {"id": "elena_soft", "name": "Elena", "gender": "female", "style": "Soft & Gentle"},
-                    {"id": "devon_clear", "name": "Devon", "gender": "male", "style": "Clear & Articulate"},
-                    {"id": "zara_bright", "name": "Zara", "gender": "female", "style": "Bright & Energetic"},
-                    {"id": "kofi_smooth", "name": "Kofi", "gender": "male", "style": "Smooth & Relaxed"}
+                    {"id": "aria_warm", "name": "Aria", "gender": "female", "style": "Warm & Conversational", "pitch": 1.04, "rate": 0.98},
+                    {"id": "marcus_calm", "name": "Marcus", "gender": "male", "style": "Calm & Deep", "pitch": 0.90, "rate": 0.95},
+                    {"id": "elena_soft", "name": "Elena", "gender": "female", "style": "Soft & Gentle", "pitch": 1.08, "rate": 0.92},
+                    {"id": "devon_clear", "name": "Devon", "gender": "male", "style": "Clear & Articulate", "pitch": 0.98, "rate": 1.01},
+                    {"id": "zara_bright", "name": "Zara", "gender": "female", "style": "Bright & Energetic", "pitch": 1.12, "rate": 1.03},
+                    {"id": "kofi_smooth", "name": "Kofi", "gender": "male", "style": "Smooth & Relaxed", "pitch": 0.94, "rate": 0.96},
+                    {"id": "olivia_quiet", "name": "Olivia", "gender": "female", "style": "Quiet & Reassuring", "pitch": 1.02, "rate": 0.93},
+                    {"id": "leo_confident", "name": "Leo", "gender": "male", "style": "Friendly & Confident", "pitch": 0.96, "rate": 0.99}
                 ],
                 "turn_detection": "2.5-second (2500ms) natural pause window with full-duplex barge-in interruption"
             },
@@ -62,38 +56,46 @@ def generate_offline_model_assets(target_dir):
     with open(f"{target_dir}/knowledge/core_knowledge.json", "w", encoding="utf-8") as f:
         json.dump(knowledge, f, indent=2)
 
-    print("[2/3] Generating Embedded Quantized Cognitive Brain & 6 Human Voice Persona Banks (~24 MB)...")
-    weights_path = f"{target_dir}/models/rare-cognitive-brain-q4.bin"
-    voice_bank_path = f"{target_dir}/models/rare-human-voice-personas-v2.bin"
-    generate_deterministic_weights(weights_path, 16, "RARE_STANDALONE_COGNITIVE_BRAIN_Q4_V1")
-    generate_deterministic_weights(voice_bank_path, 8, "RARE_HUMAN_VOICE_PROSODY_6_PERSONAS_V2")
-
-    print("[3/3] Generating RARE Model Architecture & Capabilities Manifest...")
+    print("[2/2] Packaging Real Model Specification & Manifest...")
     manifest = {
         "client_package": "RARE Mobile Standalone Client",
         "version": "1.0.0-release",
         "build": "release-standalone",
         "package": "com.rare.ai.intelligence",
-        "architecture": "100% Standalone On-Device Cognitive Brain + Live Web/Weather Research + 8 Human Voices",
+        "model_spec": {
+            "name": "Qwen 2.5 0.5B Instruct",
+            "repo_id": "onnx-community/Qwen2.5-0.5B-Instruct",
+            "quantization": "ONNX INT4 (Q4)",
+            "license": "Apache-2.0",
+            "parameters": "0.49B",
+            "runtime": "ONNX Runtime / @huggingface/transformers",
+            "approximate_size_mb": 786,
+            "distribution": "in-app-verified-download",
+            "download_endpoint": "/api/v1/providers/load-local"
+        },
+        "voice_spec": {
+            "engine": "Native Device SpeechSynthesis & AudioTrack with Prosody Shaper",
+            "personas_count": 8,
+            "barge_in_supported": True,
+            "pause_turn_ms": 2500
+        },
         "offline_ready": True,
-        "default_cloud_https_url": "https://ais-pre-yddf5bzvw2b4a7ytg3xefq-451895283729.europe-west2.run.app",
-        "embedded_artifacts": [
-            "models/rare-cognitive-brain-q4.bin (16 MB)",
-            "models/rare-human-voice-personas-v2.bin (8 MB)",
-            "knowledge/core_knowledge.json"
-        ],
         "capabilities": [
             "standalone_compositional_reasoning",
+            "camera_and_photo_capture",
+            "document_content_extraction",
             "live_weather_and_rain_awareness",
             "multi_source_web_research",
             "human_voice_personas_male_and_female",
-            "full_duplex_2500ms_turn_detection_and_barge_in",
+            "full_duplex_barge_in",
             "semantic_memory_retrieval",
             "autonomous_tool_execution"
         ]
     }
     with open(f"{target_dir}/models/manifest.json", "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
+
+    print("APK assets successfully generated without dummy weights.")
 
 if __name__ == "__main__":
     import sys

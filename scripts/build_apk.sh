@@ -54,10 +54,19 @@ cat << 'EOF' > "$BUILD_DIR/AndroidManifest.xml"
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -89,6 +98,7 @@ package com.rare.ai.intelligence;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -104,6 +114,7 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.ConsoleMessage;
 import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -119,12 +130,17 @@ import android.widget.TextView;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class MainActivity extends Activity {
     private static final String TAG = "RARE_APP";
     private static final String APP_SCHEME_HOST = "https://rare.local";
+    private static final int FILE_CHOOSER_REQUEST_CODE = 1001;
+    private static final int SYSTEM_PERMISSIONS_REQUEST_CODE = 2001;
+
     private WebView mWebView;
     private FrameLayout mRootLayout;
     private LinearLayout mSplashLayout;
@@ -132,6 +148,8 @@ public class MainActivity extends Activity {
     private TextView mStatusText;
     private boolean mHasLoadedSuccessfully = false;
     private Handler mHandler = new Handler(Looper.getMainLooper());
+    private ValueCallback<Uri[]> mFilePathCallback = null;
+    private PermissionRequest mHeldPermissionRequest = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -268,9 +286,65 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                if (mFilePathCallback != null) {
+                    mFilePathCallback.onReceiveValue(null);
+                    mFilePathCallback = null;
+                }
+                mFilePathCallback = filePathCallback;
+
+                Intent chooserIntent = null;
+                if (fileChooserParams != null) {
+                    try {
+                        chooserIntent = fileChooserParams.createIntent();
+                    } catch (Exception ignored) {}
+                }
+                if (chooserIntent == null) {
+                    chooserIntent = new Intent(Intent.ACTION_GET_CONTENT);
+                    chooserIntent.addCategory(Intent.CATEGORY_OPENABLE);
+                    chooserIntent.setType("*/*");
+                }
+                try {
+                    startActivityForResult(chooserIntent, FILE_CHOOSER_REQUEST_CODE);
+                    return true;
+                } catch (Exception e) {
+                    Log.e(TAG, "Cannot start system file chooser", e);
+                    if (mFilePathCallback != null) {
+                        mFilePathCallback.onReceiveValue(null);
+                        mFilePathCallback = null;
+                    }
+                    return false;
+                }
+            }
+
+            @Override
             public void onPermissionRequest(final PermissionRequest request) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    request.grant(request.getResources());
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return;
+
+                String[] resources = request.getResources();
+                List<String> neededSysPerms = new ArrayList<String>();
+
+                for (String r : resources) {
+                    if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                            neededSysPerms.add(android.Manifest.permission.RECORD_AUDIO);
+                        }
+                    } else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                            checkSelfPermission(android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                            neededSysPerms.add(android.Manifest.permission.CAMERA);
+                        }
+                    }
+                }
+
+                if (neededSysPerms.isEmpty()) {
+                    request.grant(resources);
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    mHeldPermissionRequest = request;
+                    requestPermissions(neededSysPerms.toArray(new String[0]), SYSTEM_PERMISSIONS_REQUEST_CODE);
+                } else {
+                    request.grant(resources);
                 }
             }
 
@@ -281,6 +355,59 @@ public class MainActivity extends Activity {
                 return super.onConsoleMessage(consoleMessage);
             }
         });
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+            if (mFilePathCallback != null) {
+                Uri[] results = null;
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    String dataString = data.getDataString();
+                    if (dataString != null) {
+                        results = new Uri[]{ Uri.parse(dataString) };
+                    } else if (data.getClipData() != null) {
+                        int numSelected = data.getClipData().getItemCount();
+                        results = new Uri[numSelected];
+                        for (int i = 0; i < numSelected; i++) {
+                            results[i] = data.getClipData().getItemAt(i).getUri();
+                        }
+                    }
+                }
+                mFilePathCallback.onReceiveValue(results);
+                mFilePathCallback = null;
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == SYSTEM_PERMISSIONS_REQUEST_CODE && mHeldPermissionRequest != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                List<String> grantedResources = new ArrayList<String>();
+                for (String r : mHeldPermissionRequest.getResources()) {
+                    if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(r)) {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                            checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                            grantedResources.add(r);
+                        }
+                    } else if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                            checkSelfPermission(android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            grantedResources.add(r);
+                        }
+                    }
+                }
+                if (!grantedResources.isEmpty()) {
+                    mHeldPermissionRequest.grant(grantedResources.toArray(new String[0]));
+                } else {
+                    mHeldPermissionRequest.deny();
+                }
+            }
+            mHeldPermissionRequest = null;
+        }
     }
 
     private WebResourceResponse handleAssetIntercept(Uri uri) {
@@ -303,16 +430,9 @@ public class MainActivity extends Activity {
         headers.put("Access-Control-Allow-Headers", "*");
         headers.put("Cache-Control", "no-cache");
 
-        // API Requests: Never return index.html for API endpoints!
+        // Allow API requests to proceed naturally to local or remote endpoints
         if (path.startsWith("api/")) {
-            String jsonErr = "{\"offline\":true,\"message\":\"Local offline mode active. Configure Cloud Backend URL in Settings for remote sync.\"}";
-            byte[] errBytes = jsonErr.getBytes();
-            InputStream is = new ByteArrayInputStream(errBytes);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                return new WebResourceResponse("application/json", "UTF-8", 503, "Offline", headers, is);
-            } else {
-                return new WebResourceResponse("application/json", "UTF-8", is);
-            }
+            return null;
         }
 
         String assetPath = "www/" + path;

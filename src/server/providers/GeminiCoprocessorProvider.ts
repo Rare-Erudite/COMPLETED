@@ -94,10 +94,32 @@ export class GeminiCoprocessorProvider implements IModelProvider {
           setTimeout(() => reject(new Error(`Gemini API timeout on ${modelId}`)), 25000)
         );
 
+        let contentsPayload: any = prompt;
+        if ((options as any)?.image) {
+          let mimeType = 'image/jpeg';
+          let base64Data = (options as any).image;
+          if (typeof base64Data === 'string' && base64Data.startsWith('data:')) {
+            const match = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+            if (match) {
+              mimeType = match[1];
+              base64Data = match[2];
+            }
+          }
+          contentsPayload = [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data,
+              },
+            },
+            prompt,
+          ];
+        }
+
         const response: any = await Promise.race([
           ai.models.generateContent({
             model: modelId,
-            contents: prompt,
+            contents: contentsPayload,
             config: genConfig,
           }),
           timeoutPromise,
