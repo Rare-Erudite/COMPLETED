@@ -27,7 +27,7 @@ export class ProviderManager {
     // Register available zero-cost providers with local neural model first
     this.registerProvider(new LocalTransformersProvider());
     this.registerProvider(new OllamaModelProvider('llama3.2:1b'));
-    this.registerProvider(new GeminiModelProvider('gemini-3.8-flash'));
+    this.registerProvider(new GeminiModelProvider('gemini-3-flash-preview'));
     this.registerProvider(new OpenAICompatibleProvider());
     this.registerProvider(new DiagnosticMockProvider());
 

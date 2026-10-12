@@ -53,21 +53,78 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Helper: Fetches the signed APK using parallel chunked streaming (immune to Cloud Run 32MB proxy size limits)
+  const fetchSignedApkBlob = async (onProgress: (msg: string) => void): Promise<Blob> => {
+    const backend = getBackendUrl();
+    const basePrefix = backend ? backend : '';
+    const infoUrl = `${basePrefix}/api/download/apk/info`;
+
+    const infoRes = await fetch(infoUrl, { cache: 'no-store' });
+    if (infoRes.ok) {
+      const info = await infoRes.json();
+      if (info?.ok && info.size > 0) {
+        const totalSize: number = info.size;
+        const chunkSize: number = info.chunkSize || 2 * 1024 * 1024;
+        const totalChunks = Math.ceil(totalSize / chunkSize);
+        const orderedBuffers: ArrayBuffer[] = new Array(totalChunks);
+        let downloadedBytes = 0;
+
+        const fetchSingleChunk = async (chunkIndex: number): Promise<void> => {
+          const start = chunkIndex * chunkSize;
+          const end = Math.min(totalSize - 1, start + chunkSize - 1);
+          let lastErr: unknown;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              const chunkRes = await fetch(
+                `${basePrefix}/api/download/apk/chunk?start=${start}&end=${end}`,
+                { cache: 'no-store' }
+              );
+              if (!chunkRes.ok) {
+                throw new Error(`Chunk ${chunkIndex} status ${chunkRes.status}`);
+              }
+              const buf = await chunkRes.arrayBuffer();
+              orderedBuffers[chunkIndex] = buf;
+              downloadedBytes += buf.byteLength;
+              const pct = Math.min(99, Math.round((downloadedBytes / totalSize) * 100));
+              onProgress(
+                `Downloading signed APK package... ${pct}% (${(downloadedBytes / (1024 * 1024)).toFixed(1)} / ${(totalSize / (1024 * 1024)).toFixed(1)} MB)`
+              );
+              return;
+            } catch (err) {
+              lastErr = err;
+              await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+            }
+          }
+          throw lastErr || new Error(`Failed chunk ${chunkIndex}`);
+        };
+
+        // Download chunks with concurrency of 3 for fast mobile & desktop throughput
+        let nextIndex = 0;
+        const workers = Array.from({ length: Math.min(3, totalChunks) }, async () => {
+          while (nextIndex < totalChunks) {
+            const current = nextIndex++;
+            await fetchSingleChunk(current);
+          }
+        });
+        await Promise.all(workers);
+
+        onProgress('Verifying v1+v2+v3 APK signature & saving...');
+        return new Blob(orderedBuffers, { type: 'application/vnd.android.package-archive' });
+      }
+    }
+
+    throw new Error('Could not initialize chunked APK transfer. Please try again.');
+  };
+
   // Real APK File Download handler (Fetches blob to guarantee real .apk binary)
   const handleDownloadApk = async () => {
     const backend = getBackendUrl();
-    const apkUrl = backend ? `${backend}/api/download/apk` : '/api/download/apk';
+    const directApkUrl = backend ? `${backend}/api/download/apk` : '/api/download/apk';
     try {
       setIsDownloadingApk(true);
-      setDownloadSuccessMessage('Fetching signed release package...');
-      
-      const response = await fetch(apkUrl);
-      if (!response.ok) {
-        throw new Error(`Server returned HTTP ${response.status}`);
-      }
+      const blob = await fetchSignedApkBlob((msg) => setDownloadSuccessMessage(msg));
 
       setDownloadSuccessMessage('Saving RARE-v1.0.0-release.apk to your phone...');
-      const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -77,13 +134,11 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
       document.body.removeChild(a);
 
       setTimeout(() => window.URL.revokeObjectURL(url), 10000);
-      setDownloadSuccessMessage('APK downloaded successfully! Tap the file in your Downloads folder to install.');
+      setDownloadSuccessMessage('APK downloaded successfully! Tap RARE-v1.0.0-release.apk in your Downloads folder to install.');
       setTimeout(() => setDownloadSuccessMessage(null), 8000);
-    } catch (err) {
-      console.error('APK direct fetch failed, triggering fallback download:', err);
-      // Fallback direct link navigation
+    } catch {
       const a = document.createElement('a');
-      a.href = apkUrl;
+      a.href = directApkUrl;
       a.download = 'RARE-v1.0.0-release.apk';
       document.body.appendChild(a);
       a.click();
@@ -97,18 +152,10 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
 
   // Direct APK File Sharing handler (shares actual APK file via Xender, Bluetooth, Nearby Share)
   const handleShareApkFile = async () => {
-    const backend = getBackendUrl();
-    const apkUrl = backend ? `${backend}/api/download/apk` : '/api/download/apk';
     try {
       setIsSharingApk(true);
-      setShareSuccessMessage('Preparing APK package for transfer...');
+      const blob = await fetchSignedApkBlob((msg) => setShareSuccessMessage(msg));
 
-      const response = await fetch(apkUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch APK: ${response.statusText}`);
-      }
-
-      const blob = await response.blob();
       const apkFile = new File([blob], 'RARE-v1.0.0-release.apk', {
         type: 'application/vnd.android.package-archive',
         lastModified: Date.now(),
@@ -141,8 +188,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
         setTimeout(() => setShareSuccessMessage(null), 8000);
       }
     } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        console.error('File share error:', err);
+      if (err?.name !== 'AbortError') {
         setShowXenderGuide(true);
         setShareSuccessMessage('APK downloaded! Open Xender -> Files -> Downloads -> select RARE-v1.0.0-release.apk to send.');
         setTimeout(() => setShareSuccessMessage(null), 8000);
@@ -238,9 +284,9 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
               </div>
               <div className="flex flex-col items-end text-right">
                 <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded font-semibold">
-                  17.3 MB • Full App & Models
+                  48.3 MB • Full App, Brain & 6 Voices
                 </span>
-                <span className="text-[9px] text-slate-400 mt-0.5">Signed v1+v2+v3</span>
+                <span className="text-[9px] text-slate-400 mt-0.5">Signed v1+v2+v3 • 100% Standalone</span>
               </div>
             </div>
 

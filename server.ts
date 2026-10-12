@@ -654,7 +654,10 @@ async function getDynamicIntelligenceStatus() {
 async function generateAssistantReply(
   prompt: string,
   thinkHarder: boolean,
-  activeConvId?: string
+  activeConvId?: string,
+  persona?: string,
+  recentMessages?: ChatMessage[],
+  isVoiceCall?: boolean
 ): Promise<{
   reply: string;
   thought?: string;
@@ -667,16 +670,39 @@ async function generateAssistantReply(
   // Retrieve persistent memory context to feed into reasoning
   const retrievedMemories = memoryStore.search(prompt).slice(0, 5);
   const recentDurable = memoryStore.getAll().slice(0, 6);
-  const combinedContext = Array.from(new Set([...retrievedMemories, ...recentDurable]))
+  const memoryLines = Array.from(new Set([...retrievedMemories, ...recentDurable]))
     .map((m) => `• [${m.kind}] ${m.text}`)
     .join('\n');
 
-  // Use ProviderRegistry (prioritizes local Ollama -> Native Offline Cognitive Engine / Coprocessor)
+  const historyLines = (recentMessages || [])
+    .slice(-6)
+    .map((m) => `${m.role === 'user' ? 'User' : 'RARE'}: ${m.content.slice(0, 300)}`)
+    .join('\n');
+
+  const combinedContext = [
+    memoryLines ? `Durable Memory:\n${memoryLines}` : '',
+    historyLines ? `Recent Conversation:\n${historyLines}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+
+  // Use ProviderRegistry (prioritizes local neural -> Coprocessor -> Standalone Offline Cognitive Core)
   const result = await providerRegistry.generate(prompt, combinedContext, {
     temperature: thinkHarder ? 0.2 : 0.7,
     activeConversationId: activeConvId,
     thinkHarder,
+    persona,
+    isVoiceCall: Boolean(isVoiceCall),
+    systemPrompt: isVoiceCall
+      ? `You are ${appSettings.assistantName}, speaking in a live, natural human phone call. Keep your reply warm, conversational, concise (1 to 3 spoken sentences), with zero markdown formatting or bullet points. Adapt naturally if the user corrects you or changes topics.`
+      : undefined,
   } as any);
+
+  if (result.actionDetected?.type === 'project_build' && result.actionDetected.data) {
+    activeAgentRuns.unshift(result.actionDetected.data);
+  } else if (result.actionDetected?.type === 'schedule_create' && result.actionDetected.data) {
+    scheduledTasks.unshift(result.actionDetected.data);
+  }
 
   return {
     reply: result.reply,
@@ -733,38 +759,110 @@ app.get('/api/status', async (_req, res) => {
 
 // Download Source & Git Bundle
 app.get('/api/download/source', (req, res) => {
-  const file = path.resolve(PROJECT_ROOT, 'exports', 'rare-045-source.tar.gz');
-  res.download(file, 'rare-045-source.tar.gz');
+  const candidates = [
+    path.resolve(PROJECT_ROOT, 'exports', 'rare-045-source.tar.gz'),
+    path.resolve(process.cwd(), 'exports', 'rare-045-source.tar.gz'),
+    '/exports/rare-045-source.tar.gz',
+  ];
+  const targetFile = candidates.find((p) => fs.existsSync(p));
+  if (targetFile) {
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', 'attachment; filename="RARE-v1.0.0-source.tar.gz"');
+    return res.download(targetFile, 'RARE-v1.0.0-source.tar.gz');
+  }
+  res.status(404).json({ error: { message: 'Source archive not found' } });
 });
 
 app.get('/api/download/bundle', (req, res) => {
   const file = path.resolve(PROJECT_ROOT, 'exports', 'rare-045-repo.bundle');
-  res.download(file, 'rare-045-repo.bundle');
+  if (fs.existsSync(file)) {
+    return res.download(file, 'rare-045-repo.bundle');
+  }
+  res.status(404).json({ error: { message: 'Bundle not found' } });
+});
+
+function resolveApkFilePath(): string | null {
+  const candidates = [
+    path.resolve(PROJECT_ROOT, 'exports', 'rare-v1.0.0-release.apk'),
+    path.resolve(process.cwd(), 'exports', 'rare-v1.0.0-release.apk'),
+    path.resolve(PROJECT_ROOT, 'public', 'rare-v1.0.0-release.apk'),
+    path.resolve(PROJECT_ROOT, 'dist', 'rare-v1.0.0-release.apk'),
+    '/exports/rare-v1.0.0-release.apk',
+  ];
+  return candidates.find((p) => fs.existsSync(p)) || null;
+}
+
+// APK Metadata & Chunked Streaming Endpoints (Guarantees zero proxy payload limit errors)
+app.get('/api/download/apk/info', (_req, res) => {
+  const targetFile = resolveApkFilePath();
+  if (!targetFile) {
+    return res.status(404).json({ ok: false, error: 'APK deliverable not found' });
+  }
+  const stats = fs.statSync(targetFile);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    ok: true,
+    size: stats.size,
+    chunkSize: 2 * 1024 * 1024, // 2 MB chunks (safe across all Cloud Run & reverse proxies)
+    filename: 'RARE-v1.0.0-release.apk',
+  });
+});
+
+app.get('/api/download/apk/chunk', (req, res) => {
+  const targetFile = resolveApkFilePath();
+  if (!targetFile) {
+    return res.status(404).json({ error: 'APK deliverable not found' });
+  }
+  const stats = fs.statSync(targetFile);
+  const start = Math.max(0, parseInt(String(req.query.start || '0'), 10) || 0);
+  const end = Math.min(stats.size - 1, parseInt(String(req.query.end || String(stats.size - 1)), 10) || (stats.size - 1));
+  if (start >= stats.size || end < start) {
+    return res.status(416).end();
+  }
+  const length = end - start + 1;
+  const buffer = Buffer.allocUnsafe(length);
+  const fd = fs.openSync(targetFile, 'r');
+  try {
+    const bytesRead = fs.readSync(fd, buffer, 0, length, start);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Length', String(bytesRead));
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(200).end(bytesRead === length ? buffer : buffer.subarray(0, bytesRead));
+  } finally {
+    fs.closeSync(fd);
+  }
 });
 
 // Download Packaged Android APK
 app.get('/api/download/apk', (req, res) => {
-  const primary = path.resolve(PROJECT_ROOT, 'exports', 'rare-v1.0.0-release.apk');
-  const fallback = path.resolve(process.cwd(), 'exports', 'rare-v1.0.0-release.apk');
-  const systemFallback = '/exports/rare-v1.0.0-release.apk';
-  const targetFile = fs.existsSync(primary) ? primary : fs.existsSync(fallback) ? fallback : fs.existsSync(systemFallback) ? systemFallback : null;
+  const targetFile = resolveApkFilePath();
 
   if (targetFile) {
+    const stats = fs.statSync(targetFile);
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
     res.setHeader('Content-Disposition', 'attachment; filename="RARE-v1.0.0-release.apk"');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    return res.download(targetFile, 'RARE-v1.0.0-release.apk');
+    res.setHeader('Content-Length', String(stats.size));
+    res.setHeader('Cache-Control', 'no-cache');
+    const stream = fs.createReadStream(targetFile);
+    stream.pipe(res);
+    return;
   }
   res.status(404).json({ error: { message: 'APK deliverable not found' } });
 });
 
 // Download Windows Standalone EXE
 app.get('/api/download/exe', (req, res) => {
-  const file = path.resolve(PROJECT_ROOT, 'exports', 'rare-v1.0.0-windows-x64.exe');
-  if (fs.existsSync(file)) {
+  const candidates = [
+    path.resolve(PROJECT_ROOT, 'exports', 'rare-v1.0.0-windows-x64.exe'),
+    path.resolve(process.cwd(), 'exports', 'rare-v1.0.0-windows-x64.exe'),
+    '/exports/rare-v1.0.0-windows-x64.exe',
+  ];
+  const targetFile = candidates.find((p) => fs.existsSync(p));
+  if (targetFile) {
     res.setHeader('Content-Type', 'application/vnd.microsoft.portable-executable');
     res.setHeader('Content-Disposition', 'attachment; filename="RARE-v1.0.0-windows-x64.exe"');
-    return res.download(file, 'RARE-v1.0.0-windows-x64.exe');
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.download(targetFile, 'RARE-v1.0.0-windows-x64.exe');
   }
   res.status(404).json({ error: { message: 'EXE deliverable not found' } });
 });
@@ -869,7 +967,7 @@ app.post('/api/voice/chat', async (req, res) => {
     return res.status(400).json({ error: { message: 'Speech query is required.' } });
   }
   try {
-    const { reply, thought } = await generateAssistantReply(speech.trim(), false);
+    const { reply, thought } = await generateAssistantReply(speech.trim(), false, undefined, 'casual', undefined, true);
     res.json({ reply, thought });
   } catch (err: any) {
     res.json({ reply: "I heard you, but encountered a momentary processing delay. Let me know what you'd like to do next." });
@@ -2048,7 +2146,7 @@ app.post('/api/conversations/:id', async (req, res) => {
     conversationStore.save(conv as any);
   }
 
-  const { message, think_harder } = req.body;
+  const { message, think_harder, persona } = req.body;
   if (!message) return res.status(400).json({ error: { message: 'Missing message content' } });
 
   const userMsg: ChatMessage = {
@@ -2068,7 +2166,13 @@ app.post('/api/conversations/:id', async (req, res) => {
   }
 
   try {
-    const { reply, thought, actionDetected } = await generateAssistantReply(message, !!think_harder, conv.id);
+    const { reply, thought, actionDetected } = await generateAssistantReply(
+      message,
+      !!think_harder,
+      conv.id,
+      persona,
+      conv.messages
+    );
     const botMsg: ChatMessage = {
       id: `msg_${Date.now()}_b`,
       role: 'assistant',
@@ -2895,31 +2999,6 @@ app.post('/api/images/edit', async (req, res) => {
     quotaExceeded,
     model: validModel,
     size: validSize,
-  });
-});
-
-// Download Standalone Android APK Endpoint
-app.get('/api/download/apk', (req, res) => {
-  const candidatePaths = [
-    path.resolve(PROJECT_ROOT, 'exports', 'rare-v1.0.0-release.apk'),
-    path.resolve(PROJECT_ROOT, 'public', 'rare-v1.0.0-release.apk'),
-    path.resolve(PROJECT_ROOT, 'dist', 'rare-v1.0.0-release.apk'),
-    '/tmp/android_apk_build/bin/rare-v1.0.0-release.apk',
-    path.resolve(PROJECT_ROOT, 'rare-v1.0.0-release.apk'),
-  ];
-
-  for (const apkPath of candidatePaths) {
-    if (fs.existsSync(apkPath)) {
-      const stats = fs.statSync(apkPath);
-      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-      res.setHeader('Content-Disposition', 'attachment; filename="RARE-v1.0.0-release.apk"');
-      res.setHeader('Content-Length', stats.size);
-      return res.sendFile(apkPath);
-    }
-  }
-
-  res.status(404).json({
-    error: 'APK artifact not found on server. Please run npm run build:apk or download from GitHub Actions release.',
   });
 });
 

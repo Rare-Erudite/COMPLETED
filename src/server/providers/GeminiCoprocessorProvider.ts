@@ -29,7 +29,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
     return {
       id: 'gemini-coprocessor',
       name: 'Gemini Coprocessor (External)',
-      version: 'gemini-3.5-flash / gemini-3.8-flash',
+      version: 'gemini-3-flash-preview / gemini-2.5-flash',
       architecture: 'Remote Cloud Multimodal Transformer',
       type: 'gemini_coprocessor',
       requires_api_key: true,
@@ -37,25 +37,37 @@ export class GeminiCoprocessorProvider implements IModelProvider {
       active: available,
       weights_location: 'Google AI Cloud Infrastructure',
       execution_environment: 'Remote API Endpoint via HTTPS',
-      notes: 'Auxiliary cloud neural coprocessor. Operates when GEMINI_API_KEY is present; falls back gracefully to deterministic offline engine if unreachable.',
+      notes: 'Auxiliary cloud neural coprocessor. Operates when GEMINI_API_KEY is present; falls back gracefully to standalone cognitive engine if unreachable.',
     };
   }
 
   public async isAvailable(): Promise<boolean> {
     const key = process.env.GEMINI_API_KEY;
-    return Boolean(key && key.trim().length > 5);
+    return Boolean(key && key.trim().length > 5 && key !== 'MY_GEMINI_API_KEY');
   }
 
   public async generate(
     prompt: string,
     context?: string,
-    options?: GenerationOptions & { thinkHarder?: boolean }
+    options?: GenerationOptions & { thinkHarder?: boolean; persona?: string }
   ): Promise<GenerationResult> {
     const ai = this.getClient();
 
-    const systemInstruction = `${options?.systemPrompt || 'You are RARE, a helpful personal assistant and software builder.'}\n\nContext:\n${context || ''}`;
+    const personaTone =
+      options?.persona === 'professional'
+        ? 'Adopt a rigorous, professional, and technically precise tone.'
+        : options?.persona === 'creative'
+        ? 'Adopt an imaginative, expressive, and creative tone.'
+        : options?.persona === 'concise'
+        ? 'Be extremely concise, direct, and to the point.'
+        : 'Be warm, natural, friendly, and conversational.';
 
-    const candidateModels = ['gemini-3.8-flash', 'gemini-flash-latest'];
+    const systemInstruction = `${
+      options?.systemPrompt ||
+      'You are RARE, a standalone personal AI companion, researcher, and full-stack software builder.'
+    }\n${personaTone}\n\nContext & Memory:\n${context || 'None'}`;
+
+    const candidateModels = ['gemini-3-flash-preview', 'gemini-2.5-flash'];
     let lastError: any = null;
 
     const isDeepReasoning = options?.thinkHarder === true;

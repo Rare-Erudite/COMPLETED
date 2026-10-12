@@ -24,7 +24,7 @@ export class GeminiModelProvider implements IModelProvider {
   private client: GoogleGenAI | null = null;
   private apiKeyPresent: boolean = false;
 
-  constructor(model: string = 'gemini-3.8-flash') {
+  constructor(model: string = 'gemini-3-flash-preview') {
     this.modelIdentifier = model;
     this.initClient();
   }
