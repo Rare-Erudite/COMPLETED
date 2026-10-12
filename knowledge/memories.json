@@ -906,5 +906,30 @@
     "importance": 5,
     "source": "user_stated",
     "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791817998029_3q9zi",
+    "timestamp": "2026-10-12T15:13:18.029Z",
+    "kind": "fact",
+    "text": "Test tool memory statement",
+    "tags": [
+      "test_tool"
+    ],
+    "importance": 3,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791818000467_k5vim",
+    "timestamp": "2026-10-12T15:13:20.467Z",
+    "kind": "fact",
+    "text": "eval_fact_1791818000467: Deterministic test token: ole9ts",
+    "tags": [
+      "eval_suite",
+      "test_token"
+    ],
+    "importance": 5,
+    "source": "user_stated",
+    "verifiedByUser": true
   }
 ]
