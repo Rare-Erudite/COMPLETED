@@ -706,5 +706,30 @@
     "importance": 5,
     "source": "user_stated",
     "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791800221758_wbn64",
+    "timestamp": "2026-10-12T10:17:01.758Z",
+    "kind": "fact",
+    "text": "Test tool memory statement",
+    "tags": [
+      "test_tool"
+    ],
+    "importance": 3,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791800223638_8ko2t",
+    "timestamp": "2026-10-12T10:17:03.638Z",
+    "kind": "fact",
+    "text": "eval_fact_1791800223638: Deterministic test token: ouf8rh",
+    "tags": [
+      "eval_suite",
+      "test_token"
+    ],
+    "importance": 5,
+    "source": "user_stated",
+    "verifiedByUser": true
   }
 ]
