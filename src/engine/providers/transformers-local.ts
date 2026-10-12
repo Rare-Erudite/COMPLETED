@@ -142,24 +142,38 @@ export class LocalTransformersProvider implements IModelProvider {
         device: 'cpu',
         progress_callback: (p: any) => {
           if (p && typeof p.progress === 'number') {
-            const pct = Math.min(95, Math.max(10, Math.round(p.progress * 100)));
+            const pct = Math.min(90, Math.max(10, Math.round(p.progress * 100)));
             this.loadProgressPercent = pct;
             if (onProgress) onProgress(pct, `Loading model tensor [${p.file || 'weights'}]: ${pct}%`);
           }
         },
       });
 
+      // Verify that genuine inference succeeds before advertising verified readiness
+      if (onProgress) onProgress(95, 'Running verification test inference...');
+      this.loadProgressPercent = 95;
+      const testInference = await generator('Hello', {
+        max_new_tokens: 3,
+        temperature: 0.1,
+      });
+
+      if (!testInference || (Array.isArray(testInference) && testInference.length === 0)) {
+        throw new Error('Local model verification inference returned no output.');
+      }
+
       this.pipelineInstance = generator;
       this.isLoaded = true;
       this.isLoading = false;
       this.manifest.isLoaded = true;
       this.loadProgressPercent = 100;
-      if (onProgress) onProgress(100, 'Local model loaded and verified in memory.');
-      logger.info('LocalTransformersProvider', `Model ${this.manifest.name} successfully loaded into memory.`);
+      if (onProgress) onProgress(100, 'Local model loaded and verified in memory with real inference test.');
+      logger.info('LocalTransformersProvider', `Model ${this.manifest.name} successfully loaded and verified.`);
       return true;
     } catch (err: any) {
       this.isLoading = false;
       this.isLoaded = false;
+      this.pipelineInstance = null;
+      this.manifest.isLoaded = false;
       this.lastError = err.message;
       this.loadProgressPercent = 0;
       logger.error('LocalTransformersProvider', `Model loading failed: ${err.message}`);
@@ -181,9 +195,9 @@ export class LocalTransformersProvider implements IModelProvider {
         freeTierStatus: {
           isFree: true,
           quotaNotes: '100% Free In-Process Local Compute (Apache-2.0 License)',
-          rateLimitNotes: 'Unlimited local offline execution; bounded by CPU speed',
+          rateLimitNotes: 'Lightweight 0.49B open-weight model with device/CPU reasoning constraints',
         },
-        statusMessage: `Local open-weight model "${this.manifest.name}" is loaded and ready for genuine offline inference.`,
+        statusMessage: `Local open-weight model "${this.manifest.name}" is verified and loaded in memory for offline inference.`,
       };
     }
 
@@ -199,13 +213,15 @@ export class LocalTransformersProvider implements IModelProvider {
       freeTierStatus: {
         isFree: true,
         quotaNotes: '100% Free In-Process Local Compute',
-        rateLimitNotes: 'Zero external cloud network dependencies',
+        rateLimitNotes: 'Requires Node.js runtime and host memory',
       },
       statusMessage: this.isLoading
         ? `Model loading in progress (${this.loadProgressPercent}%)...`
+        : this.lastError
+        ? `Model loading failed: ${this.lastError}. Model is not loaded.`
         : this.hasCachedWeights()
-        ? `Local open-weight model "${this.manifest.name}" weights verified on disk (786MB ONNX Q4). Ready to load into memory.`
-        : `Local open-weight model "${this.manifest.name}" configured. Weights not yet downloaded (use "Load Local Model" to fetch from Hugging Face).`,
+        ? `Local open-weight model "${this.manifest.name}" weights cached on disk. Not loaded in memory.`
+        : `Local open-weight model "${this.manifest.name}" configured. Weights not downloaded (call load-local to fetch).`,
     };
   }
 

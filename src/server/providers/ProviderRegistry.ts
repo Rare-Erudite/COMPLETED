@@ -126,9 +126,15 @@ export class ProviderRegistry {
     const { provider } = await this.getActiveProvider();
     try {
       return await provider.generate(prompt, context, options);
-    } catch (err) {
-      console.warn('[ProviderRegistry] Primary provider failed, falling back to Offline Cognitive Engine:', err);
-      return await this.offlineEngine.generate(prompt, context, options);
+    } catch (err: any) {
+      console.warn('[ProviderRegistry] Primary provider failed, falling back to Offline Cognitive Engine:', err?.message || err);
+      const fallbackResult = await this.offlineEngine.generate(prompt, context, options);
+      return {
+        ...fallbackResult,
+        thought: `[Primary provider failed (${err?.message || 'Error'}); fell back to OfflineCognitiveEngine] ${fallbackResult.thought || ''}`.trim(),
+        modelUsed: 'offline-cognitive-engine / RARE Native Cognitive Engine',
+        providerType: 'offline_cognitive',
+      };
     }
   }
 

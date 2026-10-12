@@ -12,7 +12,7 @@
 import { generateDynamicBrainReply } from './engine/standalone-brain';
 
 const BACKEND_URL_KEY = 'rare_backend_url';
-export const DEFAULT_CLOUD_HTTPS_URL = 'https://ais-pre-yddf5bzvw2b4a7ytg3xefq-451895283729.europe-west2.run.app';
+export const DEFAULT_CLOUD_HTTPS_URL = '';
 
 export interface BackendConnectionState {
   reachable: boolean;
@@ -97,6 +97,18 @@ function getStoredBackendUrl(): string {
 }
 
 function getConfiguredDefault(): string {
+  // 1. User-supplied override takes precedence in getBackendUrl()
+  // 2. VITE_BACKEND_URL when configured for deployed web build
+  const envUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_BACKEND_URL : undefined;
+  if (typeof envUrl === 'string' && envUrl.trim()) {
+    try {
+      return normalizeBackendUrl(envUrl);
+    } catch {
+      return envUrl.trim();
+    }
+  }
+
+  // 2b. Injected build-time backend URL (e.g. for Android builds with a designated cloud server)
   if (typeof window !== 'undefined') {
     const injected = (window as any).__RARE_BACKEND_URL__;
     if (typeof injected === 'string' && injected.trim()) {
@@ -108,29 +120,22 @@ function getConfiguredDefault(): string {
     }
   }
 
-  const envUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_BACKEND_URL : undefined;
-  if (typeof envUrl === 'string' && envUrl.trim()) {
-    try {
-      return normalizeBackendUrl(envUrl);
-    } catch {
-      return envUrl.trim();
-    }
-  }
-
+  // 3. In Android standalone mobile app, never silently use desktop localhost
   if (isStandaloneMobileApp()) {
     return '';
   }
 
+  // 4. In browser, current window origin if available and not file/rare.local
   if (typeof window !== 'undefined') {
     const origin = window.location?.origin;
-    if (origin && origin !== 'null') {
+    if (origin && origin !== 'null' && !origin.includes('rare.local') && window.location.protocol !== 'file:') {
       try {
         return normalizeBackendUrl(origin);
       } catch {}
     }
   }
 
-  return DEFAULT_CLOUD_HTTPS_URL;
+  return '';
 }
 
 export function getBackendUrl(): string {
@@ -188,8 +193,18 @@ export function resolveApiUrl(path: string): string {
   return `${normalizedBase}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+if (typeof window !== 'undefined') {
+  (window as any).__RARE_RESOLVE_API_URL__ = resolveApiUrl;
+}
+
 export async function testBackendConnection(url: string): Promise<BackendHealthTestResult> {
   const candidate = url.trim() || getDefaultBackendUrl();
+  if (!candidate) {
+    return {
+      success: false,
+      message: 'No backend URL is configured. Please provide an active backend URL in Settings.',
+    };
+  }
   let target: string;
   try {
     target = normalizeBackendUrl(candidate);
@@ -445,6 +460,18 @@ async function executeStandaloneLocalRoute(url: string, options?: RequestInit): 
       ],
       overall_score: 100,
       memory_stats: { totalEntries: 24, conversationsCount: Object.keys(getLocalJson('rare_standalone_conversations_v1', {})).length },
+    };
+  }
+
+  // 4b. Local Model Status & Load Route
+  if (pathname === '/api/v1/providers/load-local' || pathname === '/api/model/load-local') {
+    return {
+      success: false,
+      loaded: false,
+      error: {
+        message: 'The in-process Node.js ONNX Transformers runtime cannot execute inside browser or WebView environments. Please connect to a configured RARE backend server for neural model loading.',
+      },
+      unsupportedRuntime: true,
     };
   }
 

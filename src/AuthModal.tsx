@@ -211,29 +211,60 @@ export function AuthModal({
     } catch {}
   };
 
-  // 1. Google Sign In Form / Verification
+  // 1. Real Google Identity OAuth Flow
   const handleGoogleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!googleEmail.trim() || !googleEmail.includes('@')) {
-      setError('Please enter your Google account email address.');
-      return;
-    }
-    const cleanEmail = googleEmail.toLowerCase().trim();
-
     setLoading(true);
     setError('');
+
+    // Check if Google Identity Services SDK or native token prompt is available
     try {
-      const derivedName = cleanEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-      const res = await safePost<{ success: boolean; user: UserAccount }>('/api/user/oauth', {
+      // If user provided a token directly or via Google Identity prompt
+      let tokenToVerify = (window as any).__GOOGLE_ID_TOKEN__;
+
+      // In browser web environment, initiate Google Sign-In prompt or request token
+      if (!tokenToVerify && typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
+        await new Promise<void>((resolve, reject) => {
+          (window as any).google.accounts.id.initialize({
+            client_id: (window as any).__GOOGLE_CLIENT_ID__ || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+            callback: (res: any) => {
+              if (res?.credential) {
+                tokenToVerify = res.credential;
+                resolve();
+              } else {
+                reject(new Error('Google Sign-In prompt cancelled or returned no credential.'));
+              }
+            },
+          });
+          (window as any).google.accounts.id.prompt((notification: any) => {
+            if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+              resolve();
+            }
+          });
+        });
+      }
+
+      // If no pre-initialized SDK token was caught, prompt user for their verified OpenID Connect token or auth token
+      if (!tokenToVerify) {
+        // Require verified token from user / identity provider
+        if (!googleEmail.trim()) {
+          setError('Please provide your verified Google Identity Token or sign-in credential.');
+          setLoading(false);
+          return;
+        }
+        // In developer or secure test mode, if token is entered in the token/secret field or input
+        tokenToVerify = googleEmail.trim();
+      }
+
+      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>('/api/user/oauth', {
         provider: 'google',
-        email: cleanEmail,
-        name: derivedName,
+        token: tokenToVerify,
       });
 
       if (res?.success && res.user) {
         saveDeviceAccount({
           name: res.user.name,
-          email: res.user.email || cleanEmail,
+          email: res.user.email || 'google_user',
           provider: 'google',
           avatarColor: '#4285F4',
           lastUsed: new Date().toISOString(),
@@ -241,38 +272,42 @@ export function AuthModal({
         onLoginSuccess(res.user);
         onClose();
       } else {
-        setError('Google sign-in could not be completed. Please check your account email.');
+        setError(res?.error || 'Google identity verification failed. Please check your credentials.');
       }
-    } catch {
-      setError('Network connection error. Please try again.');
+    } catch (err: any) {
+      setError(err?.message || 'Google sign-in error. Identity could not be verified.');
     } finally {
       setLoading(false);
     }
   };
 
-  // 2. Outlook Sign In Form / Verification
+  // 2. Real Microsoft Identity OAuth Flow
   const handleOutlookSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!outlookEmail.trim() || !outlookEmail.includes('@')) {
-      setError('Please enter your Outlook / Microsoft account email.');
-      return;
-    }
-    const cleanEmail = outlookEmail.toLowerCase().trim();
-
     setLoading(true);
     setError('');
+
     try {
-      const derivedName = cleanEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-      const res = await safePost<{ success: boolean; user: UserAccount }>('/api/user/oauth', {
+      let tokenToVerify = (window as any).__MICROSOFT_ACCESS_TOKEN__;
+
+      if (!tokenToVerify) {
+        if (!outlookEmail.trim()) {
+          setError('Please provide your verified Microsoft Identity or Access Token.');
+          setLoading(false);
+          return;
+        }
+        tokenToVerify = outlookEmail.trim();
+      }
+
+      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>('/api/user/oauth', {
         provider: 'outlook',
-        email: cleanEmail,
-        name: derivedName,
+        token: tokenToVerify,
       });
 
       if (res?.success && res.user) {
         saveDeviceAccount({
           name: res.user.name,
-          email: res.user.email || cleanEmail,
+          email: res.user.email || 'microsoft_user',
           provider: 'outlook',
           avatarColor: '#0078D4',
           lastUsed: new Date().toISOString(),
@@ -280,40 +315,25 @@ export function AuthModal({
         onLoginSuccess(res.user);
         onClose();
       } else {
-        setError('Microsoft sign-in could not be completed.');
+        setError(res?.error || 'Microsoft identity verification failed. Token rejected by server.');
       }
-    } catch {
-      setError('Network connection error. Please try again.');
+    } catch (err: any) {
+      setError(err?.message || 'Microsoft sign-in error. Identity could not be verified.');
     } finally {
       setLoading(false);
     }
   };
 
-  // 3. Switch to a previously saved account on THIS device
+  // 3. Select previously saved account - requires real re-verification rather than unverified bypass
   const handleSelectSavedAccount = async (account: KnownDeviceAccount) => {
-    setLoading(true);
     setError('');
-    try {
-      const res = await safePost<{ success: boolean; user: UserAccount }>('/api/user/oauth', {
-        provider: account.provider,
-        email: account.email,
-        name: account.name,
-      });
-
-      if (res?.success && res.user) {
-        saveDeviceAccount({
-          ...account,
-          lastUsed: new Date().toISOString(),
-        });
-        onLoginSuccess(res.user);
-        onClose();
-      } else {
-        setError(`Failed to sign in with ${account.provider} account.`);
-      }
-    } catch {
-      setError('Connection error. Please try again.');
-    } finally {
-      setLoading(false);
+    // Switch to respective provider authentication view rather than trusting unverified email
+    if (account.provider === 'google') {
+      setGoogleEmail(account.email);
+      setActiveView('google-signin');
+    } else {
+      setOutlookEmail(account.email);
+      setActiveView('outlook-signin');
     }
   };
 

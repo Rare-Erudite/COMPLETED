@@ -17,6 +17,9 @@ import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
 import { BenchmarkSuite } from './src/server/evaluation/BenchmarkSuite.js';
 import { engine } from './src/engine/engine.ts';
+import { googleTtsProvider } from './src/server/providers/GoogleTtsProvider.js';
+import { notificationDeliveryService } from './src/server/providers/NotificationDeliveryService.js';
+import { oAuthVerificationService } from './src/server/providers/OAuthVerificationService.js';
 
 const app = express();
 const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
@@ -1101,6 +1104,29 @@ app.post('/api/voice/tts', async (req, res) => {
   return res.status(503).json({ error: { message: 'Neural TTS currently unavailable.' } });
 });
 
+// Google Cloud Text-to-Speech High-Fidelity Neural Synthesis Endpoint
+app.post('/api/voice/synthesize', async (req, res) => {
+  try {
+    const { text, personaId, speakingRate, pitch } = req.body;
+    const result = await googleTtsProvider.synthesize(text, personaId, {
+      speakingRate,
+      pitch,
+    });
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Length', result.audioBuffer.length);
+    res.setHeader('X-Voice-Name', result.voiceName);
+    res.setHeader('X-Persona-Id', result.personaId);
+    res.send(result.audioBuffer);
+  } catch (err: any) {
+    const status = Number(err?.statusCode) || 500;
+    res.status(status).json({
+      error: {
+        message: err?.message || 'Speech synthesis failed.',
+      },
+    });
+  }
+});
+
 // Settings & Themes
 app.get('/api/settings', async (req, res) => {
   const { info: activeInfo } = await providerRegistry.getActiveProvider();
@@ -1498,43 +1524,102 @@ app.post('/api/developer/request-access', (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
-// In-Memory OTP Codes Cache with Expiration & Channel Tracking
+// Cryptographically Secure OTP Cache with Expiration, Attempt Limits & Rate Limits
 // -----------------------------------------------------------------------------
-const activeOtpCodes = new Map<string, { code: string; expiresAt: number; channel: string }>();
+interface SecureOtpEntry {
+  codeHash: string;
+  expiresAt: number;
+  channel: 'sms' | 'whatsapp' | 'email';
+  attempts: number;
+  maxAttempts: number;
+  createdAt: number;
+}
 
-// User Accounts Authentication System (Google, Outlook, Email, Phone)
-app.post('/api/user/oauth', (req, res) => {
-  const { provider = 'google', email, name } = req.body;
-  const isGoogle = provider === 'google';
-  
-  if (!email || typeof email !== 'string' || !email.includes('@')) {
-    return res.status(400).json({ success: false, error: 'A valid account email is required to sign in.' });
+const activeOtpRecords = new Map<string, SecureOtpEntry>();
+const otpRateLimits = new Map<string, { lastSentAt: number; countInWindow: number }>();
+
+function generateSecureOtpCode(): string {
+  // Cryptographically secure 6-digit random code (100000 - 999999)
+  const num = crypto.randomInt(100000, 1000000);
+  return num.toString();
+}
+
+function hashOtpCode(target: string, code: string): string {
+  return crypto.createHash('sha256').update(`${target.toLowerCase().trim()}:${code.trim()}`).digest('hex');
+}
+
+function normalizePhone(raw: string): string {
+  const trimmed = raw.trim();
+  const digitsOnly = trimmed.replace(/[^\d+]/g, '');
+  return digitsOnly.startsWith('+') ? digitsOnly : `+${digitsOnly}`;
+}
+
+// User Accounts Authentication System (Real Verified Google, Outlook, Email, Phone)
+app.post('/api/user/oauth', async (req, res) => {
+  const { provider = 'google', token, idToken, accessToken } = req.body;
+  const rawToken = token || idToken || accessToken;
+
+  if (!rawToken || typeof rawToken !== 'string') {
+    return res.status(400).json({
+      success: false,
+      error: 'Identity verification token is required for OAuth authentication. Unverified emails are rejected.',
+    });
   }
-  const chosenEmail = email.toLowerCase().trim();
-  const chosenName = name && typeof name === 'string' && name.trim().length > 0
-    ? name.trim()
-    : chosenEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-  const user: AppUser = {
-    id: `usr_${Date.now()}`,
-    name: chosenName,
-    email: chosenEmail,
-    provider: isGoogle ? 'google' : 'outlook',
-    role: chosenEmail === 'rarelivescore@gmail.com' ? 'developer' : 'user',
-    createdAt: new Date().toISOString(),
-  };
-  registeredUsers.set(chosenEmail, user);
+  try {
+    let verifiedProfile;
+    if (provider === 'google') {
+      verifiedProfile = await oAuthVerificationService.verifyGoogleToken(rawToken);
+    } else if (provider === 'outlook') {
+      verifiedProfile = await oAuthVerificationService.verifyMicrosoftToken(rawToken);
+    } else {
+      return res.status(400).json({ success: false, error: `Unsupported identity provider: ${provider}` });
+    }
 
-  auditLog.unshift({
-    id: `aud_${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    actor: user.email!,
-    action: 'oauth_login_success',
-    kind: 'user',
-    details: `Signed in as ${user.name} (${user.email}) via ${provider} Account Chooser.`,
-  });
+    const cleanEmail = verifiedProfile.email.toLowerCase().trim();
+    let existing = registeredUsers.get(cleanEmail);
 
-  res.json({ success: true, user });
+    if (!existing) {
+      existing = {
+        id: `usr_${Date.now()}`,
+        name: verifiedProfile.name,
+        email: cleanEmail,
+        provider: verifiedProfile.provider,
+        role: 'user', // Developer privileges require explicit passkey authorization
+        createdAt: new Date().toISOString(),
+      };
+      registeredUsers.set(cleanEmail, existing);
+    } else {
+      existing.name = verifiedProfile.name || existing.name;
+    }
+
+    auditLog.unshift({
+      id: `aud_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      actor: cleanEmail,
+      action: 'oauth_login_success',
+      kind: 'user',
+      details: `Verified identity for ${existing.name} (${cleanEmail}) via ${provider} token verification.`,
+    });
+
+    res.json({
+      success: true,
+      user: {
+        id: existing.id,
+        name: existing.name,
+        email: existing.email,
+        phone: existing.phone,
+        provider: existing.provider,
+        role: existing.role,
+        createdAt: existing.createdAt,
+      },
+    });
+  } catch (err: any) {
+    return res.status(401).json({
+      success: false,
+      error: `OAuth identity verification failed: ${err.message}`,
+    });
+  }
 });
 
 app.post('/api/user/signup', (req, res) => {
@@ -1547,13 +1632,17 @@ app.post('/api/user/signup', (req, res) => {
     return res.status(400).json({ success: false, error: 'An account with this email already exists.' });
   }
 
+  // Securely hash password with SHA-256 + salt
+  const salt = crypto.randomBytes(16).toString('hex');
+  const passwordHash = `${salt}:${crypto.createHash('sha256').update(`${salt}:${password}`).digest('hex')}`;
+
   const user: AppUser = {
     id: `usr_${Date.now()}`,
-    name: name || cleanEmail.split('@')[0],
+    name: name?.trim() || cleanEmail.split('@')[0],
     email: cleanEmail,
-    password,
+    passwordHash,
     provider: 'email',
-    role: cleanEmail === 'rarelivescore@gmail.com' || cleanEmail === 'premiumrareapp@gmail.com' ? 'developer' : 'user',
+    role: 'user', // Developer privileges require explicit passkey authorization
     createdAt: new Date().toISOString(),
   };
   registeredUsers.set(cleanEmail, user);
@@ -1579,21 +1668,22 @@ app.post('/api/user/login', (req, res) => {
   const cleanEmail = email.toLowerCase().trim();
   const existing = registeredUsers.get(cleanEmail);
 
-  if (!existing || (existing.password && existing.password !== password)) {
-    // If account was created through OTP or doesn't have password set, or for instant onboarding:
-    if (cleanEmail === 'rarelivescore@gmail.com' || cleanEmail === 'premiumrareapp@gmail.com') {
-      const devUser: AppUser = {
-        id: existing?.id || 'usr_owner_1',
-        name: existing?.name || (cleanEmail === 'rarelivescore@gmail.com' ? 'RARE Core Owner' : 'Premium RARE App'),
-        email: cleanEmail,
-        provider: 'email',
-        role: 'developer',
-        createdAt: existing?.createdAt || new Date().toISOString(),
-      };
-      registeredUsers.set(cleanEmail, devUser);
-      return res.json({ success: true, user: devUser });
-    }
-    return res.status(401).json({ success: false, error: 'Invalid email or password. You can also verify with a 6-digit code.' });
+  if (!existing) {
+    return res.status(401).json({ success: false, error: 'Invalid email or password.' });
+  }
+
+  // Validate hashed password or plain text (migrating to hash)
+  let passwordMatches = false;
+  if (existing.passwordHash) {
+    const [salt, hash] = existing.passwordHash.split(':');
+    const computed = crypto.createHash('sha256').update(`${salt}:${password}`).digest('hex');
+    passwordMatches = computed === hash;
+  } else if (existing.password) {
+    passwordMatches = existing.password === password;
+  }
+
+  if (!passwordMatches) {
+    return res.status(401).json({ success: false, error: 'Invalid email or password.' });
   }
 
   res.json({
@@ -1610,26 +1700,62 @@ app.post('/api/user/login', (req, res) => {
   });
 });
 
-app.post('/api/user/send-otp', (req, res) => {
+app.post('/api/user/send-otp', async (req, res) => {
   const { phone, channel = 'sms' } = req.body;
   if (!phone || typeof phone !== 'string' || phone.trim().length < 5) {
     return res.status(400).json({ success: false, error: 'Valid phone number is required.' });
   }
-  const cleanPhone = phone.trim();
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  activeOtpCodes.set(cleanPhone, {
-    code,
-    expiresAt: Date.now() + 10 * 60 * 1000,
-    channel,
+  const cleanPhone = normalizePhone(phone);
+  const targetChannel: 'sms' | 'whatsapp' = channel === 'whatsapp' ? 'whatsapp' : 'sms';
+
+  // Enforce rate limiting: 1 message per 30 seconds
+  const now = Date.now();
+  const rateLimit = otpRateLimits.get(cleanPhone);
+  if (rateLimit && now - rateLimit.lastSentAt < 30_000) {
+    const waitSec = Math.ceil((30_000 - (now - rateLimit.lastSentAt)) / 1000);
+    return res.status(429).json({
+      success: false,
+      error: `Please wait ${waitSec} seconds before requesting another verification code.`,
+    });
+  }
+
+  const code = generateSecureOtpCode();
+  const codeHash = hashOtpCode(cleanPhone, code);
+
+  // Attempt real provider delivery first
+  let dispatchResult;
+  if (targetChannel === 'whatsapp') {
+    dispatchResult = await notificationDeliveryService.sendWhatsAppVerification(cleanPhone, code);
+  } else {
+    dispatchResult = await notificationDeliveryService.sendSmsVerification(cleanPhone, code);
+  }
+
+  if (!dispatchResult.success) {
+    return res.status(503).json({
+      success: false,
+      error: dispatchResult.error || 'Failed to dispatch verification code via messaging provider.',
+    });
+  }
+
+  // Only store and activate code if provider confirmed send
+  activeOtpRecords.set(cleanPhone, {
+    codeHash,
+    expiresAt: now + 10 * 60 * 1000,
+    channel: targetChannel,
+    attempts: 0,
+    maxAttempts: 5,
+    createdAt: now,
   });
 
-  const channelLabel = channel === 'whatsapp' ? 'WhatsApp' : 'SMS';
-  console.log(`[AUTH] Dispatched OTP ${code} via ${channelLabel} to ${cleanPhone}`);
+  otpRateLimits.set(cleanPhone, {
+    lastSentAt: now,
+    countInWindow: (rateLimit?.countInWindow || 0) + 1,
+  });
 
+  const channelLabel = targetChannel === 'whatsapp' ? 'WhatsApp' : 'SMS';
   res.json({
     success: true,
-    channel,
-    code,
+    channel: targetChannel,
     message: `Verification code sent via ${channelLabel} to ${cleanPhone}`,
   });
 });
@@ -1639,16 +1765,36 @@ app.post('/api/user/verify-otp', (req, res) => {
   if (!phone || !code) {
     return res.status(400).json({ success: false, error: 'Phone and verification code are required.' });
   }
-  const cleanPhone = phone.trim();
+  const cleanPhone = normalizePhone(phone);
   const cleanCode = String(code).trim();
-  const saved = activeOtpCodes.get(cleanPhone);
-  const isValid = (saved && saved.code === cleanCode && Date.now() < saved.expiresAt) || /^\d{6}$/.test(cleanCode);
+  const saved = activeOtpRecords.get(cleanPhone);
 
-  if (!isValid) {
-    return res.status(400).json({ success: false, error: 'Invalid or expired verification code.' });
+  if (!saved) {
+    return res.status(400).json({ success: false, error: 'No active verification code found for this phone number.' });
   }
 
-  activeOtpCodes.delete(cleanPhone);
+  if (Date.now() > saved.expiresAt) {
+    activeOtpRecords.delete(cleanPhone);
+    return res.status(400).json({ success: false, error: 'Verification code has expired. Please request a new one.' });
+  }
+
+  if (saved.attempts >= saved.maxAttempts) {
+    activeOtpRecords.delete(cleanPhone);
+    return res.status(400).json({ success: false, error: 'Too many incorrect attempts. Please request a new code.' });
+  }
+
+  saved.attempts += 1;
+  const computedHash = hashOtpCode(cleanPhone, cleanCode);
+
+  if (saved.codeHash !== computedHash) {
+    return res.status(400).json({
+      success: false,
+      error: `Invalid verification code. ${saved.maxAttempts - saved.attempts} attempt(s) remaining.`,
+    });
+  }
+
+  // Code verified! Invalidate immediately so it cannot be reused
+  activeOtpRecords.delete(cleanPhone);
 
   let existing = registeredUsers.get(cleanPhone);
   if (!existing) {
@@ -1663,28 +1809,68 @@ app.post('/api/user/verify-otp', (req, res) => {
     registeredUsers.set(cleanPhone, existing);
   }
 
-  res.json({ success: true, user: existing });
+  res.json({
+    success: true,
+    user: {
+      id: existing.id,
+      name: existing.name,
+      email: existing.email,
+      phone: existing.phone,
+      provider: existing.provider,
+      role: existing.role,
+      createdAt: existing.createdAt,
+    },
+  });
 });
 
-app.post('/api/user/send-email-otp', (req, res) => {
+app.post('/api/user/send-email-otp', async (req, res) => {
   const { email } = req.body;
   if (!email || typeof email !== 'string' || !email.includes('@')) {
     return res.status(400).json({ success: false, error: 'Valid email address is required.' });
   }
   const cleanEmail = email.toLowerCase().trim();
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  activeOtpCodes.set(cleanEmail, {
-    code,
-    expiresAt: Date.now() + 10 * 60 * 1000,
+
+  // Enforce rate limiting: 1 message per 30 seconds
+  const now = Date.now();
+  const rateLimit = otpRateLimits.get(cleanEmail);
+  if (rateLimit && now - rateLimit.lastSentAt < 30_000) {
+    const waitSec = Math.ceil((30_000 - (now - rateLimit.lastSentAt)) / 1000);
+    return res.status(429).json({
+      success: false,
+      error: `Please wait ${waitSec} seconds before requesting another email code.`,
+    });
+  }
+
+  const code = generateSecureOtpCode();
+  const codeHash = hashOtpCode(cleanEmail, code);
+
+  // Attempt real provider delivery first
+  const dispatchResult = await notificationDeliveryService.sendEmailVerification(cleanEmail, code);
+  if (!dispatchResult.success) {
+    return res.status(503).json({
+      success: false,
+      error: dispatchResult.error || 'Failed to dispatch verification email via provider.',
+    });
+  }
+
+  // Only store and activate code if provider confirmed send
+  activeOtpRecords.set(cleanEmail, {
+    codeHash,
+    expiresAt: now + 10 * 60 * 1000,
     channel: 'email',
+    attempts: 0,
+    maxAttempts: 5,
+    createdAt: now,
   });
 
-  console.log(`[AUTH] Dispatched Email OTP ${code} to ${cleanEmail}`);
+  otpRateLimits.set(cleanEmail, {
+    lastSentAt: now,
+    countInWindow: (rateLimit?.countInWindow || 0) + 1,
+  });
 
   res.json({
     success: true,
     channel: 'email',
-    code,
     message: `Verification code sent to ${cleanEmail}`,
   });
 });
@@ -1696,14 +1882,34 @@ app.post('/api/user/verify-email-otp', (req, res) => {
   }
   const cleanEmail = email.toLowerCase().trim();
   const cleanCode = String(code).trim();
-  const saved = activeOtpCodes.get(cleanEmail);
-  const isValid = (saved && saved.code === cleanCode && Date.now() < saved.expiresAt) || /^\d{6}$/.test(cleanCode);
+  const saved = activeOtpRecords.get(cleanEmail);
 
-  if (!isValid) {
-    return res.status(400).json({ success: false, error: 'Invalid or expired verification code.' });
+  if (!saved) {
+    return res.status(400).json({ success: false, error: 'No active verification code found for this email address.' });
   }
 
-  activeOtpCodes.delete(cleanEmail);
+  if (Date.now() > saved.expiresAt) {
+    activeOtpRecords.delete(cleanEmail);
+    return res.status(400).json({ success: false, error: 'Verification code has expired. Please request a new one.' });
+  }
+
+  if (saved.attempts >= saved.maxAttempts) {
+    activeOtpRecords.delete(cleanEmail);
+    return res.status(400).json({ success: false, error: 'Too many incorrect attempts. Please request a new code.' });
+  }
+
+  saved.attempts += 1;
+  const computedHash = hashOtpCode(cleanEmail, cleanCode);
+
+  if (saved.codeHash !== computedHash) {
+    return res.status(400).json({
+      success: false,
+      error: `Invalid verification code. ${saved.maxAttempts - saved.attempts} attempt(s) remaining.`,
+    });
+  }
+
+  // Code verified! Invalidate immediately so it cannot be reused
+  activeOtpRecords.delete(cleanEmail);
 
   let existing = registeredUsers.get(cleanEmail);
   if (!existing) {
@@ -1712,13 +1918,24 @@ app.post('/api/user/verify-email-otp', (req, res) => {
       name: name?.trim() || cleanEmail.split('@')[0],
       email: cleanEmail,
       provider: 'email',
-      role: cleanEmail === 'rarelivescore@gmail.com' || cleanEmail === 'premiumrareapp@gmail.com' ? 'developer' : 'user',
+      role: 'user',
       createdAt: new Date().toISOString(),
     };
     registeredUsers.set(cleanEmail, existing);
   }
 
-  res.json({ success: true, user: existing });
+  res.json({
+    success: true,
+    user: {
+      id: existing.id,
+      name: existing.name,
+      email: existing.email,
+      phone: existing.phone,
+      provider: existing.provider,
+      role: existing.role,
+      createdAt: existing.createdAt,
+    },
+  });
 });
 
 // Privileged Developer Space Status & Diagnostics

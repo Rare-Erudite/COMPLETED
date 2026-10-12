@@ -752,105 +752,70 @@ export async function generateDynamicBrainReply(options: {
 // ============================================================================
 // HUMAN VOICE SYNTHESIS ENGINE (Natural Prosody, Persona Selection & Instant Barge-In)
 // ============================================================================
-// 10. Natural Conversational Human Voice Synthesis (Anti-Robotic Engine)
+// ============================================================================
+// 10. Natural Conversational Human Voice Synthesis (Google Cloud Neural TTS)
 // ============================================================================
 
+export const GOOGLE_TTS_PERSONA_VOICES = {
+  aria_warm: 'en-US-Neural2-F',
+  marcus_calm: 'en-US-Neural2-D',
+  elena_soft: 'en-US-Neural2-C',
+  devon_clear: 'en-US-Neural2-J',
+  zara_bright: 'en-US-Neural2-G',
+  kofi_smooth: 'en-US-Neural2-A',
+  olivia_quiet: 'en-US-Neural2-E',
+  leo_confident: 'en-US-Neural2-I',
+  sophia_empathetic: 'en-US-Neural2-H',
+  julian_resonant: 'en-US-Neural2-D',
+  chloe_casual: 'en-US-Neural2-F',
+  gabriel_thoughtful: 'en-US-Neural2-J',
+} as const;
+
+export type GoogleTtsPersonaId = keyof typeof GOOGLE_TTS_PERSONA_VOICES;
+
 let activeSpeechCancelled = false;
-let cachedBrowserVoices: SpeechSynthesisVoice[] = [];
+let currentAudioElement: HTMLAudioElement | null = null;
+let currentAudioUrl: string | null = null;
+let currentSpeechAbortController: AbortController | null = null;
 
-if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-  try {
-    cachedBrowserVoices = window.speechSynthesis.getVoices() || [];
-    window.speechSynthesis.onvoiceschanged = () => {
-      try {
-        cachedBrowserVoices = window.speechSynthesis.getVoices() || [];
-      } catch {}
-    };
-  } catch {}
-}
-
-export function stopHumanVoice() {
+export function stopHumanVoice(): void {
   activeSpeechCancelled = true;
-  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  if (currentSpeechAbortController) {
     try {
-      window.speechSynthesis.cancel();
+      currentSpeechAbortController.abort();
     } catch {}
+    currentSpeechAbortController = null;
+  }
+  if (currentAudioElement) {
+    try {
+      currentAudioElement.pause();
+      currentAudioElement.currentTime = 0;
+      currentAudioElement.src = '';
+    } catch {}
+    currentAudioElement = null;
+  }
+  if (currentAudioUrl) {
+    try {
+      URL.revokeObjectURL(currentAudioUrl);
+    } catch {}
+    currentAudioUrl = null;
   }
 }
 
-export function selectBestHumanVoice(persona: VoicePersona): SpeechSynthesisVoice | null {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
-  const rawVoices = (cachedBrowserVoices.length > 0 ? cachedBrowserVoices : window.speechSynthesis.getVoices()) || [];
-  if (!rawVoices || rawVoices.length === 0) return null;
-
-  // Identify robotic, low-quality, or mechanical synthesizers to strictly filter them out
-  const isRobotic = (name: string) =>
-    /\b(espeak|festival|speech-dispatcher|compact|mechanical|robot|mbrola|klatt)\b/i.test(name) ||
-    /desktop - english \(united states\)/i.test(name); // Old robotic MS David Desktop
-
-  const naturalVoices = rawVoices.filter((v) => !isRobotic(`${v.name} ${v.voiceURI}`));
-  const candidatePool = naturalVoices.length > 0 ? naturalVoices : rawVoices;
-
-  const englishVoices = candidatePool.filter((v) => /^en[-_]/i.test(v.lang) || v.lang.toLowerCase().includes('en'));
-  const pool = englishVoices.length > 0 ? englishVoices : candidatePool;
-
-  const scored = pool.map((v) => {
-    const nameLower = `${v.name} ${v.voiceURI}`.toLowerCase();
-    let score = 0;
-
-    // High bonus for modern neural, natural, and cloud human voices
-    if (nameLower.includes('natural') || nameLower.includes('neural') || nameLower.includes('online')) score += 85;
-    if (nameLower.includes('premium') || nameLower.includes('enhanced') || nameLower.includes('wavenet')) score += 65;
-    if (nameLower.includes('google') || nameLower.includes('apple') || nameLower.includes('siri') || nameLower.includes('microsoft')) score += 45;
-    if (isRobotic(nameLower)) score -= 300;
-
-    for (const kw of persona.preferredKeywords) {
-      if (nameLower.includes(kw.toLowerCase())) {
-        score += 50;
-      }
-    }
-
-    if (
-      persona.gender === 'female' &&
-      /\b(female|woman|girl|aria|jenny|sonia|samantha|victoria|zira|karen|moira|tessa|olivia|ava|emma|sophia|chloe)\b/i.test(nameLower)
-    ) {
-      score += 40;
-    }
-    if (
-      persona.gender === 'male' &&
-      /\b(male|man|guy|ryan|daniel|alex|david|christopher|eric|arthur|aaron|oliver|leo|brian|nathan|julian|gabriel)\b/i.test(nameLower)
-    ) {
-      score += 40;
-    }
-
-    // Gender mismatch penalty
-    if (
-      persona.gender === 'female' &&
-      /\b(male|guy|man|david|daniel|ryan|christopher|george)\b/i.test(nameLower) &&
-      !/\b(female|woman|aria|jenny|sonia)\b/i.test(nameLower)
-    ) {
-      score -= 90;
-    }
-    if (
-      persona.gender === 'male' &&
-      /\b(female|woman|aria|jenny|samantha|victoria|zira|karen)\b/i.test(nameLower) &&
-      !/\b(male|man|guy)\b/i.test(nameLower)
-    ) {
-      score -= 90;
-    }
-
-    return { voice: v, score };
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0]?.voice || pool[0] || null;
+export function selectBestHumanVoice(persona: VoicePersona | string): string {
+  const id = typeof persona === 'string' ? persona : persona.id;
+  if (Object.prototype.hasOwnProperty.call(GOOGLE_TTS_PERSONA_VOICES, id)) {
+    return GOOGLE_TTS_PERSONA_VOICES[id as GoogleTtsPersonaId];
+  }
+  return GOOGLE_TTS_PERSONA_VOICES.aria_warm;
 }
 
 /**
- * Speaks text using natural conversational human prosody (clause phrasing, persona pitch/rate contours,
- * breathing pauses, and conversational pacing) with instant barge-in cancellation support.
+ * Speaks text using real server-side Google Cloud Text-to-Speech (Neural2 HD) with
+ * asynchronous MP3 audio streaming, instant barge-in cancellation via AbortController,
+ * and audio playback lifecycle callbacks.
  */
-export function speakWithHumanVoice(
+export async function speakWithHumanVoice(
   text: string,
   personaId: string,
   options?: {
@@ -858,19 +823,15 @@ export function speakWithHumanVoice(
     rate?: number;
     onStart?: () => void;
     onEnd?: () => void;
+    onError?: (error: Error) => void;
   }
-) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    options?.onEnd?.();
-    return;
-  }
-
+): Promise<void> {
   stopHumanVoice();
   activeSpeechCancelled = false;
 
   const persona = HUMAN_VOICE_PERSONAS.find((p) => p.id === personaId) || HUMAN_VOICE_PERSONAS[0];
 
-  // Conversationally polish text for spoken dialogue (strip markdown clutter, read naturally like a human on the phone)
+  // Conversationally polish text for spoken dialogue (strip markdown clutter, technical code)
   const cleanText = text
     .replace(/```[\s\S]*?```/g, 'I have displayed the technical code on your screen.')
     .replace(/https?:\/\/\S+/gi, 'the linked web reference')
@@ -880,7 +841,7 @@ export function speakWithHumanVoice(
     .replace(/\bvs\.?\b/gi, 'versus')
     .replace(/[%]/g, ' percent ')
     .replace(/[*#`_\[\]()~>•]/g, ' ')
-    .replace(/\b(\d+)\.\s+/g, ' ') // Strip "1.", "2." so it doesn't sound like a robot reading numbers
+    .replace(/\b(\d+)\.\s+/g, ' ') // Strip "1.", "2." so it sounds conversational
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -889,68 +850,120 @@ export function speakWithHumanVoice(
     return;
   }
 
-  // Split into natural conversational clauses with human breathing pauses at commas and punctuation
-  const rawSentences = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
-  const phrases: string[] = [];
-  for (const s of rawSentences) {
-    const trimmed = s.trim();
-    if (!trimmed) continue;
-    if (trimmed.length > 80 && /[,;—]/.test(trimmed)) {
-      const subChunks = trimmed.split(/(?<=[,;—])\s+/);
-      for (const sub of subChunks) {
-        if (sub.trim()) phrases.push(sub.trim());
-      }
-    } else {
-      phrases.push(trimmed);
+  const controller = new AbortController();
+  currentSpeechAbortController = controller;
+
+  try {
+    const rawResolve = typeof window !== 'undefined' && (window as any).__RARE_RESOLVE_API_URL__;
+    const endpoint = typeof rawResolve === 'function'
+      ? rawResolve('/api/voice/synthesize')
+      : '/api/voice/synthesize';
+
+    // Calculate semitone pitch offset from persona pitch (1.0 = 0 semitones)
+    const semitonePitch = options?.pitch !== undefined
+      ? options.pitch
+      : (persona.pitch ? (persona.pitch - 1.0) * 12 : 0);
+
+    const speakingRate = options?.rate !== undefined
+      ? options.rate
+      : (persona.rate ?? 1.0);
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: cleanText,
+        personaId: persona.id,
+        speakingRate,
+        pitch: semitonePitch,
+      }),
+      signal: controller.signal,
+    });
+
+    if (activeSpeechCancelled || controller.signal.aborted) {
+      return;
     }
-  }
 
-  const chosenVoice = selectBestHumanVoice(persona);
+    if (!response.ok) {
+      let errorMessage = `Google Cloud TTS synthesis failed (HTTP ${response.status})`;
+      try {
+        const errJson = await response.json();
+        if (errJson?.error?.message) {
+          errorMessage = errJson.error.message;
+        }
+      } catch {}
+      const err = new Error(errorMessage);
+      console.error('[Voice] TTS synthesis error:', errorMessage);
+      options?.onError?.(err);
+      options?.onEnd?.();
+      return;
+    }
 
-  let idx = 0;
-  options?.onStart?.();
+    const audioBlob = await response.blob();
+    if (activeSpeechCancelled || controller.signal.aborted) {
+      return;
+    }
 
-  const speakNextPhrase = () => {
-    if (activeSpeechCancelled || idx >= phrases.length) {
+    if (!audioBlob || audioBlob.size === 0) {
+      const err = new Error('Empty audio stream received from Google TTS service.');
+      options?.onError?.(err);
+      options?.onEnd?.();
+      return;
+    }
+
+    const audioUrl = URL.createObjectURL(audioBlob);
+    currentAudioUrl = audioUrl;
+
+    const audio = new Audio(audioUrl);
+    currentAudioElement = audio;
+
+    audio.onplay = () => {
+      if (activeSpeechCancelled) {
+        stopHumanVoice();
+        return;
+      }
+      options?.onStart?.();
+    };
+
+    audio.onended = () => {
+      if (currentAudioUrl === audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+        currentAudioUrl = null;
+      }
+      if (currentAudioElement === audio) {
+        currentAudioElement = null;
+      }
       if (!activeSpeechCancelled) {
         options?.onEnd?.();
       }
-      return;
-    }
-
-    const phrase = phrases[idx++].trim();
-    if (!phrase) {
-      speakNextPhrase();
-      return;
-    }
-
-    const utterance = new SpeechSynthesisUtterance(phrase);
-    if (chosenVoice) {
-      utterance.voice = chosenVoice;
-    }
-
-    // Natural prosody contour: subtle human inflection shift across phrase transitions
-    const cadenceOffset = ((idx % 3) - 1) * 0.015;
-    const basePitch = options?.pitch ?? persona.pitch;
-    const baseRate = options?.rate ?? persona.rate;
-
-    utterance.pitch = Math.max(0.75, Math.min(1.2, basePitch + cadenceOffset));
-    utterance.rate = Math.max(0.85, Math.min(1.15, baseRate));
-    utterance.volume = 1.0;
-
-    utterance.onend = () => {
-      if (activeSpeechCancelled) return;
-      // Natural 80ms breathing pause between spoken thoughts
-      setTimeout(speakNextPhrase, 80);
     };
 
-    utterance.onerror = () => {
-      if (activeSpeechCancelled) return;
-      speakNextPhrase();
+    audio.onerror = () => {
+      if (currentAudioUrl === audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+        currentAudioUrl = null;
+      }
+      if (currentAudioElement === audio) {
+        currentAudioElement = null;
+      }
+      if (!activeSpeechCancelled) {
+        const err = new Error('Audio playback failed.');
+        options?.onError?.(err);
+        options?.onEnd?.();
+      }
     };
 
-    window.speechSynthesis.speak(utterance);
-  };
-
-  speakNextPhrase();
+    await audio.play();
+  } catch (err: any) {
+    if (activeSpeechCancelled || controller.signal.aborted) {
+      return;
+    }
+    const finalError = err instanceof Error ? err : new Error(String(err));
+    console.error('[Voice] Playback exception:', finalError.message);
+    options?.onError?.(finalError);
+    options?.onEnd?.();
+  }
 }
+

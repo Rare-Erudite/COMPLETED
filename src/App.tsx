@@ -2746,9 +2746,7 @@ function CleanChatWorkspaceView({
   };
 
   useEffect(() => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
+    stopHumanVoice();
     setSpeakingMsgId(null);
     if (activeConvId) {
       loadMessages(activeConvId);
@@ -2762,9 +2760,7 @@ function CleanChatWorkspaceView({
   // Clean up any ongoing recording or speech when component unmounts
   useEffect(() => {
     return () => {
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
+      stopHumanVoice();
       if (isRecordingRef.current) {
         isRecordingRef.current = false;
         if (recognitionVoiceNoteRef.current) {
@@ -2854,21 +2850,14 @@ function CleanChatWorkspaceView({
     stopHumanVoice();
     setSpeakingMsgId(msgId);
 
-    // 1. First try browser native speech synthesis if available
-    const hasWebSpeech = typeof window !== 'undefined' && 'speechSynthesis' in window;
-    if (hasWebSpeech) {
-      try {
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-        }
-        const personaId = localStorage.getItem('rare_voice_persona') || 'aria_warm';
-        speakWithHumanVoice(text, personaId, {
-          onEnd: () => setSpeakingMsgId(null),
-        });
-        return;
-      } catch (err) {
-        console.warn('Native speech synthesis error, using Neural TTS:', err);
-      }
+    const personaId = localStorage.getItem('rare_voice_persona') || 'aria_warm';
+    try {
+      await speakWithHumanVoice(text, personaId, {
+        onEnd: () => setSpeakingMsgId(null),
+      });
+      return;
+    } catch (err) {
+      console.warn('speakWithHumanVoice error, checking neural fallback:', err);
     }
 
     // 2. High-fidelity Neural Audio TTS fallback for Android WebView & unsupported devices
@@ -4824,18 +4813,20 @@ function LiveVoiceView({
     setIsProcessing(false);
   };
 
-  // Auto-connect immediately on mount (Just like dialing & picking up immediately)
+  // Connect on mount ONLY if autoConnect is enabled. If manual mode (autoConnect is false), require explicit user tap to start.
   useEffect(() => {
     let isMounted = true;
-    const connectImmediate = async () => {
-      setIsConnecting(true);
-      await startCallSession();
-      if (isMounted) setIsConnecting(false);
-    };
-    connectImmediate();
-
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.getVoices();
+    if (autoConnect) {
+      const connectImmediate = async () => {
+        setIsConnecting(true);
+        await startCallSession();
+        if (isMounted) setIsConnecting(false);
+      };
+      connectImmediate();
+    } else {
+      setActive(false);
+      activeRef.current = false;
+      setIsConnecting(false);
     }
 
     return () => {

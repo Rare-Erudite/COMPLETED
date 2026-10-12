@@ -1808,19 +1808,6 @@ How would you like to proceed? We can explore further details, plan next steps, 
     thought: thinkHarder ? `Standalone Cognitive Brain \u2022 Context Active \u2022 Local Time: ${env.localTimeFormatted}` : void 0
   };
 }
-var cachedBrowserVoices = [];
-if (typeof window !== "undefined" && "speechSynthesis" in window) {
-  try {
-    cachedBrowserVoices = window.speechSynthesis.getVoices() || [];
-    window.speechSynthesis.onvoiceschanged = () => {
-      try {
-        cachedBrowserVoices = window.speechSynthesis.getVoices() || [];
-      } catch {
-      }
-    };
-  } catch {
-  }
-}
 
 // src/server/providers/OfflineCognitiveEngine.ts
 var OfflineCognitiveEngine = class {
@@ -4134,23 +4121,34 @@ var LocalTransformersProvider = class {
         device: "cpu",
         progress_callback: (p) => {
           if (p && typeof p.progress === "number") {
-            const pct = Math.min(95, Math.max(10, Math.round(p.progress * 100)));
+            const pct = Math.min(90, Math.max(10, Math.round(p.progress * 100)));
             this.loadProgressPercent = pct;
             if (onProgress) onProgress(pct, `Loading model tensor [${p.file || "weights"}]: ${pct}%`);
           }
         }
       });
+      if (onProgress) onProgress(95, "Running verification test inference...");
+      this.loadProgressPercent = 95;
+      const testInference = await generator("Hello", {
+        max_new_tokens: 3,
+        temperature: 0.1
+      });
+      if (!testInference || Array.isArray(testInference) && testInference.length === 0) {
+        throw new Error("Local model verification inference returned no output.");
+      }
       this.pipelineInstance = generator;
       this.isLoaded = true;
       this.isLoading = false;
       this.manifest.isLoaded = true;
       this.loadProgressPercent = 100;
-      if (onProgress) onProgress(100, "Local model loaded and verified in memory.");
-      logger.info("LocalTransformersProvider", `Model ${this.manifest.name} successfully loaded into memory.`);
+      if (onProgress) onProgress(100, "Local model loaded and verified in memory with real inference test.");
+      logger.info("LocalTransformersProvider", `Model ${this.manifest.name} successfully loaded and verified.`);
       return true;
     } catch (err) {
       this.isLoading = false;
       this.isLoaded = false;
+      this.pipelineInstance = null;
+      this.manifest.isLoaded = false;
       this.lastError = err.message;
       this.loadProgressPercent = 0;
       logger.error("LocalTransformersProvider", `Model loading failed: ${err.message}`);
@@ -4171,9 +4169,9 @@ var LocalTransformersProvider = class {
         freeTierStatus: {
           isFree: true,
           quotaNotes: "100% Free In-Process Local Compute (Apache-2.0 License)",
-          rateLimitNotes: "Unlimited local offline execution; bounded by CPU speed"
+          rateLimitNotes: "Lightweight 0.49B open-weight model with device/CPU reasoning constraints"
         },
-        statusMessage: `Local open-weight model "${this.manifest.name}" is loaded and ready for genuine offline inference.`
+        statusMessage: `Local open-weight model "${this.manifest.name}" is verified and loaded in memory for offline inference.`
       };
     }
     return {
@@ -4188,9 +4186,9 @@ var LocalTransformersProvider = class {
       freeTierStatus: {
         isFree: true,
         quotaNotes: "100% Free In-Process Local Compute",
-        rateLimitNotes: "Zero external cloud network dependencies"
+        rateLimitNotes: "Requires Node.js runtime and host memory"
       },
-      statusMessage: this.isLoading ? `Model loading in progress (${this.loadProgressPercent}%)...` : this.hasCachedWeights() ? `Local open-weight model "${this.manifest.name}" weights verified on disk (786MB ONNX Q4). Ready to load into memory.` : `Local open-weight model "${this.manifest.name}" configured. Weights not yet downloaded (use "Load Local Model" to fetch from Hugging Face).`
+      statusMessage: this.isLoading ? `Model loading in progress (${this.loadProgressPercent}%)...` : this.lastError ? `Model loading failed: ${this.lastError}. Model is not loaded.` : this.hasCachedWeights() ? `Local open-weight model "${this.manifest.name}" weights cached on disk. Not loaded in memory.` : `Local open-weight model "${this.manifest.name}" configured. Weights not downloaded (call load-local to fetch).`
     };
   }
   async generate(prompt, config) {
@@ -7979,8 +7977,14 @@ var ProviderRegistry = class {
     try {
       return await provider.generate(prompt, context, options);
     } catch (err) {
-      console.warn("[ProviderRegistry] Primary provider failed, falling back to Offline Cognitive Engine:", err);
-      return await this.offlineEngine.generate(prompt, context, options);
+      console.warn("[ProviderRegistry] Primary provider failed, falling back to Offline Cognitive Engine:", err?.message || err);
+      const fallbackResult = await this.offlineEngine.generate(prompt, context, options);
+      return {
+        ...fallbackResult,
+        thought: `[Primary provider failed (${err?.message || "Error"}); fell back to OfflineCognitiveEngine] ${fallbackResult.thought || ""}`.trim(),
+        modelUsed: "offline-cognitive-engine / RARE Native Cognitive Engine",
+        providerType: "offline_cognitive"
+      };
     }
   }
   getOfflineEngine() {
@@ -8401,6 +8405,128 @@ var BenchmarkSuite = class {
     return report;
   }
 };
+
+// src/server/providers/GoogleTtsProvider.ts
+var GOOGLE_TTS_PERSONA_VOICES = {
+  aria_warm: "en-US-Neural2-F",
+  marcus_calm: "en-US-Neural2-D",
+  elena_soft: "en-US-Neural2-C",
+  devon_clear: "en-US-Neural2-J",
+  zara_bright: "en-US-Neural2-G",
+  kofi_smooth: "en-US-Neural2-A",
+  olivia_quiet: "en-US-Neural2-E",
+  leo_confident: "en-US-Neural2-I",
+  sophia_empathetic: "en-US-Neural2-H",
+  julian_resonant: "en-US-Neural2-D",
+  chloe_casual: "en-US-Neural2-F",
+  gabriel_thoughtful: "en-US-Neural2-J"
+};
+var GoogleTtsProvider = class {
+  getApiKey() {
+    const key = process.env.GOOGLE_TTS_API_KEY?.trim();
+    if (!key || key === "MY_GOOGLE_TTS_API_KEY" || key.length < 5) {
+      return null;
+    }
+    return key;
+  }
+  isConfigured() {
+    return this.getApiKey() !== null;
+  }
+  getVoiceForPersona(personaId) {
+    if (!Object.prototype.hasOwnProperty.call(GOOGLE_TTS_PERSONA_VOICES, personaId)) {
+      throw new Error(`Unsupported persona "${personaId}". Must be one of: ${Object.keys(GOOGLE_TTS_PERSONA_VOICES).join(", ")}`);
+    }
+    return GOOGLE_TTS_PERSONA_VOICES[personaId];
+  }
+  async synthesize(text, personaId, options) {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      const err = new Error("Google Cloud Text-to-Speech is unconfigured. Set GOOGLE_TTS_API_KEY in environment.");
+      err.statusCode = 503;
+      throw err;
+    }
+    if (!text || typeof text !== "string" || !text.trim()) {
+      const err = new Error("Text to synthesize is required and cannot be empty.");
+      err.statusCode = 400;
+      throw err;
+    }
+    const trimmedText = text.trim();
+    if (trimmedText.length > 5e3) {
+      const err = new Error("Text exceeds maximum synthesis length of 5000 characters.");
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!Object.prototype.hasOwnProperty.call(GOOGLE_TTS_PERSONA_VOICES, personaId)) {
+      const err = new Error(`Unsupported persona "${personaId}". Must be one of: ${Object.keys(GOOGLE_TTS_PERSONA_VOICES).join(", ")}`);
+      err.statusCode = 400;
+      throw err;
+    }
+    const voiceName = GOOGLE_TTS_PERSONA_VOICES[personaId];
+    let speakingRate = 1;
+    if (typeof options?.speakingRate === "number" && Number.isFinite(options.speakingRate)) {
+      speakingRate = Math.max(0.25, Math.min(4, options.speakingRate));
+    }
+    let pitch = 0;
+    if (typeof options?.pitch === "number" && Number.isFinite(options.pitch)) {
+      pitch = Math.max(-20, Math.min(20, options.pitch));
+    }
+    const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(apiKey)}`;
+    const requestBody = {
+      input: { text: trimmedText },
+      voice: {
+        languageCode: "en-US",
+        name: voiceName
+      },
+      audioConfig: {
+        audioEncoding: "MP3",
+        speakingRate,
+        pitch
+      }
+    };
+    let response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Client": "rare-engine/1.0"
+        },
+        body: JSON.stringify(requestBody)
+      });
+    } catch (networkErr) {
+      const err = new Error(`Failed to reach Google Cloud Text-to-Speech service: ${networkErr?.message || "Network error"}`);
+      err.statusCode = 502;
+      throw err;
+    }
+    if (!response.ok) {
+      let errorMessage = `Google Cloud Text-to-Speech API returned status ${response.status}`;
+      try {
+        const errorJson = await response.json();
+        if (errorJson?.error?.message) {
+          errorMessage = errorJson.error.message;
+        }
+      } catch {
+      }
+      const err = new Error(errorMessage);
+      err.statusCode = response.status >= 500 ? 502 : response.status;
+      throw err;
+    }
+    const data = await response.json().catch(() => null);
+    if (!data?.audioContent || typeof data.audioContent !== "string") {
+      const err = new Error("Google Cloud Text-to-Speech response did not contain audioContent.");
+      err.statusCode = 502;
+      throw err;
+    }
+    const audioBuffer = Buffer.from(data.audioContent, "base64");
+    return {
+      audioBuffer,
+      contentType: "audio/mpeg",
+      voiceName,
+      personaId
+    };
+  }
+};
+var googleTtsProvider = new GoogleTtsProvider();
 
 // server.ts
 var app = express();
@@ -9157,6 +9283,27 @@ app.post("/api/voice/tts", async (req, res) => {
   }
   return res.status(503).json({ error: { message: "Neural TTS currently unavailable." } });
 });
+app.post("/api/voice/synthesize", async (req, res) => {
+  try {
+    const { text, personaId, speakingRate, pitch } = req.body;
+    const result = await googleTtsProvider.synthesize(text, personaId, {
+      speakingRate,
+      pitch
+    });
+    res.setHeader("Content-Type", result.contentType);
+    res.setHeader("Content-Length", result.audioBuffer.length);
+    res.setHeader("X-Voice-Name", result.voiceName);
+    res.setHeader("X-Persona-Id", result.personaId);
+    res.send(result.audioBuffer);
+  } catch (err) {
+    const status = Number(err?.statusCode) || 500;
+    res.status(status).json({
+      error: {
+        message: err?.message || "Speech synthesis failed."
+      }
+    });
+  }
+});
 app.get("/api/settings", async (req, res) => {
   const { info: activeInfo } = await providerRegistry.getActiveProvider();
   const lastEval = benchmarkSuite.getLastReport();
@@ -9623,7 +9770,7 @@ app.post("/api/user/verify-otp", (req, res) => {
   const cleanPhone = phone.trim();
   const cleanCode = String(code).trim();
   const saved = activeOtpCodes.get(cleanPhone);
-  const isValid = saved && saved.code === cleanCode && Date.now() < saved.expiresAt || /^\d{6}$/.test(cleanCode);
+  const isValid = Boolean(saved && saved.code === cleanCode && Date.now() < saved.expiresAt);
   if (!isValid) {
     return res.status(400).json({ success: false, error: "Invalid or expired verification code." });
   }
@@ -9670,7 +9817,7 @@ app.post("/api/user/verify-email-otp", (req, res) => {
   const cleanEmail = email.toLowerCase().trim();
   const cleanCode = String(code).trim();
   const saved = activeOtpCodes.get(cleanEmail);
-  const isValid = saved && saved.code === cleanCode && Date.now() < saved.expiresAt || /^\d{6}$/.test(cleanCode);
+  const isValid = Boolean(saved && saved.code === cleanCode && Date.now() < saved.expiresAt);
   if (!isValid) {
     return res.status(400).json({ success: false, error: "Invalid or expired verification code." });
   }
