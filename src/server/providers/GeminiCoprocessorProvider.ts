@@ -76,9 +76,10 @@ export class GeminiCoprocessorProvider implements IModelProvider {
       temperature: options?.temperature ?? 0.7,
     };
 
-    // If deep reasoning is NOT requested, disable thinking delay for ultra-fast responses
-    if (!isDeepReasoning) {
-      genConfig.thinkingConfig = { thinkingBudget: 0 };
+    // Allow adaptive reasoning budget so the model thoroughly analyzes the user's prompt
+    // rather than rushing out shallow unconsidered replies
+    if (isDeepReasoning) {
+      genConfig.thinkingConfig = { thinkingBudget: 4096 };
     }
 
     for (const modelId of candidateModels) {

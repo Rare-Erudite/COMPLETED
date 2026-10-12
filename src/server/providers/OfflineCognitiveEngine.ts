@@ -195,8 +195,10 @@ export class OfflineCognitiveEngine implements IModelProvider {
       lower.includes('what is my name') ||
       lower.includes('previous chat') ||
       lower.includes('in your memory') ||
-      lower.includes('shoe') ||
-      lower.includes('sneaker');
+      lower.includes('earlier conversation') ||
+      lower.includes('our custom shoe') ||
+      lower.includes('my custom shoe') ||
+      (lower.includes('remember') && (lower.includes('shoe') || lower.includes('sneaker')));
 
     let actionDetected: GenerationResult['actionDetected'];
     const toolCalls: ToolCall[] = [];

@@ -621,8 +621,11 @@ export async function generateDynamicBrainReply(options: {
     }
   }
 
-  // 5. Memory Recall (Shoes, personal facts, earlier discussions)
-  if (/\b(shoe|sneaker|footwear|remember|what did we discuss|prior topic|my name)\b/i.test(lower)) {
+  // 5. Explicit Memory Recall (Only when user explicitly asks what was discussed or stored)
+  const isExplicitMemoryRecall =
+    /\b(what did we discuss|what were we discussing|do you remember|what do you remember|in your memory|earlier conversation|my custom shoes|our shoes|previous chat|my name)\b/i.test(lower);
+
+  if (isExplicitMemoryRecall) {
     if (/\b(shoe|sneaker|footwear)\b/i.test(lower)) {
       return {
         content: isVoiceCall
