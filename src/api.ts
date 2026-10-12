@@ -12,7 +12,7 @@
 import { generateDynamicBrainReply } from './engine/standalone-brain';
 
 const BACKEND_URL_KEY = 'rare_backend_url';
-export const DEFAULT_CLOUD_HTTPS_URL = 'https://ais-pre-ur6wuiyeqzzy6ko7my3vn6-78329713690.europe-west2.run.app';
+export const DEFAULT_CLOUD_HTTPS_URL = 'https://ais-pre-yddf5bzvw2b4a7ytg3xefq-451895283729.europe-west2.run.app';
 
 export interface BackendConnectionState {
   reachable: boolean;
@@ -75,7 +75,7 @@ export function normalizeBackendUrl(value: string): string {
     isStandaloneMobileApp() &&
     ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname.toLowerCase())
   ) {
-    throw new Error('Android must use the public HTTPS backend URL; localhost refers to the phone.');
+    throw new Error('Android must use the public backend URL; localhost refers to the phone.');
   }
   if (
     parsed.protocol === 'http:' &&
@@ -117,7 +117,11 @@ function getConfiguredDefault(): string {
     }
   }
 
-  if (typeof window !== 'undefined' && !isStandaloneMobileApp()) {
+  if (isStandaloneMobileApp()) {
+    return '';
+  }
+
+  if (typeof window !== 'undefined') {
     const origin = window.location?.origin;
     if (origin && origin !== 'null') {
       try {
@@ -205,33 +209,55 @@ export async function testBackendConnection(url: string): Promise<BackendHealthT
       signal: controller.signal,
     });
     const latencyMs = Date.now() - startedAt;
-    if (response.ok) {
-      const data = await response.json().catch(() => null);
-      if (data?.ok) {
-        updateConnectionState(true);
-        return {
-          httpStatus: response.status,
-          latencyMs,
-          success: true,
-          message: `${data.name || 'RARE Cloud & Standalone Engine'} is connected and healthy.`,
-          responseDetails: `HTTP ${response.status} · Latency: ${latencyMs} ms · Mode: Hybrid Cloud + On-Device Standalone Core`,
-        };
-      }
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      updateConnectionState(false, 'The endpoint did not return JSON.');
+      return {
+        httpStatus: response.status,
+        latencyMs,
+        success: false,
+        message: 'The endpoint did not return JSON.',
+      };
     }
-  } catch {} finally {
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      updateConnectionState(false, `HTTP ${response.status}`);
+      return {
+        httpStatus: response.status,
+        latencyMs,
+        success: false,
+        message: data?.error || `HTTP ${response.status}`,
+      };
+    }
+    if (data?.ok) {
+      updateConnectionState(true);
+      return {
+        httpStatus: response.status,
+        latencyMs,
+        success: true,
+        message: `${data.name || 'RARE Server'} is connected and healthy.`,
+        responseDetails: `HTTP ${response.status} · Latency: ${latencyMs} ms`,
+      };
+    }
+    updateConnectionState(false, 'Unhealthy response payload');
+    return {
+      httpStatus: response.status,
+      latencyMs,
+      success: false,
+      message: 'Unhealthy response payload',
+    };
+  } catch (err: any) {
+    const latencyMs = Date.now() - startedAt;
+    const message = `Could not reach the backend: ${err?.message || 'Network error'}`;
+    updateConnectionState(false, message);
+    return {
+      latencyMs,
+      success: false,
+      message,
+    };
+  } finally {
     clearTimeout(timeoutId);
   }
-
-  // Verify the built-in On-Device Standalone Engine so the APK always passes verification cleanly
-  const localLatency = Math.max(2, Date.now() - startedAt);
-  updateConnectionState(true);
-  return {
-    httpStatus: 200,
-    latencyMs: localLatency,
-    success: true,
-    message: 'RARE Built-In Standalone Engine is active and healthy (100% On-Device Independent Mode).',
-    responseDetails: `On-Device Native Runtime · Endpoint: ${target} · Zero external server dependency required`,
-  };
 }
 
 // ============================================================================

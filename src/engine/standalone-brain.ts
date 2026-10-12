@@ -13,6 +13,7 @@ export interface EnvironmentContext {
   greetingPrefix: string;
   localTimeFormatted: string;
   dayOfWeek: string;
+  dayOfDay?: string;
   dateFormatted: string;
   timeZone: string;
   city?: string;
@@ -102,6 +103,72 @@ export const HUMAN_VOICE_PERSONAS: VoicePersona[] = [
     rate: 0.96,
     preferredKeywords: ['abeo', 'chilemba', 'thomas', 'oliver', 'rishi', 'male', 'natural'],
     sampleLine: "How far! It's Kofi. Everything's set on my end — how's your day going?",
+  },
+  {
+    id: 'olivia_quiet',
+    name: 'Olivia',
+    gender: 'female',
+    style: 'Quiet & Reassuring',
+    description: 'Calm, gentle, and thoughtful conversationalist',
+    pitch: 1.02,
+    rate: 0.93,
+    preferredKeywords: ['olivia', 'ava', 'emma', 'serena', 'samantha', 'victoria', 'female', 'natural'],
+    sampleLine: "Hello, I'm Olivia. I'm right here whenever you'd like to share what's on your mind.",
+  },
+  {
+    id: 'leo_confident',
+    name: 'Leo',
+    gender: 'male',
+    style: 'Friendly & Confident',
+    description: 'Warm, personable, and easygoing conversational cadence',
+    pitch: 0.96,
+    rate: 0.99,
+    preferredKeywords: ['leo', 'brian', 'andrew', 'nathan', 'google us english male', 'natural', 'male'],
+    sampleLine: "Hey! Leo here. Glad you reached out — what are we exploring today?",
+  },
+  {
+    id: 'sophia_empathetic',
+    name: 'Sophia',
+    gender: 'female',
+    style: 'Soft & Empathetic',
+    description: 'Gentle, comforting, and heartfelt conversational tone',
+    pitch: 1.01,
+    rate: 0.92,
+    preferredKeywords: ['sophia', 'stephanie', 'susan', 'jenny', 'karen', 'female', 'natural'],
+    sampleLine: "Hello, I'm Sophia. I'm listening closely, so please take all the time you need.",
+  },
+  {
+    id: 'julian_resonant',
+    name: 'Julian',
+    gender: 'male',
+    style: 'Deep & Resonant',
+    description: 'Rich, polished, and steady baritone cadence',
+    pitch: 0.88,
+    rate: 0.94,
+    preferredKeywords: ['julian', 'guy', 'david', 'james', 'richard', 'male', 'natural'],
+    sampleLine: "Good day, I'm Julian. I have our workspaces ready — what shall we tackle?",
+  },
+  {
+    id: 'chloe_casual',
+    name: 'Chloe',
+    gender: 'female',
+    style: 'Casual & Friendly',
+    description: 'Easygoing, modern, and relaxed conversational flow',
+    pitch: 1.03,
+    rate: 0.98,
+    preferredKeywords: ['chloe', 'samantha', 'victoria', 'allison', 'female', 'natural'],
+    sampleLine: "Hey! Chloe here. What's on your radar today? Let's talk it through.",
+  },
+  {
+    id: 'gabriel_thoughtful',
+    name: 'Gabriel',
+    gender: 'male',
+    style: 'Calm & Thoughtful',
+    description: 'Soothing, reflective, and patient conversational cadence',
+    pitch: 0.92,
+    rate: 0.93,
+    preferredKeywords: ['gabriel', 'george', 'ryan', 'daniel', 'male', 'natural'],
+    sampleLine: "Greetings, I'm Gabriel. Let's look at the big picture together.",
   },
 ];
 
@@ -651,8 +718,22 @@ export async function generateDynamicBrainReply(options: {
 // ============================================================================
 // HUMAN VOICE SYNTHESIS ENGINE (Natural Prosody, Persona Selection & Instant Barge-In)
 // ============================================================================
+// 10. Natural Conversational Human Voice Synthesis (Anti-Robotic Engine)
+// ============================================================================
 
 let activeSpeechCancelled = false;
+let cachedBrowserVoices: SpeechSynthesisVoice[] = [];
+
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  try {
+    cachedBrowserVoices = window.speechSynthesis.getVoices() || [];
+    window.speechSynthesis.onvoiceschanged = () => {
+      try {
+        cachedBrowserVoices = window.speechSynthesis.getVoices() || [];
+      } catch {}
+    };
+  } catch {}
+}
 
 export function stopHumanVoice() {
   activeSpeechCancelled = true;
@@ -665,34 +746,63 @@ export function stopHumanVoice() {
 
 export function selectBestHumanVoice(persona: VoicePersona): SpeechSynthesisVoice | null {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
-  const voices = window.speechSynthesis.getVoices();
-  if (!voices || voices.length === 0) return null;
+  const rawVoices = (cachedBrowserVoices.length > 0 ? cachedBrowserVoices : window.speechSynthesis.getVoices()) || [];
+  if (!rawVoices || rawVoices.length === 0) return null;
 
-  const englishVoices = voices.filter((v) => /^en[-_]/i.test(v.lang) || v.lang.toLowerCase().includes('en'));
-  const pool = englishVoices.length > 0 ? englishVoices : voices;
+  // Identify robotic, low-quality, or mechanical synthesizers to strictly filter them out
+  const isRobotic = (name: string) =>
+    /\b(espeak|festival|speech-dispatcher|compact|mechanical|robot|mbrola|klatt)\b/i.test(name) ||
+    /desktop - english \(united states\)/i.test(name); // Old robotic MS David Desktop
 
-  // Score each voice to strongly prefer Natural / Neural / Online / Enhanced human voices
-  // and avoid robotic espeak/compact voices
+  const naturalVoices = rawVoices.filter((v) => !isRobotic(`${v.name} ${v.voiceURI}`));
+  const candidatePool = naturalVoices.length > 0 ? naturalVoices : rawVoices;
+
+  const englishVoices = candidatePool.filter((v) => /^en[-_]/i.test(v.lang) || v.lang.toLowerCase().includes('en'));
+  const pool = englishVoices.length > 0 ? englishVoices : candidatePool;
+
   const scored = pool.map((v) => {
     const nameLower = `${v.name} ${v.voiceURI}`.toLowerCase();
     let score = 0;
 
-    if (nameLower.includes('natural') || nameLower.includes('neural') || nameLower.includes('online')) score += 50;
-    if (nameLower.includes('premium') || nameLower.includes('enhanced') || nameLower.includes('wavenet')) score += 40;
-    if (nameLower.includes('google') || nameLower.includes('microsoft') || nameLower.includes('siri')) score += 25;
-    if (nameLower.includes('espeak') || nameLower.includes('festival') || nameLower.includes('robot')) score -= 100;
+    // High bonus for modern neural, natural, and cloud human voices
+    if (nameLower.includes('natural') || nameLower.includes('neural') || nameLower.includes('online')) score += 85;
+    if (nameLower.includes('premium') || nameLower.includes('enhanced') || nameLower.includes('wavenet')) score += 65;
+    if (nameLower.includes('google') || nameLower.includes('apple') || nameLower.includes('siri') || nameLower.includes('microsoft')) score += 45;
+    if (isRobotic(nameLower)) score -= 300;
 
     for (const kw of persona.preferredKeywords) {
       if (nameLower.includes(kw.toLowerCase())) {
-        score += 35;
+        score += 50;
       }
     }
 
-    if (persona.gender === 'female' && /\b(female|woman|girl|aria|jenny|sonia|samantha|victoria|zira|karen|moira|tessa)\b/i.test(nameLower)) {
-      score += 20;
+    if (
+      persona.gender === 'female' &&
+      /\b(female|woman|girl|aria|jenny|sonia|samantha|victoria|zira|karen|moira|tessa|olivia|ava|emma|sophia|chloe)\b/i.test(nameLower)
+    ) {
+      score += 40;
     }
-    if (persona.gender === 'male' && /\b(male|man|guy|ryan|daniel|alex|david|christopher|eric|arthur|aaron|oliver)\b/i.test(nameLower)) {
-      score += 20;
+    if (
+      persona.gender === 'male' &&
+      /\b(male|man|guy|ryan|daniel|alex|david|christopher|eric|arthur|aaron|oliver|leo|brian|nathan|julian|gabriel)\b/i.test(nameLower)
+    ) {
+      score += 40;
+    }
+
+    // Gender mismatch penalty
+    if (
+      persona.gender === 'female' &&
+      /\b(male|guy|man|david|daniel|ryan|christopher|george)\b/i.test(nameLower) &&
+      !/\b(female|woman|aria|jenny|sonia)\b/i.test(nameLower)
+    ) {
+      score -= 90;
+    }
+    if (
+      persona.gender === 'male' &&
+      /\b(female|woman|aria|jenny|samantha|victoria|zira|karen)\b/i.test(nameLower) &&
+      !/\b(male|man|guy)\b/i.test(nameLower)
+    ) {
+      score -= 90;
     }
 
     return { voice: v, score };
@@ -703,19 +813,21 @@ export function selectBestHumanVoice(persona: VoicePersona): SpeechSynthesisVoic
 }
 
 /**
- * Speaks text using natural human prosody (clause phrasing, persona pitch/rate contours,
- * and zero markdown clutter) with instant barge-in cancellation support.
+ * Speaks text using natural conversational human prosody (clause phrasing, persona pitch/rate contours,
+ * breathing pauses, and conversational pacing) with instant barge-in cancellation support.
  */
 export function speakWithHumanVoice(
   text: string,
   personaId: string,
-  callbacks?: {
+  options?: {
+    pitch?: number;
+    rate?: number;
     onStart?: () => void;
     onEnd?: () => void;
   }
 ) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-    callbacks?.onEnd?.();
+    options?.onEnd?.();
     return;
   }
 
@@ -723,35 +835,58 @@ export function speakWithHumanVoice(
   activeSpeechCancelled = false;
 
   const persona = HUMAN_VOICE_PERSONAS.find((p) => p.id === personaId) || HUMAN_VOICE_PERSONAS[0];
+
+  // Conversationally polish text for spoken dialogue (strip markdown clutter, read naturally like a human on the phone)
   const cleanText = text
-    .replace(/```[\s\S]*?```/g, 'I have shared the code snippet on your screen.')
+    .replace(/```[\s\S]*?```/g, 'I have displayed the technical code on your screen.')
+    .replace(/https?:\/\/\S+/gi, 'the linked web reference')
+    .replace(/\b(e\.g\.|eg)\b/gi, 'for instance')
+    .replace(/\b(i\.e\.|ie)\b/gi, 'that is')
+    .replace(/\betc\b\.?/gi, 'and so on')
+    .replace(/\bvs\.?\b/gi, 'versus')
+    .replace(/[%]/g, ' percent ')
     .replace(/[*#`_\[\]()~>•]/g, ' ')
+    .replace(/\b(\d+)\.\s+/g, ' ') // Strip "1.", "2." so it doesn't sound like a robot reading numbers
     .replace(/\s+/g, ' ')
     .trim();
 
   if (!cleanText) {
-    callbacks?.onEnd?.();
+    options?.onEnd?.();
     return;
   }
 
-  // Split into natural conversational sentences so prosody has human cadence
-  const sentences = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
+  // Split into natural conversational clauses with human breathing pauses at commas and punctuation
+  const rawSentences = cleanText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleanText];
+  const phrases: string[] = [];
+  for (const s of rawSentences) {
+    const trimmed = s.trim();
+    if (!trimmed) continue;
+    if (trimmed.length > 80 && /[,;—]/.test(trimmed)) {
+      const subChunks = trimmed.split(/(?<=[,;—])\s+/);
+      for (const sub of subChunks) {
+        if (sub.trim()) phrases.push(sub.trim());
+      }
+    } else {
+      phrases.push(trimmed);
+    }
+  }
+
   const chosenVoice = selectBestHumanVoice(persona);
 
   let idx = 0;
-  callbacks?.onStart?.();
+  options?.onStart?.();
 
-  const speakNextSentence = () => {
-    if (activeSpeechCancelled || idx >= sentences.length) {
+  const speakNextPhrase = () => {
+    if (activeSpeechCancelled || idx >= phrases.length) {
       if (!activeSpeechCancelled) {
-        callbacks?.onEnd?.();
+        options?.onEnd?.();
       }
       return;
     }
 
-    const phrase = sentences[idx++].trim();
+    const phrase = phrases[idx++].trim();
     if (!phrase) {
-      speakNextSentence();
+      speakNextPhrase();
       return;
     }
 
@@ -759,24 +894,29 @@ export function speakWithHumanVoice(
     if (chosenVoice) {
       utterance.voice = chosenVoice;
     }
-    // Add slight natural human intonation variation across sentences
-    const slightVariation = ((idx % 3) - 1) * 0.02;
-    utterance.pitch = Math.max(0.75, Math.min(1.3, persona.pitch + slightVariation));
-    utterance.rate = Math.max(0.82, Math.min(1.2, persona.rate));
+
+    // Natural prosody contour: subtle human inflection shift across phrase transitions
+    const cadenceOffset = ((idx % 3) - 1) * 0.015;
+    const basePitch = options?.pitch ?? persona.pitch;
+    const baseRate = options?.rate ?? persona.rate;
+
+    utterance.pitch = Math.max(0.75, Math.min(1.2, basePitch + cadenceOffset));
+    utterance.rate = Math.max(0.85, Math.min(1.15, baseRate));
     utterance.volume = 1.0;
 
     utterance.onend = () => {
       if (activeSpeechCancelled) return;
-      speakNextSentence();
+      // Natural 80ms breathing pause between spoken thoughts
+      setTimeout(speakNextPhrase, 80);
     };
 
     utterance.onerror = () => {
       if (activeSpeechCancelled) return;
-      speakNextSentence();
+      speakNextPhrase();
     };
 
     window.speechSynthesis.speak(utterance);
   };
 
-  speakNextSentence();
+  speakNextPhrase();
 }

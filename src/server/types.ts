@@ -99,7 +99,7 @@ export interface ToolExecutionResult {
 // -----------------------------------------------------------------------------
 export interface MemoryRecord {
   id: string;
-  kind: 'preference' | 'project_decision' | 'technical_constraint' | 'discussion' | 'fact';
+  kind: 'preference' | 'project_decision' | 'technical_constraint' | 'discussion' | 'fact' | 'identity' | 'user_fact';
   text: string;
   tags: string[];
   importance: number; // 1 to 5

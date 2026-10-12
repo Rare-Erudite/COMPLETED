@@ -13,5 +13,91 @@
     ],
     "snapshotDir": ".rare/checkpoints/chk_baseline_v1_clean",
     "hash": "106887ec469783f4ccff19e3740cb027d914be464cc3f18a18348ba64a003752"
+  },
+  {
+    "id": "chk_1791795637021_472k",
+    "timestamp": "2026-10-12T09:00:37.024Z",
+    "description": "Automated test snapshot",
+    "status": "experimental",
+    "filesCount": 4,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "package.json",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791795637021_472k",
+    "hash": "bbf0c845129c6aac2bb3390cb614570552916bec7273f62cbae29b5915f9b7a8"
+  },
+  {
+    "id": "chk_1791795637032_s36r",
+    "timestamp": "2026-10-12T09:00:37.036Z",
+    "description": "Pre-change snapshot for: \"Modify core engine loop without authoriz\"",
+    "status": "experimental",
+    "filesCount": 3,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791795637032_s36r",
+    "hash": "fe8548aa4ec551ed7670fe22d7b3769cfa53e53b5ca90c466855c39cc3258e4c"
+  },
+  {
+    "id": "chk_1791795637037_b7vv",
+    "timestamp": "2026-10-12T09:00:37.040Z",
+    "description": "Pre-change snapshot for: \"Verify system integrity and baseline che\"",
+    "status": "experimental",
+    "filesCount": 3,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791795637037_b7vv",
+    "hash": "fe8548aa4ec551ed7670fe22d7b3769cfa53e53b5ca90c466855c39cc3258e4c"
+  },
+  {
+    "id": "chk_1791797052779_fx2x",
+    "timestamp": "2026-10-12T09:24:12.782Z",
+    "description": "Automated test snapshot",
+    "status": "experimental",
+    "filesCount": 4,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "package.json",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791797052779_fx2x",
+    "hash": "6f8fbcf6c73fe48d72cbfbd21a2bcff5a17131515dc32a47b162ec86b77af728"
+  },
+  {
+    "id": "chk_1791797052795_dyjq",
+    "timestamp": "2026-10-12T09:24:12.799Z",
+    "description": "Pre-change snapshot for: \"Modify core engine loop without authoriz\"",
+    "status": "experimental",
+    "filesCount": 3,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791797052795_dyjq",
+    "hash": "8df65790cdcd4c94bc30006269355ac18fcef9db8f3e0b40ee5ae5f00339b3c5"
+  },
+  {
+    "id": "chk_1791797052800_1s2p",
+    "timestamp": "2026-10-12T09:24:12.804Z",
+    "description": "Pre-change snapshot for: \"Verify system integrity and baseline che\"",
+    "status": "experimental",
+    "filesCount": 3,
+    "filesList": [
+      "server.ts",
+      "src/App.tsx",
+      "rare.config.json"
+    ],
+    "snapshotDir": ".rare/checkpoints/chk_1791797052800_1s2p",
+    "hash": "8df65790cdcd4c94bc30006269355ac18fcef9db8f3e0b40ee5ae5f00339b3c5"
   }
 ]

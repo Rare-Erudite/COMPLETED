@@ -25,7 +25,7 @@ export class OfflineCognitiveEngine implements IModelProvider {
       requires_api_key: false,
       is_available: true,
       active: true,
-      weights_location: 'Embedded Standalone Engine (100% Independent)',
+      weights_location: 'Embedded Standalone Engine (No Neural Weight Files Required - 100% Independent)',
       execution_environment: 'Node.js Runtime / Standalone Mobile & Desktop Engine',
       notes: 'Operates 100% independently without external API keys or third-party cloud dependencies.',
     };

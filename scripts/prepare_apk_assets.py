@@ -74,9 +74,9 @@ def generate_offline_model_assets(target_dir):
         "version": "1.0.0-release",
         "build": "release-standalone",
         "package": "com.rare.ai.intelligence",
-        "architecture": "100% Standalone On-Device Cognitive Brain + Live Web/Weather Research + 6 Human Voices",
+        "architecture": "100% Standalone On-Device Cognitive Brain + Live Web/Weather Research + 8 Human Voices",
         "offline_ready": True,
-        "default_cloud_https_url": "https://ais-pre-ur6wuiyeqzzy6ko7my3vn6-78329713690.europe-west2.run.app",
+        "default_cloud_https_url": "https://ais-pre-yddf5bzvw2b4a7ytg3xefq-451895283729.europe-west2.run.app",
         "embedded_artifacts": [
             "models/rare-cognitive-brain-q4.bin (16 MB)",
             "models/rare-human-voice-personas-v2.bin (8 MB)",

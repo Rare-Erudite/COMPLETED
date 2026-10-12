@@ -656,5 +656,55 @@
     "importance": 5,
     "source": "user_stated",
     "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791795637027_pfi4m",
+    "timestamp": "2026-10-12T09:00:37.027Z",
+    "kind": "fact",
+    "text": "Test tool memory statement",
+    "tags": [
+      "test_tool"
+    ],
+    "importance": 3,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791795639169_onyfm",
+    "timestamp": "2026-10-12T09:00:39.169Z",
+    "kind": "fact",
+    "text": "eval_fact_1791795639169: Deterministic test token: ozp8ri",
+    "tags": [
+      "eval_suite",
+      "test_token"
+    ],
+    "importance": 5,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791797052787_i6w34",
+    "timestamp": "2026-10-12T09:24:12.787Z",
+    "kind": "fact",
+    "text": "Test tool memory statement",
+    "tags": [
+      "test_tool"
+    ],
+    "importance": 3,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791797054870_r9lov",
+    "timestamp": "2026-10-12T09:24:14.870Z",
+    "kind": "fact",
+    "text": "eval_fact_1791797054870: Deterministic test token: wrfnx3",
+    "tags": [
+      "eval_suite",
+      "test_token"
+    ],
+    "importance": 5,
+    "source": "user_stated",
+    "verifiedByUser": true
   }
 ]
