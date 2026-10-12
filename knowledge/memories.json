@@ -881,5 +881,30 @@
     "importance": 5,
     "source": "user_stated",
     "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791817296511_mu9aj",
+    "timestamp": "2026-10-12T15:01:36.511Z",
+    "kind": "fact",
+    "text": "Test tool memory statement",
+    "tags": [
+      "test_tool"
+    ],
+    "importance": 3,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791817298229_cs10k",
+    "timestamp": "2026-10-12T15:01:38.229Z",
+    "kind": "fact",
+    "text": "eval_fact_1791817298229: Deterministic test token: q1cff1",
+    "tags": [
+      "eval_suite",
+      "test_token"
+    ],
+    "importance": 5,
+    "source": "user_stated",
+    "verifiedByUser": true
   }
 ]
