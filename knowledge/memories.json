@@ -931,5 +931,30 @@
     "importance": 5,
     "source": "user_stated",
     "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791820822659_5k4be",
+    "timestamp": "2026-10-12T16:00:22.659Z",
+    "kind": "fact",
+    "text": "Test tool memory statement",
+    "tags": [
+      "test_tool"
+    ],
+    "importance": 3,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1791820824531_gdwtw",
+    "timestamp": "2026-10-12T16:00:24.531Z",
+    "kind": "fact",
+    "text": "eval_fact_1791820824531: Deterministic test token: svuchp",
+    "tags": [
+      "eval_suite",
+      "test_token"
+    ],
+    "importance": 5,
+    "source": "user_stated",
+    "verifiedByUser": true
   }
 ]

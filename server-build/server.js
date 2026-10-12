@@ -2569,10 +2569,31 @@ ${context || "None"}`;
         const timeoutPromise = new Promise(
           (_, reject) => setTimeout(() => reject(new Error(`Gemini API timeout on ${modelId}`)), 25e3)
         );
+        let contentsPayload = prompt;
+        if (options?.image) {
+          let mimeType = "image/jpeg";
+          let base64Data = options.image;
+          if (typeof base64Data === "string" && base64Data.startsWith("data:")) {
+            const match = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+            if (match) {
+              mimeType = match[1];
+              base64Data = match[2];
+            }
+          }
+          contentsPayload = [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data
+              }
+            },
+            prompt
+          ];
+        }
         const response = await Promise.race([
           ai.models.generateContent({
             model: modelId,
-            contents: prompt,
+            contents: contentsPayload,
             config: genConfig
           }),
           timeoutPromise
@@ -8384,7 +8405,7 @@ var BenchmarkSuite = class {
 // server.ts
 var app = express();
 var PROJECT_ROOT7 = path15.resolve(process.env.RARE_APP_ROOT || process.cwd());
-var PORT = process.argv.includes("--port") ? Number(process.argv[process.argv.indexOf("--port") + 1]) : process.env.NODE_ENV !== "production" && !process.argv.includes("--production") && process.env.PORT === "8080" ? 3e3 : process.env.PORT === void 0 ? 5e3 : Number(process.env.PORT);
+var PORT = process.argv.includes("--port") ? Number(process.argv[process.argv.indexOf("--port") + 1]) : Number(process.env.PORT) || 3e3;
 process.env.RARE_INTELLIGENCE_URL = process.env.RARE_INTELLIGENCE_URL || `http://127.0.0.1:${PORT}`;
 var durableStateStore = new DurableStateStore();
 var persistentStorage;
@@ -10867,7 +10888,9 @@ async function startServer() {
         middlewareMode: true,
         host: "0.0.0.0",
         port: PORT,
-        hmr: false
+        hmr: {
+          server: httpServer
+        }
       },
       appType: "spa"
     });
