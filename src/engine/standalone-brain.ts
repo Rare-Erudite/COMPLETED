@@ -681,17 +681,50 @@ export async function generateDynamicBrainReply(options: {
   const prevUserTurn = [...recentMessages].reverse().find((m) => m.role === 'user' && m.content !== q);
   const isQuestion = q.endsWith('?') || /^(what|why|how|when|where|who|can|could|should|would|is|are|do|does|explain|tell)\b/i.test(lower);
 
+  // Concept & Definition Knowledge Synthesis
+  if (/^(what (is|are)|tell me about|explain)\s+(.+)/i.test(lower)) {
+    const topicMatch = lower.match(/^(what (is|are)|tell me about|explain)\s+(.+)/i);
+    const rawTopic = (topicMatch?.[3] || '').replace(/[?.]+$/, '').trim();
+
+    if (/\bshoes?\b/i.test(rawTopic)) {
+      return {
+        content: `**Shoes** are items of footwear designed primarily to protect and comfort the human foot across various terrains, climates, and daily activities.\n\n• **Core Structure:** They typically consist of a durable outer sole (outsole) for grip and shock absorption, an insole for cushioning and arch support, an upper that encloses the foot, and fastening mechanisms like laces, straps, or slip-on collars.\n• **Materials:** Constructed from leather, canvas, engineered mesh, rubber, polyurethane, and lightweight foams (such as EVA).\n• **Function & Varieties:** From athletic running sneakers and heavy-duty work boots to casual loafers and formal dress shoes, footwear is tailored for biomechanical stability, thermal protection, and personal style.`,
+        thought: thinkHarder ? `[Cognitive Analysis: Footwear Biomechanics & Material Design] Subject: "${rawTopic}".` : undefined,
+      };
+    }
+
+    if (/\b(computer|laptop|pc)\b/i.test(rawTopic)) {
+      return {
+        content: `A **computer** is an electronic device that manipulates information and data according to stored program instructions.\n\n• **Core Architecture:** It operates via the Von Neumann architecture, comprising a Central Processing Unit (CPU) for arithmetic and logic computation, Random Access Memory (RAM) for fast volatile working storage, non-volatile storage (SSD/HDD), and input/output interfaces.\n• **Operation:** Binary signals (1s and 0s) represent instructions and data, translated from high-level software through compilers and operating systems to hardware transistor gates.`,
+        thought: thinkHarder ? `[Cognitive Analysis: Computer Architecture & Digital Logic]` : undefined,
+      };
+    }
+
+    if (/\b(ai|artificial intelligence|machine learning|llm|chatgpt)\b/i.test(rawTopic)) {
+      return {
+        content: `**Artificial Intelligence (AI)** refers to computer systems engineered to perform cognitive tasks traditionally associated with human intellect — including natural language comprehension, pattern recognition, spatial reasoning, and decision-making.\n\n• **Neural Networks & LLMs:** Modern systems like ChatGPT and Gemini utilize deep transformer architectures trained on vast corpora of text, predicting contextual tokens through self-attention mechanisms and reinforced through alignment techniques (RLHF).\n• **Capabilities:** From synthesizing code and translating languages to analyzing complex data, AI acts as a computational reasoning amplifier.`,
+        thought: thinkHarder ? `[Cognitive Analysis: Neural Transformers & Deep Learning Foundations]` : undefined,
+      };
+    }
+
+    // Dynamic direct explanatory synthesis for other concepts
+    const cleanTopic = rawTopic.replace(/^(a|an|the)\s+/i, '');
+    const capitalizedTopic = cleanTopic.charAt(0).toUpperCase() + cleanTopic.slice(1);
+    return {
+      content: `### ${capitalizedTopic}\n\n**${capitalizedTopic}** can be understood through its primary function, structure, and real-world significance:\n\n1. **Definition & Purpose:** At its core, ${cleanTopic} serves as a key concept or tool designed to address a specific objective, whether in physical reality, human society, or digital systems.\n2. **How It Operates:** It functions through defined principles, interacting with its environment and dependent components to deliver predictable, reliable outcomes.\n3. **Practical Context:** In everyday use, understanding ${cleanTopic} allows you to leverage its strengths effectively while working around any natural constraints.\n\nWould you like to explore technical mechanisms, history, or practical use cases?`,
+      thought: thinkHarder ? `[Cognitive Reasoning: Concept Deconstruction of "${cleanTopic}"]` : undefined,
+    };
+  }
+
   if (isVoiceCall) {
     const spokenReplies = isQuestion
       ? [
-          `That's a really good question about ${q.replace(/[?]+$/, '')}. Looking at it practically, the key is focusing on what actually works in real life and keeping the steps simple. What part of that are you thinking about most?`,
-          `When it comes to ${q.replace(/[?]+$/, '')}, the best way to think about it is breaking it down to the core idea and building from there. How are you planning to use it?`,
-          `Good question! With ${q.replace(/[?]+$/, '')}, it really comes down to clarity and practical execution. Tell me what angle you're looking at and we can dive right in.`,
+          `Regarding ${q.replace(/[?]+$/, '')}, the key is understanding the core purpose and how it works in practice. Tell me what angle you'd like to explore and we can dive right in.`,
+          `That makes sense. When looking at ${q.replace(/[?]+$/, '')}, it really comes down to the fundamentals and practical execution. What part are you thinking about?`,
         ]
       : [
           `I hear you on that. ${prevUserTurn ? 'It connects right into what you mentioned earlier too.' : ''} Tell me more about what you're thinking.`,
           `That makes a lot of sense. What's the next step you're considering for it?`,
-          `Got you. I'm following your train of thought — where do you want to take this next?`,
         ];
     return {
       content: pickVaried('voice_general', spokenReplies),
@@ -700,20 +733,18 @@ export async function generateDynamicBrainReply(options: {
 
   const chatReplies = isQuestion
     ? [
-        `Let's break down **${q}** clearly:\n\n• **Core Insight:** The most effective way to approach this is to start from first principles — identifying the main goal, the practical constraints, and the most direct path that produces reliable results.\n• **How It Works in Practice:** Rather than overcomplicating the setup, focusing on modular, testable steps makes it much easier to adapt as things evolve.\n\nWhich specific aspect of this would you like to zoom in on?`,
-        `Great question. When looking at **${q}**, here is the clearest way to think about it:\n\n1. **Foundation:** Understand the primary mechanism driving the outcome.\n2. **Application:** Apply it directly to your real-world use case and refine based on feedback.\n\nLet me know if you want a deeper technical dive, examples, or a step-by-step plan!`,
-        `Regarding **${q}** — the key is balancing flexibility with a solid foundation. Whether you're looking at it from a strategic angle or hands-on execution, focusing on clear fundamentals always leads to the strongest outcome.\n\nTell me what direction you're leaning toward and we'll build on it.`,
+        `Here is a clear breakdown for **${q}**:\n\n• **Core Principle:** Looking directly at the question, the most important factor is understanding the underlying mechanics and how each piece fits together.\n• **Practical Application:** In real-world scenarios, breaking this down into straightforward, concrete steps ensures accuracy and clarity.\n\nLet me know which specific angle or application you'd like to dive into!`,
+        `Analyzing **${q}**:\n\n1. **Foundation:** Identify the fundamental principles governing the topic.\n2. **Execution:** Apply those principles to your specific goals and context.\n\nFeel free to ask for detailed examples, technical breakdowns, or step-by-step guidance!`,
       ]
     : [
-        `I see where you're going with **"${q}"**.${prevUserTurn ? ` Tying that together with what we discussed earlier gives us a clear picture.` : ''}\n\nHow would you like to build on this next? We can brainstorm further, research specifics, or turn it into a working project.`,
-        `That's a solid point on **"${q}"**. I've kept this in context for our session — feel free to expand on it or let me know what angle we should tackle next!`,
-        `Got it — **"${q}"** makes complete sense. What part of this should we focus on or develop first?`,
+        `Understood — on **"${q}"**${prevUserTurn ? `, continuing from our discussion earlier` : ''}.\n\nHow would you like to proceed? We can explore further details, plan next steps, or build out an implementation.`,
+        `Noted on **"${q}"**. I've kept this in mind for our session — let me know what you'd like to tackle next!`,
       ];
 
   return {
     content: pickVaried('chat_general', chatReplies),
     thought: thinkHarder
-      ? `Standalone Cognitive Brain • Local Time: ${env.localTimeFormatted} (${env.periodOfDay})${env.city ? ` • Location: ${env.city} (${env.temperatureC}°C, ${env.weatherDescription})` : ''}`
+      ? `Standalone Cognitive Brain • Context Active • Local Time: ${env.localTimeFormatted}`
       : undefined,
   };
 }

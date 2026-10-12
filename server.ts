@@ -1000,26 +1000,34 @@ app.post('/api/voice/transcribe', async (req, res) => {
         const { GoogleGenAI } = await import('@google/genai');
         const ai = new GoogleGenAI({ apiKey });
         const cleanBase64 = audioData.includes(',') ? audioData.split(',')[1] : audioData;
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: [
-            {
-              role: 'user',
-              parts: [
+        let transcript = '';
+        for (const modelCandidate of ['gemini-3.5-flash', 'gemini-3.8-flash']) {
+          try {
+            const response = await ai.models.generateContent({
+              model: modelCandidate,
+              contents: [
                 {
-                  inlineData: {
-                    mimeType: mimeType || 'audio/webm',
-                    data: cleanBase64,
-                  },
-                },
-                {
-                  text: 'Accurately transcribe the spoken speech in this audio clip. Return ONLY the transcribed text with natural capitalization and punctuation, no explanations.',
+                  role: 'user',
+                  parts: [
+                    {
+                      inlineData: {
+                        mimeType: mimeType || 'audio/webm',
+                        data: cleanBase64,
+                      },
+                    },
+                    {
+                      text: 'Accurately transcribe the spoken speech in this audio clip. Return ONLY the transcribed text with natural capitalization and punctuation, no explanations.',
+                    },
+                  ],
                 },
               ],
-            },
-          ],
-        });
-        const transcript = response.text?.trim() || '';
+            });
+            transcript = response.text?.trim() || '';
+            if (transcript) break;
+          } catch (modelErr) {
+            console.warn(`[Transcription] Model ${modelCandidate} attempt failed:`, modelErr);
+          }
+        }
         if (transcript) {
           return res.json({ transcript, confidence: 0.99, source: 'gemini_multimodal' });
         }
@@ -1036,6 +1044,59 @@ app.post('/api/voice/transcribe', async (req, res) => {
   }
 
   res.status(400).json({ error: { message: 'No audio or text provided' } });
+});
+
+// Neural Text-to-Speech Endpoint (Crystal-Clear Gemini TTS for all devices & WebViews)
+app.post('/api/voice/tts', async (req, res) => {
+  const { text, voiceName = 'Kore' } = req.body;
+  if (!text || typeof text !== 'string') {
+    return res.status(400).json({ error: { message: 'Missing text content to synthesize.' } });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey && apiKey.trim().length > 5) {
+    try {
+      const { GoogleGenAI } = await import('@google/genai');
+      const ai = new GoogleGenAI({ apiKey });
+      const cleanText = text
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/[*#`_\[\]()~>•]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 1000);
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash-lite-tts',
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: cleanText || 'Understood.' }],
+          },
+        ],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: voiceName || 'Kore' },
+            },
+          },
+        },
+      });
+
+      const audioBase64 = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (audioBase64) {
+        return res.json({
+          audioBase64,
+          mimeType: 'audio/wav',
+          source: 'gemini-3.8-flash-lite-tts',
+        });
+      }
+    } catch (err: any) {
+      console.warn('[TTS] Gemini speech synthesis error:', err?.message || err);
+    }
+  }
+
+  return res.status(503).json({ error: { message: 'Neural TTS currently unavailable.' } });
 });
 
 // Settings & Themes

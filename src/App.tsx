@@ -2677,6 +2677,14 @@ function CleanChatWorkspaceView({
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [micPermissionModalOpen, setMicPermissionModalOpen] = useState(false);
 
+  // In-App Camera Viewfinder States
+  const [cameraModalOpen, setCameraModalOpen] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
+  const [cameraLoading, setCameraLoading] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -2826,30 +2834,68 @@ function CleanChatWorkspaceView({
     showToast('Copied message text to clipboard for sharing!');
   };
 
-  const handleToggleSpeak = (msgId: string, text: string) => {
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handleToggleSpeak = async (msgId: string, text: string) => {
     if (speakingMsgId === msgId) {
+      if (activeAudioRef.current) {
+        activeAudioRef.current.pause();
+        activeAudioRef.current = null;
+      }
       stopHumanVoice();
       setSpeakingMsgId(null);
       return;
     }
 
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      showToast('Text-to-speech engine initializing... Tap again or check device sound settings');
-      return;
+    if (activeAudioRef.current) {
+      activeAudioRef.current.pause();
+      activeAudioRef.current = null;
+    }
+    stopHumanVoice();
+    setSpeakingMsgId(msgId);
+
+    // 1. First try browser native speech synthesis if available
+    const hasWebSpeech = typeof window !== 'undefined' && 'speechSynthesis' in window;
+    if (hasWebSpeech) {
+      try {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+        const personaId = localStorage.getItem('rare_voice_persona') || 'aria_warm';
+        speakWithHumanVoice(text, personaId, {
+          onEnd: () => setSpeakingMsgId(null),
+        });
+        return;
+      } catch (err) {
+        console.warn('Native speech synthesis error, using Neural TTS:', err);
+      }
     }
 
-    // Attempt to wake up or resume device audio synthesis
+    // 2. High-fidelity Neural Audio TTS fallback for Android WebView & unsupported devices
     try {
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
+      showToast('Generating high-quality speech...');
+      const res = await safePost<any>('/api/voice/tts', { text });
+      if (res?.audioBase64) {
+        const audio = new Audio(`data:${res.mimeType || 'audio/wav'};base64,${res.audioBase64}`);
+        activeAudioRef.current = audio;
+        audio.onended = () => {
+          setSpeakingMsgId(null);
+          activeAudioRef.current = null;
+        };
+        audio.onerror = () => {
+          setSpeakingMsgId(null);
+          activeAudioRef.current = null;
+          showToast('Could not play audio. Please check device volume.');
+        };
+        await audio.play();
+        return;
       }
-    } catch {}
+    } catch (err) {
+      console.warn('Neural TTS playback error:', err);
+    }
 
-    const personaId = localStorage.getItem('rare_voice_persona') || 'aria_warm';
-    setSpeakingMsgId(msgId);
-    speakWithHumanVoice(text, personaId, {
-      onEnd: () => setSpeakingMsgId(null),
-    });
+    setSpeakingMsgId(null);
+    showToast('Speech synthesis unavailable. Please check sound settings.');
   };
 
   const handleStartEdit = (msg: ChatMessage) => {
@@ -3090,10 +3136,6 @@ function CleanChatWorkspaceView({
       } catch (e) {
         console.warn('SpeechRecognition start error:', e);
       }
-    } else {
-      if (!streamObtained) {
-        setVoiceNoteError('Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari, or type your message.');
-      }
     }
   };
 
@@ -3118,6 +3160,8 @@ function CleanChatWorkspaceView({
     }
     setMicAudioLevel(0);
 
+    const hasWebSpeechResult = Boolean(finalAccumulatedRef.current.trim() || liveInterimTranscript.trim());
+
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
         mediaRecorderRef.current.stop();
@@ -3127,6 +3171,33 @@ function CleanChatWorkspaceView({
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
+    }
+
+    // Seamless Acoustic Speech Transcription fallback (e.g. for Android WebView / APK where Web Speech is absent)
+    if (!hasWebSpeechResult && audioChunksRef.current.length > 0) {
+      try {
+        showToast('Transcribing your speech...');
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          const base64data = reader.result as string;
+          const res = await safePost<any>('/api/voice/transcribe', {
+            audioData: base64data,
+            mimeType: 'audio/webm',
+          });
+          if (res?.transcript && res.transcript.trim()) {
+            const tr = res.transcript.trim();
+            setInput((prev) => {
+              const base = prev.trim();
+              return base ? `${base} ${tr}` : tr;
+            });
+            showToast('Voice transcribed successfully!');
+          }
+        };
+        reader.readAsDataURL(audioBlob);
+      } catch (err) {
+        console.warn('Acoustic transcription error:', err);
+      }
     }
 
     // Polish final punctuation & capitalisation in input field
@@ -3148,6 +3219,84 @@ function CleanChatWorkspaceView({
       stopVoiceNote();
     } else {
       startVoiceNote();
+    }
+  };
+
+  // Live Camera Viewfinder & In-App Photo Capture
+  const startCamera = async (facing: 'environment' | 'user' = cameraFacing) => {
+    setCameraError(null);
+    setCameraLoading(true);
+    setCameraModalOpen(true);
+    setAttachMenuOpen(false);
+
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((t) => t.stop());
+      cameraStreamRef.current = null;
+    }
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Camera device access is not supported.');
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: facing,
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+      cameraStreamRef.current = stream;
+      setCameraFacing(facing);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      }, 50);
+    } catch (err: any) {
+      console.warn('Camera stream error:', err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setCameraError('Camera permission was denied. Please allow camera access in device settings.');
+      } else {
+        setCameraError('Could not start live camera preview. You can also pick from system files.');
+      }
+    } finally {
+      setCameraLoading(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((t) => t.stop());
+      cameraStreamRef.current = null;
+    }
+    setCameraModalOpen(false);
+    setCameraError(null);
+  };
+
+  const switchCameraFacing = () => {
+    const nextFacing = cameraFacing === 'environment' ? 'user' : 'environment';
+    setCameraFacing(nextFacing);
+    startCamera(nextFacing);
+  };
+
+  const snapPhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      setAttachedFile({
+        name: `photo_${Date.now()}.jpg`,
+        content: dataUrl,
+      });
+      showToast('Photo captured and attached to chat!');
+      stopCamera();
     }
   };
 
@@ -3845,8 +3994,7 @@ function CleanChatWorkspaceView({
                 <button
                   type="button"
                   onClick={() => {
-                    setAttachMenuOpen(false);
-                    cameraInputRef.current?.click();
+                    startCamera();
                   }}
                   className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-200 hover:bg-white/10 hover:text-white transition"
                 >
@@ -4021,6 +4169,103 @@ function CleanChatWorkspaceView({
                   <span>Delete Message</span>
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Live In-App Camera Viewfinder Modal */}
+      {cameraModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200"
+          onClick={stopCamera}
+        >
+          <div
+            className="relative w-full max-w-md bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col items-center animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top Bar */}
+            <div className="w-full px-4 py-3 bg-slate-900/90 border-b border-white/10 flex items-center justify-between z-10">
+              <div className="flex items-center space-x-2">
+                <Camera className="w-4 h-4 text-emerald-400" />
+                <span className="text-xs font-bold text-white tracking-wide">Live Camera Viewfinder</span>
+              </div>
+              <button
+                type="button"
+                onClick={stopCamera}
+                className="p-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition"
+                title="Close Camera"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Viewfinder Video */}
+            <div className="relative w-full aspect-[4/3] bg-black flex items-center justify-center overflow-hidden">
+              {cameraLoading && (
+                <div className="flex flex-col items-center space-y-2 text-slate-400">
+                  <RefreshCw className="w-6 h-6 animate-spin text-emerald-400" />
+                  <span className="text-xs">Starting camera...</span>
+                </div>
+              )}
+              {cameraError && (
+                <div className="p-4 text-center space-y-3">
+                  <AlertCircle className="w-8 h-8 text-rose-400 mx-auto" />
+                  <p className="text-xs text-rose-200">{cameraError}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopCamera();
+                      cameraInputRef.current?.click();
+                    }}
+                    className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/10 text-white hover:bg-white/20 transition"
+                  >
+                    Open System Camera App
+                  </button>
+                </div>
+              )}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover ${cameraError ? 'hidden' : ''}`}
+              />
+            </div>
+
+            {/* Bottom Controls */}
+            <div className="w-full p-4 bg-slate-900/95 border-t border-white/10 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={switchCameraFacing}
+                className="p-3 rounded-full bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 active:scale-95 transition"
+                title="Flip Camera (Front / Rear)"
+              >
+                <RotateCcw className="w-5 h-5" />
+              </button>
+
+              {/* Shutter Button */}
+              <button
+                type="button"
+                onClick={snapPhoto}
+                disabled={cameraLoading || Boolean(cameraError)}
+                className="w-16 h-16 rounded-full border-4 border-white bg-emerald-500 hover:bg-emerald-400 active:scale-90 transition flex items-center justify-center shadow-lg shadow-emerald-500/30 disabled:opacity-50"
+                title="Snap Photo"
+              >
+                <div className="w-12 h-12 rounded-full border-2 border-slate-950 bg-white" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera();
+                  cameraInputRef.current?.click();
+                }}
+                className="p-3 rounded-full bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 active:scale-95 transition"
+                title="Open Phone Camera / Gallery Picker"
+              >
+                <ImageIcon className="w-5 h-5" />
+              </button>
             </div>
           </div>
         </div>

@@ -220,13 +220,6 @@ export function AuthModal({
     }
     const cleanEmail = googleEmail.toLowerCase().trim();
 
-    // If still on step 1, advance to password/verification
-    if (googleStep === 'email') {
-      setError('');
-      setGoogleStep('password');
-      return;
-    }
-
     setLoading(true);
     setError('');
     try {
@@ -265,12 +258,6 @@ export function AuthModal({
       return;
     }
     const cleanEmail = outlookEmail.toLowerCase().trim();
-
-    if (outlookStep === 'email') {
-      setError('');
-      setOutlookStep('password');
-      return;
-    }
 
     setLoading(true);
     setError('');
@@ -549,56 +536,22 @@ export function AuthModal({
 
             {/* Google Form */}
             <form onSubmit={handleGoogleSubmit} className="space-y-3.5">
-              {googleStep === 'email' ? (
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-300">Google Account Email</label>
-                  <input
-                    type="email"
-                    value={googleEmail}
-                    onChange={(e) => setGoogleEmail(e.target.value)}
-                    placeholder="Enter your Gmail or Workspace address..."
-                    className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none`}
-                    autoFocus
-                  />
-                  <p className="text-[10px] text-slate-400">
-                    Use your phone or computer's Google account to sync all your personal chat history & workspace.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="p-2 rounded-xl bg-slate-800/50 border border-slate-700/60 flex items-center justify-between">
-                    <span className="text-xs font-mono text-indigo-300">{googleEmail}</span>
-                    <button
-                      type="button"
-                      onClick={() => setGoogleStep('email')}
-                      className="text-[10px] text-slate-400 hover:text-white underline"
-                    >
-                      Change
-                    </button>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-slate-300">Google Password or 2-Step Verification</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={googlePassword}
-                        onChange={(e) => setGooglePassword(e.target.value)}
-                        placeholder="Enter password..."
-                        className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3.5 py-2.5 pr-10 text-xs text-white focus:outline-none`}
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-slate-300">
+                  {savedGoogleAccounts.length > 0 ? 'Or use another Google account' : 'Google Account Email'}
+                </label>
+                <input
+                  type="email"
+                  value={googleEmail}
+                  onChange={(e) => setGoogleEmail(e.target.value)}
+                  placeholder="Enter your Gmail or Google account..."
+                  className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none`}
+                  autoFocus={savedGoogleAccounts.length === 0}
+                />
+                <p className="text-[10px] text-slate-400">
+                  Syncs with your phone or device Google profile to protect all your personal workspace data and chat history.
+                </p>
+              </div>
 
               <div className="flex items-center justify-between pt-1">
                 <button
@@ -616,7 +569,7 @@ export function AuthModal({
                   disabled={loading || !googleEmail.trim()}
                   className={`px-5 py-2 rounded-xl text-xs font-semibold ${t.accentBg} ${t.accentBgHover} text-white flex items-center space-x-1.5 shadow-md disabled:opacity-50`}
                 >
-                  <span>{loading ? 'Verifying...' : googleStep === 'email' ? 'Next' : 'Sign In'}</span>
+                  <span>{loading ? 'Authenticating...' : 'Continue with Google'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -685,56 +638,22 @@ export function AuthModal({
 
             {/* Outlook Form */}
             <form onSubmit={handleOutlookSubmit} className="space-y-3.5">
-              {outlookStep === 'email' ? (
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-semibold text-slate-300">Microsoft Account Email</label>
-                  <input
-                    type="email"
-                    value={outlookEmail}
-                    onChange={(e) => setOutlookEmail(e.target.value)}
-                    placeholder="Enter your Outlook, Hotmail, or Live ID..."
-                    className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none`}
-                    autoFocus
-                  />
-                  <p className="text-[10px] text-slate-400">
-                    Sign in with your Microsoft account to sync all your personal chat history & workspace.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="p-2 rounded-xl bg-slate-800/50 border border-slate-700/60 flex items-center justify-between">
-                    <span className="text-xs font-mono text-sky-300">{outlookEmail}</span>
-                    <button
-                      type="button"
-                      onClick={() => setOutlookStep('email')}
-                      className="text-[10px] text-slate-400 hover:text-white underline"
-                    >
-                      Change
-                    </button>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-slate-300">Password</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={outlookPassword}
-                        onChange={(e) => setOutlookPassword(e.target.value)}
-                        placeholder="Enter password..."
-                        className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3.5 py-2.5 pr-10 text-xs text-white focus:outline-none`}
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold text-slate-300">
+                  {savedOutlookAccounts.length > 0 ? 'Or use another Microsoft account' : 'Microsoft Account Email'}
+                </label>
+                <input
+                  type="email"
+                  value={outlookEmail}
+                  onChange={(e) => setOutlookEmail(e.target.value)}
+                  placeholder="Enter your Outlook, Hotmail, or Live ID..."
+                  className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none`}
+                  autoFocus={savedOutlookAccounts.length === 0}
+                />
+                <p className="text-[10px] text-slate-400">
+                  Sign in with your Microsoft account to sync your personal chat history & workspace.
+                </p>
+              </div>
 
               <div className="flex items-center justify-between pt-1">
                 <button
@@ -750,9 +669,9 @@ export function AuthModal({
                 <button
                   type="submit"
                   disabled={loading || !outlookEmail.trim()}
-                  className={`px-5 py-2 rounded-xl text-xs font-semibold ${t.accentBg} ${t.accentBgHover} text-white flex items-center space-x-1.5 shadow-md disabled:opacity-50`}
+                  className={`px-5 py-2 rounded-xl text-xs font-semibold bg-[#0078D4] hover:bg-[#006bbd] text-white flex items-center space-x-1.5 shadow-md disabled:opacity-50`}
                 >
-                  <span>{loading ? 'Verifying...' : outlookStep === 'email' ? 'Next' : 'Sign In'}</span>
+                  <span>{loading ? 'Authenticating...' : 'Continue with Microsoft'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>

@@ -67,7 +67,13 @@ export class GeminiCoprocessorProvider implements IModelProvider {
       'You are RARE, a standalone personal AI companion, researcher, and full-stack software builder.'
     }\n${personaTone}\n\nContext & Memory:\n${context || 'None'}`;
 
-    const candidateModels = ['gemini-3-flash-preview', 'gemini-2.5-flash'];
+    const candidateModels = [
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-flash-latest',
+      'gemini-3.1-flash-lite',
+      'gemini-3-flash-preview',
+    ];
     let lastError: any = null;
 
     const isDeepReasoning = options?.thinkHarder === true;

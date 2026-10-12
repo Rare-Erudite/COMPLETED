@@ -191,5 +191,25 @@
         "timestamp": "2026-10-12T09:45:00.345Z"
       }
     ]
+  },
+  {
+    "id": "test_conv_shoes",
+    "title": "What are shoes?",
+    "userId": "guest",
+    "created_at": "2026-10-12T10:43:31.562Z",
+    "messages": [
+      {
+        "id": "msg_1791801811563_u",
+        "role": "user",
+        "content": "What are shoes?",
+        "timestamp": "2026-10-12T10:43:31.563Z"
+      },
+      {
+        "id": "msg_1791801823696_b",
+        "role": "assistant",
+        "content": "Hey there! That’s a classic question. \n\nAt their simplest, shoes are external coverings for the human foot, designed to provide protection and comfort while we navigate different environments. Think of them as a layer between us and the ground—they shield our soles from sharp rocks, hot pavement, cold weather, and rough terrain.\n\nBut honestly, they’ve become so much more than just protection. Over thousands of years, they’ve evolved into:\n\n*   **Tools for Performance:** Whether it’s spikes for sprinting, cleats for soccer, or specialized soles for rock climbing, shoes are engineered to help us move better.\n*   **Fashion Statements:** They are a huge part of how people express their personal style and identity.\n*   **Support Systems:** Many modern shoes are built with orthopedics in mind, helping with posture and alignment as we walk or run.\n\nIt’s kind of wild to think that something we put on every morning has such a long history—from simple hide wrappings in the Ice Age to the high-tech, 3D-printed materials we see today. \n\nDo you have a favorite pair, or were you just curious about the concept in general?",
+        "timestamp": "2026-10-12T10:43:43.696Z"
+      }
+    ]
   }
 ]
