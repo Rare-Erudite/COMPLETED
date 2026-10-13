@@ -4,6 +4,7 @@ import { CheckpointStore } from '../src/server/storage/CheckpointStore.js';
 import { ToolExecutor } from '../src/server/tools/ToolExecutor.js';
 import { OfflineCognitiveEngine } from '../src/server/providers/OfflineCognitiveEngine.js';
 import { ProviderRegistry } from '../src/server/providers/ProviderRegistry.js';
+import { GeminiCoprocessorProvider } from '../src/server/providers/GeminiCoprocessorProvider.js';
 
 export async function runModelProviderTests() {
   console.log('--- Testing Model Providers & Offline Intelligence ---');
@@ -13,6 +14,19 @@ export async function runModelProviderTests() {
   const toolExecutor = new ToolExecutor(memoryStore, checkpointStore);
   const offlineEngine = new OfflineCognitiveEngine(memoryStore, toolExecutor);
   const registry = new ProviderRegistry(memoryStore, toolExecutor);
+
+  const originalGeminiKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
+  const reachableGemini = new GeminiCoprocessorProvider(async () => new Response(JSON.stringify({
+    models: [{ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }],
+  }), { status: 200 }));
+  assert.equal(await reachableGemini.isAvailable(), true, 'Gemini is reachable only when a supported model is returned');
+  assert.equal((await reachableGemini.getInfo()).is_configured, true, 'Gemini info distinguishes key configuration');
+
+  const unavailableGemini = new GeminiCoprocessorProvider(async () => new Response('forbidden', { status: 403 }));
+  assert.equal(await unavailableGemini.isAvailable(), false, 'Invalid credentials do not report Gemini as available');
+  if (originalGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
+  else process.env.GEMINI_API_KEY = originalGeminiKey;
 
   // 1. Verify Offline Cognitive Engine reports genuine metadata (no fake weights)
   const info = await offlineEngine.getInfo();

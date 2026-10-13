@@ -5,6 +5,7 @@ import http from "http";
 import cors from "cors";
 import fs13 from "fs";
 import path15 from "path";
+import crypto3 from "crypto";
 import { GoogleGenAI as GoogleGenAI3 } from "@google/genai";
 
 // src/server/storage/MemoryStore.ts
@@ -8528,6 +8529,274 @@ var GoogleTtsProvider = class {
 };
 var googleTtsProvider = new GoogleTtsProvider();
 
+// src/server/providers/NotificationDeliveryService.ts
+var NotificationDeliveryService = class {
+  /**
+   * Dispatch verification code to an email address via configured provider.
+   */
+  async sendEmailVerification(email, code) {
+    const apiKey = process.env.EMAIL_PROVIDER_API_KEY?.trim();
+    const fromAddress = process.env.EMAIL_FROM?.trim() || "no-reply@rare-erudite.com";
+    if (!apiKey) {
+      return {
+        success: false,
+        channel: "email",
+        destination: email,
+        error: "Email delivery provider is not configured. Missing server-side environment variable EMAIL_PROVIDER_API_KEY."
+      };
+    }
+    try {
+      const isResend = apiKey.startsWith("re_");
+      const endpoint = isResend ? "https://api.resend.com/emails" : "https://api.sendgrid.com/v3/mail/send";
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      };
+      const body = isResend ? JSON.stringify({
+        from: fromAddress,
+        to: [email],
+        subject: "Your RARE Security Verification Code",
+        text: `Your RARE verification code is: ${code}. It expires in 10 minutes. Do not share this code with anyone.`
+      }) : JSON.stringify({
+        personalizations: [{ to: [{ email }] }],
+        from: { email: fromAddress, name: "RARE Security" },
+        subject: "Your RARE Security Verification Code",
+        content: [
+          {
+            type: "text/plain",
+            value: `Your RARE verification code is: ${code}. It expires in 10 minutes. Do not share this code with anyone.`
+          }
+        ]
+      });
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body
+      });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        return {
+          success: false,
+          channel: "email",
+          destination: email,
+          error: `Email provider rejected delivery (HTTP ${response.status}): ${errorText.slice(0, 200)}`
+        };
+      }
+      return {
+        success: true,
+        channel: "email",
+        destination: email,
+        providerId: isResend ? "resend" : "sendgrid"
+      };
+    } catch (err) {
+      return {
+        success: false,
+        channel: "email",
+        destination: email,
+        error: `Email delivery dispatch failed: ${err.message}`
+      };
+    }
+  }
+  /**
+   * Dispatch verification code via SMS.
+   */
+  async sendSmsVerification(phone, code) {
+    const accountSid = process.env.SMS_PROVIDER_ACCOUNT_ID?.trim();
+    const authToken = process.env.SMS_PROVIDER_AUTH_TOKEN?.trim();
+    const fromNumber = process.env.SMS_PROVIDER_FROM?.trim();
+    if (!accountSid || !authToken || !fromNumber) {
+      return {
+        success: false,
+        channel: "sms",
+        destination: phone,
+        error: "SMS provider is not configured. Missing required server-side environment variables: SMS_PROVIDER_ACCOUNT_ID, SMS_PROVIDER_AUTH_TOKEN, SMS_PROVIDER_FROM."
+      };
+    }
+    try {
+      const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+      const authHeader = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+      const params = new URLSearchParams();
+      params.append("To", phone);
+      params.append("From", fromNumber);
+      params.append("Body", `Your RARE verification code is: ${code}. It expires in 10 minutes.`);
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${authHeader}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: params.toString()
+      });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        return {
+          success: false,
+          channel: "sms",
+          destination: phone,
+          error: `SMS provider rejected message (HTTP ${response.status}): ${errorText.slice(0, 200)}`
+        };
+      }
+      return {
+        success: true,
+        channel: "sms",
+        destination: phone,
+        providerId: "twilio-sms"
+      };
+    } catch (err) {
+      return {
+        success: false,
+        channel: "sms",
+        destination: phone,
+        error: `SMS delivery dispatch failed: ${err.message}`
+      };
+    }
+  }
+  /**
+   * Dispatch verification code via WhatsApp.
+   */
+  async sendWhatsAppVerification(phone, code) {
+    const accountSid = process.env.WHATSAPP_PROVIDER_ACCOUNT_ID?.trim() || process.env.SMS_PROVIDER_ACCOUNT_ID?.trim();
+    const authToken = process.env.WHATSAPP_PROVIDER_AUTH_TOKEN?.trim() || process.env.SMS_PROVIDER_AUTH_TOKEN?.trim();
+    const fromNumber = process.env.WHATSAPP_PROVIDER_FROM?.trim() || process.env.SMS_PROVIDER_FROM?.trim();
+    if (!accountSid || !authToken || !fromNumber) {
+      return {
+        success: false,
+        channel: "whatsapp",
+        destination: phone,
+        error: "WhatsApp provider is not configured. Missing required server-side environment variables: WHATSAPP_PROVIDER_ACCOUNT_ID, WHATSAPP_PROVIDER_AUTH_TOKEN, WHATSAPP_PROVIDER_FROM."
+      };
+    }
+    try {
+      const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`;
+      const authHeader = Buffer.from(`${accountSid}:${authToken}`).toString("base64");
+      const toFormatted = phone.startsWith("whatsapp:") ? phone : `whatsapp:${phone}`;
+      const fromFormatted = fromNumber.startsWith("whatsapp:") ? fromNumber : `whatsapp:${fromNumber}`;
+      const params = new URLSearchParams();
+      params.append("To", toFormatted);
+      params.append("From", fromFormatted);
+      params.append("Body", `Your RARE verification code is: ${code}. It expires in 10 minutes.`);
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${authHeader}`,
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: params.toString()
+      });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        return {
+          success: false,
+          channel: "whatsapp",
+          destination: phone,
+          error: `WhatsApp provider rejected message (HTTP ${response.status}): ${errorText.slice(0, 200)}`
+        };
+      }
+      return {
+        success: true,
+        channel: "whatsapp",
+        destination: phone,
+        providerId: "twilio-whatsapp"
+      };
+    } catch (err) {
+      return {
+        success: false,
+        channel: "whatsapp",
+        destination: phone,
+        error: `WhatsApp delivery dispatch failed: ${err.message}`
+      };
+    }
+  }
+};
+var notificationDeliveryService = new NotificationDeliveryService();
+
+// src/server/providers/OAuthVerificationService.ts
+var OAuthVerificationService = class {
+  /**
+   * Verify a Google Identity / OpenID Connect ID token or OAuth access token.
+   */
+  async verifyGoogleToken(token) {
+    if (!token || typeof token !== "string" || token.trim().length < 10) {
+      throw new Error("Missing or malformed Google token.");
+    }
+    const cleanToken = token.trim();
+    const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim();
+    const tokenInfoUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(cleanToken)}`;
+    let response = await fetch(tokenInfoUrl);
+    if (response.ok) {
+      const data = await response.json();
+      if (!data.email || !data.email_verified || data.email_verified === "false" || data.email_verified === false) {
+        throw new Error("Google token does not contain a verified email address.");
+      }
+      if (googleClientId && data.aud && data.aud !== googleClientId) {
+        throw new Error(`Google token audience mismatch (expected ${googleClientId}, received ${data.aud}).`);
+      }
+      const email = String(data.email).toLowerCase().trim();
+      const name = data.name || data.given_name || email.split("@")[0];
+      return {
+        provider: "google",
+        email,
+        name,
+        sub: data.sub || data.user_id || email,
+        avatarUrl: data.picture
+      };
+    }
+    const userInfoUrl = "https://www.googleapis.com/oauth2/v3/userinfo";
+    response = await fetch(userInfoUrl, {
+      headers: { Authorization: `Bearer ${cleanToken}` }
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (!data.email || data.email_verified === false) {
+        throw new Error("Google access token does not provide a verified email.");
+      }
+      const email = String(data.email).toLowerCase().trim();
+      const name = data.name || email.split("@")[0];
+      return {
+        provider: "google",
+        email,
+        name,
+        sub: data.sub || email,
+        avatarUrl: data.picture
+      };
+    }
+    throw new Error("Google identity token verification failed or token has expired.");
+  }
+  /**
+   * Verify a Microsoft / Azure AD token via Microsoft Graph API.
+   */
+  async verifyMicrosoftToken(token) {
+    if (!token || typeof token !== "string" || token.trim().length < 10) {
+      throw new Error("Missing or malformed Microsoft token.");
+    }
+    const cleanToken = token.trim();
+    const graphUrl = "https://graph.microsoft.com/v1.0/me";
+    const response = await fetch(graphUrl, {
+      headers: {
+        Authorization: `Bearer ${cleanToken}`,
+        Accept: "application/json"
+      }
+    });
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      throw new Error(`Microsoft token verification failed (HTTP ${response.status}): ${errText.slice(0, 150)}`);
+    }
+    const data = await response.json();
+    const email = (data.mail || data.userPrincipalName || "").toLowerCase().trim();
+    if (!email || !email.includes("@")) {
+      throw new Error("Microsoft profile does not contain a valid email address.");
+    }
+    const name = data.displayName || data.givenName || email.split("@")[0];
+    return {
+      provider: "outlook",
+      email,
+      name,
+      sub: data.id || email
+    };
+  }
+};
+var oAuthVerificationService = new OAuthVerificationService();
+
 // server.ts
 var app = express();
 var PROJECT_ROOT7 = path15.resolve(process.env.RARE_APP_ROOT || process.cwd());
@@ -9647,33 +9916,80 @@ app.post("/api/developer/request-access", (req, res) => {
     message: "Access request successfully forwarded to Owner at rarelivescore@gmail.com"
   });
 });
-var activeOtpCodes = /* @__PURE__ */ new Map();
-app.post("/api/user/oauth", (req, res) => {
-  const { provider = "google", email, name } = req.body;
-  const isGoogle = provider === "google";
-  if (!email || typeof email !== "string" || !email.includes("@")) {
-    return res.status(400).json({ success: false, error: "A valid account email is required to sign in." });
+var activeOtpRecords = /* @__PURE__ */ new Map();
+var otpRateLimits = /* @__PURE__ */ new Map();
+function generateSecureOtpCode() {
+  const num = crypto3.randomInt(1e5, 1e6);
+  return num.toString();
+}
+function hashOtpCode(target, code) {
+  return crypto3.createHash("sha256").update(`${target.toLowerCase().trim()}:${code.trim()}`).digest("hex");
+}
+function normalizePhone(raw) {
+  const trimmed = raw.trim();
+  const digitsOnly = trimmed.replace(/[^\d+]/g, "");
+  return digitsOnly.startsWith("+") ? digitsOnly : `+${digitsOnly}`;
+}
+app.post("/api/user/oauth", async (req, res) => {
+  const { provider = "google", token, idToken, accessToken } = req.body;
+  const rawToken = token || idToken || accessToken;
+  if (!rawToken || typeof rawToken !== "string") {
+    return res.status(400).json({
+      success: false,
+      error: "Identity verification token is required for OAuth authentication. Unverified emails are rejected."
+    });
   }
-  const chosenEmail = email.toLowerCase().trim();
-  const chosenName = name && typeof name === "string" && name.trim().length > 0 ? name.trim() : chosenEmail.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  const user = {
-    id: `usr_${Date.now()}`,
-    name: chosenName,
-    email: chosenEmail,
-    provider: isGoogle ? "google" : "outlook",
-    role: chosenEmail === "rarelivescore@gmail.com" ? "developer" : "user",
-    createdAt: (/* @__PURE__ */ new Date()).toISOString()
-  };
-  registeredUsers.set(chosenEmail, user);
-  auditLog.unshift({
-    id: `aud_${Date.now()}`,
-    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-    actor: user.email,
-    action: "oauth_login_success",
-    kind: "user",
-    details: `Signed in as ${user.name} (${user.email}) via ${provider} Account Chooser.`
-  });
-  res.json({ success: true, user });
+  try {
+    let verifiedProfile;
+    if (provider === "google") {
+      verifiedProfile = await oAuthVerificationService.verifyGoogleToken(rawToken);
+    } else if (provider === "outlook") {
+      verifiedProfile = await oAuthVerificationService.verifyMicrosoftToken(rawToken);
+    } else {
+      return res.status(400).json({ success: false, error: `Unsupported identity provider: ${provider}` });
+    }
+    const cleanEmail = verifiedProfile.email.toLowerCase().trim();
+    let existing = registeredUsers.get(cleanEmail);
+    if (!existing) {
+      existing = {
+        id: `usr_${Date.now()}`,
+        name: verifiedProfile.name,
+        email: cleanEmail,
+        provider: verifiedProfile.provider,
+        role: "user",
+        // Developer privileges require explicit passkey authorization
+        createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      registeredUsers.set(cleanEmail, existing);
+    } else {
+      existing.name = verifiedProfile.name || existing.name;
+    }
+    auditLog.unshift({
+      id: `aud_${Date.now()}`,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      actor: cleanEmail,
+      action: "oauth_login_success",
+      kind: "user",
+      details: `Verified identity for ${existing.name} (${cleanEmail}) via ${provider} token verification.`
+    });
+    res.json({
+      success: true,
+      user: {
+        id: existing.id,
+        name: existing.name,
+        email: existing.email,
+        phone: existing.phone,
+        provider: existing.provider,
+        role: existing.role,
+        createdAt: existing.createdAt
+      }
+    });
+  } catch (err) {
+    return res.status(401).json({
+      success: false,
+      error: `OAuth identity verification failed: ${err.message}`
+    });
+  }
 });
 app.post("/api/user/signup", (req, res) => {
   const { email, password, name } = req.body;
@@ -9684,13 +10000,16 @@ app.post("/api/user/signup", (req, res) => {
   if (registeredUsers.has(cleanEmail)) {
     return res.status(400).json({ success: false, error: "An account with this email already exists." });
   }
+  const salt = crypto3.randomBytes(16).toString("hex");
+  const passwordHash = `${salt}:${crypto3.createHash("sha256").update(`${salt}:${password}`).digest("hex")}`;
   const user = {
     id: `usr_${Date.now()}`,
-    name: name || cleanEmail.split("@")[0],
+    name: name?.trim() || cleanEmail.split("@")[0],
     email: cleanEmail,
-    password,
+    passwordHash,
     provider: "email",
-    role: cleanEmail === "rarelivescore@gmail.com" || cleanEmail === "premiumrareapp@gmail.com" ? "developer" : "user",
+    role: "user",
+    // Developer privileges require explicit passkey authorization
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   registeredUsers.set(cleanEmail, user);
@@ -9713,20 +10032,19 @@ app.post("/api/user/login", (req, res) => {
   }
   const cleanEmail = email.toLowerCase().trim();
   const existing = registeredUsers.get(cleanEmail);
-  if (!existing || existing.password && existing.password !== password) {
-    if (cleanEmail === "rarelivescore@gmail.com" || cleanEmail === "premiumrareapp@gmail.com") {
-      const devUser = {
-        id: existing?.id || "usr_owner_1",
-        name: existing?.name || (cleanEmail === "rarelivescore@gmail.com" ? "RARE Core Owner" : "Premium RARE App"),
-        email: cleanEmail,
-        provider: "email",
-        role: "developer",
-        createdAt: existing?.createdAt || (/* @__PURE__ */ new Date()).toISOString()
-      };
-      registeredUsers.set(cleanEmail, devUser);
-      return res.json({ success: true, user: devUser });
-    }
-    return res.status(401).json({ success: false, error: "Invalid email or password. You can also verify with a 6-digit code." });
+  if (!existing) {
+    return res.status(401).json({ success: false, error: "Invalid email or password." });
+  }
+  let passwordMatches = false;
+  if (existing.passwordHash) {
+    const [salt, hash] = existing.passwordHash.split(":");
+    const computed = crypto3.createHash("sha256").update(`${salt}:${password}`).digest("hex");
+    passwordMatches = computed === hash;
+  } else if (existing.password) {
+    passwordMatches = existing.password === password;
+  }
+  if (!passwordMatches) {
+    return res.status(401).json({ success: false, error: "Invalid email or password." });
   }
   res.json({
     success: true,
@@ -9741,24 +10059,52 @@ app.post("/api/user/login", (req, res) => {
     }
   });
 });
-app.post("/api/user/send-otp", (req, res) => {
+app.post("/api/user/send-otp", async (req, res) => {
   const { phone, channel = "sms" } = req.body;
   if (!phone || typeof phone !== "string" || phone.trim().length < 5) {
     return res.status(400).json({ success: false, error: "Valid phone number is required." });
   }
-  const cleanPhone = phone.trim();
-  const code = Math.floor(1e5 + Math.random() * 9e5).toString();
-  activeOtpCodes.set(cleanPhone, {
-    code,
-    expiresAt: Date.now() + 10 * 60 * 1e3,
-    channel
+  const cleanPhone = normalizePhone(phone);
+  const targetChannel = channel === "whatsapp" ? "whatsapp" : "sms";
+  const now = Date.now();
+  const rateLimit = otpRateLimits.get(cleanPhone);
+  if (rateLimit && now - rateLimit.lastSentAt < 3e4) {
+    const waitSec = Math.ceil((3e4 - (now - rateLimit.lastSentAt)) / 1e3);
+    return res.status(429).json({
+      success: false,
+      error: `Please wait ${waitSec} seconds before requesting another verification code.`
+    });
+  }
+  const code = generateSecureOtpCode();
+  const codeHash = hashOtpCode(cleanPhone, code);
+  let dispatchResult;
+  if (targetChannel === "whatsapp") {
+    dispatchResult = await notificationDeliveryService.sendWhatsAppVerification(cleanPhone, code);
+  } else {
+    dispatchResult = await notificationDeliveryService.sendSmsVerification(cleanPhone, code);
+  }
+  if (!dispatchResult.success) {
+    return res.status(503).json({
+      success: false,
+      error: dispatchResult.error || "Failed to dispatch verification code via messaging provider."
+    });
+  }
+  activeOtpRecords.set(cleanPhone, {
+    codeHash,
+    expiresAt: now + 10 * 60 * 1e3,
+    channel: targetChannel,
+    attempts: 0,
+    maxAttempts: 5,
+    createdAt: now
   });
-  const channelLabel = channel === "whatsapp" ? "WhatsApp" : "SMS";
-  console.log(`[AUTH] Dispatched OTP ${code} via ${channelLabel} to ${cleanPhone}`);
+  otpRateLimits.set(cleanPhone, {
+    lastSentAt: now,
+    countInWindow: (rateLimit?.countInWindow || 0) + 1
+  });
+  const channelLabel = targetChannel === "whatsapp" ? "WhatsApp" : "SMS";
   res.json({
     success: true,
-    channel,
-    code,
+    channel: targetChannel,
     message: `Verification code sent via ${channelLabel} to ${cleanPhone}`
   });
 });
@@ -9767,14 +10113,29 @@ app.post("/api/user/verify-otp", (req, res) => {
   if (!phone || !code) {
     return res.status(400).json({ success: false, error: "Phone and verification code are required." });
   }
-  const cleanPhone = phone.trim();
+  const cleanPhone = normalizePhone(phone);
   const cleanCode = String(code).trim();
-  const saved = activeOtpCodes.get(cleanPhone);
-  const isValid = Boolean(saved && saved.code === cleanCode && Date.now() < saved.expiresAt);
-  if (!isValid) {
-    return res.status(400).json({ success: false, error: "Invalid or expired verification code." });
+  const saved = activeOtpRecords.get(cleanPhone);
+  if (!saved) {
+    return res.status(400).json({ success: false, error: "No active verification code found for this phone number." });
   }
-  activeOtpCodes.delete(cleanPhone);
+  if (Date.now() > saved.expiresAt) {
+    activeOtpRecords.delete(cleanPhone);
+    return res.status(400).json({ success: false, error: "Verification code has expired. Please request a new one." });
+  }
+  if (saved.attempts >= saved.maxAttempts) {
+    activeOtpRecords.delete(cleanPhone);
+    return res.status(400).json({ success: false, error: "Too many incorrect attempts. Please request a new code." });
+  }
+  saved.attempts += 1;
+  const computedHash = hashOtpCode(cleanPhone, cleanCode);
+  if (saved.codeHash !== computedHash) {
+    return res.status(400).json({
+      success: false,
+      error: `Invalid verification code. ${saved.maxAttempts - saved.attempts} attempt(s) remaining.`
+    });
+  }
+  activeOtpRecords.delete(cleanPhone);
   let existing = registeredUsers.get(cleanPhone);
   if (!existing) {
     existing = {
@@ -9787,25 +10148,58 @@ app.post("/api/user/verify-otp", (req, res) => {
     };
     registeredUsers.set(cleanPhone, existing);
   }
-  res.json({ success: true, user: existing });
+  res.json({
+    success: true,
+    user: {
+      id: existing.id,
+      name: existing.name,
+      email: existing.email,
+      phone: existing.phone,
+      provider: existing.provider,
+      role: existing.role,
+      createdAt: existing.createdAt
+    }
+  });
 });
-app.post("/api/user/send-email-otp", (req, res) => {
+app.post("/api/user/send-email-otp", async (req, res) => {
   const { email } = req.body;
   if (!email || typeof email !== "string" || !email.includes("@")) {
     return res.status(400).json({ success: false, error: "Valid email address is required." });
   }
   const cleanEmail = email.toLowerCase().trim();
-  const code = Math.floor(1e5 + Math.random() * 9e5).toString();
-  activeOtpCodes.set(cleanEmail, {
-    code,
-    expiresAt: Date.now() + 10 * 60 * 1e3,
-    channel: "email"
+  const now = Date.now();
+  const rateLimit = otpRateLimits.get(cleanEmail);
+  if (rateLimit && now - rateLimit.lastSentAt < 3e4) {
+    const waitSec = Math.ceil((3e4 - (now - rateLimit.lastSentAt)) / 1e3);
+    return res.status(429).json({
+      success: false,
+      error: `Please wait ${waitSec} seconds before requesting another email code.`
+    });
+  }
+  const code = generateSecureOtpCode();
+  const codeHash = hashOtpCode(cleanEmail, code);
+  const dispatchResult = await notificationDeliveryService.sendEmailVerification(cleanEmail, code);
+  if (!dispatchResult.success) {
+    return res.status(503).json({
+      success: false,
+      error: dispatchResult.error || "Failed to dispatch verification email via provider."
+    });
+  }
+  activeOtpRecords.set(cleanEmail, {
+    codeHash,
+    expiresAt: now + 10 * 60 * 1e3,
+    channel: "email",
+    attempts: 0,
+    maxAttempts: 5,
+    createdAt: now
   });
-  console.log(`[AUTH] Dispatched Email OTP ${code} to ${cleanEmail}`);
+  otpRateLimits.set(cleanEmail, {
+    lastSentAt: now,
+    countInWindow: (rateLimit?.countInWindow || 0) + 1
+  });
   res.json({
     success: true,
     channel: "email",
-    code,
     message: `Verification code sent to ${cleanEmail}`
   });
 });
@@ -9816,12 +10210,27 @@ app.post("/api/user/verify-email-otp", (req, res) => {
   }
   const cleanEmail = email.toLowerCase().trim();
   const cleanCode = String(code).trim();
-  const saved = activeOtpCodes.get(cleanEmail);
-  const isValid = Boolean(saved && saved.code === cleanCode && Date.now() < saved.expiresAt);
-  if (!isValid) {
-    return res.status(400).json({ success: false, error: "Invalid or expired verification code." });
+  const saved = activeOtpRecords.get(cleanEmail);
+  if (!saved) {
+    return res.status(400).json({ success: false, error: "No active verification code found for this email address." });
   }
-  activeOtpCodes.delete(cleanEmail);
+  if (Date.now() > saved.expiresAt) {
+    activeOtpRecords.delete(cleanEmail);
+    return res.status(400).json({ success: false, error: "Verification code has expired. Please request a new one." });
+  }
+  if (saved.attempts >= saved.maxAttempts) {
+    activeOtpRecords.delete(cleanEmail);
+    return res.status(400).json({ success: false, error: "Too many incorrect attempts. Please request a new code." });
+  }
+  saved.attempts += 1;
+  const computedHash = hashOtpCode(cleanEmail, cleanCode);
+  if (saved.codeHash !== computedHash) {
+    return res.status(400).json({
+      success: false,
+      error: `Invalid verification code. ${saved.maxAttempts - saved.attempts} attempt(s) remaining.`
+    });
+  }
+  activeOtpRecords.delete(cleanEmail);
   let existing = registeredUsers.get(cleanEmail);
   if (!existing) {
     existing = {
@@ -9829,12 +10238,23 @@ app.post("/api/user/verify-email-otp", (req, res) => {
       name: name?.trim() || cleanEmail.split("@")[0],
       email: cleanEmail,
       provider: "email",
-      role: cleanEmail === "rarelivescore@gmail.com" || cleanEmail === "premiumrareapp@gmail.com" ? "developer" : "user",
+      role: "user",
       createdAt: (/* @__PURE__ */ new Date()).toISOString()
     };
     registeredUsers.set(cleanEmail, existing);
   }
-  res.json({ success: true, user: existing });
+  res.json({
+    success: true,
+    user: {
+      id: existing.id,
+      name: existing.name,
+      email: existing.email,
+      phone: existing.phone,
+      provider: existing.provider,
+      role: existing.role,
+      createdAt: existing.createdAt
+    }
+  });
 });
 app.get("/api/developer/status", (req, res) => {
   const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;

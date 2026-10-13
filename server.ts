@@ -12,6 +12,8 @@ import { TrajectoryStore } from './src/server/storage/TrajectoryStore.js';
 import { UpdateStore, UpdateChannel } from './src/server/storage/UpdateStore.js';
 import { DurableStateStore } from './src/server/storage/DurableStateStore.js';
 import { PersistentJsonStore } from './src/server/storage/PersistentJsonStore.js';
+import { DocumentStore } from './src/server/storage/DocumentStore.js';
+import { ResearchService } from './src/server/services/ResearchService.js';
 import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
 import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
@@ -69,7 +71,9 @@ const conversationStore = new ConversationStore();
 const checkpointStore = new CheckpointStore();
 const trajectoryStore = new TrajectoryStore();
 const updateStore = new UpdateStore();
-const toolExecutor = new ToolExecutor(memoryStore, checkpointStore);
+const documentStore = new DocumentStore(PROJECT_ROOT);
+const researchService = new ResearchService();
+const toolExecutor = new ToolExecutor(memoryStore, checkpointStore, researchService);
 const providerRegistry = new ProviderRegistry(memoryStore, toolExecutor);
 const selfDevEngine = new SelfDevelopmentEngine(checkpointStore, trajectoryStore, toolExecutor);
 const benchmarkSuite = new BenchmarkSuite(toolExecutor, memoryStore, checkpointStore);
@@ -288,6 +292,7 @@ export interface MultiAgentTeamRun {
   events: Array<{
     id: string;
     time: string;
+    createdAt?: string;
     agentId: string;
     agentName: string;
     level: 'info' | 'warn' | 'error' | 'success';
@@ -298,7 +303,7 @@ export interface MultiAgentTeamRun {
   createdAt: string;
   updatedAt: string;
   checkpointId?: string;
-  artifacts: Array<{ name: string; type: string; size: string; path: string }>;
+  artifacts: Array<{ name: string; type: string; size: string; sizeBytes?: number; path: string }>;
   metrics: {
     durationSeconds: number;
     tasksTotal: number;
@@ -309,7 +314,7 @@ export interface MultiAgentTeamRun {
 }
 
 // Active multi-agent runs store
-const activeAgentRuns: MultiAgentTeamRun[] = [
+let activeAgentRuns: MultiAgentTeamRun[] = [
   {
     id: 'run_sample_01',
     title: 'PulseFlow Telemetry Engine',
@@ -451,6 +456,8 @@ const activeAgentRuns: MultiAgentTeamRun[] = [
     metrics: { durationSeconds: 24, tasksTotal: 5, tasksCompleted: 5, handoffsCount: 4, repairsCount: 0 },
   },
 ];
+activeAgentRuns.splice(0, activeAgentRuns.length);
+activeAgentRuns = durableStateStore.trackArray('agent_runs', activeAgentRuns);
 
 // Toolchains Environment Matrix
 const toolchains = [
@@ -547,6 +554,7 @@ let documents: Record<string, { content: string; format: string; updatedAt: stri
   },
 };
 documents = durableStateStore.trackObject('documents', documents);
+for (const documentPath of Object.keys(documents)) delete documents[documentPath];
 
 // Research Cache & Evidence
 interface ResearchItem {
@@ -560,7 +568,7 @@ interface ResearchItem {
   timestamp: string;
 }
 
-const researchCache: ResearchItem[] = [
+let researchCache: ResearchItem[] = [
   {
     id: 'res_001',
     query: 'Universal Context-Aware Speech Transcription Across Acoustic Ambiguity',
@@ -583,6 +591,8 @@ const researchCache: ResearchItem[] = [
     timestamp: new Date().toISOString(),
   },
 ];
+researchCache.splice(0, researchCache.length);
+researchCache = durableStateStore.trackArray('research_items', researchCache);
 
 // =============================================================================
 // RARE Core Intelligence Module (Native Autonomous Cognitive Architecture)
@@ -739,6 +749,7 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/status', async (_req, res) => {
   const providers = await providerRegistry.getAllProviders();
   const geminiConfigured = Boolean(process.env.GEMINI_API_KEY?.trim());
+  const storageStatus = persistentStorage?.getStatus();
 
   res.json({
     ok: true,
@@ -747,16 +758,29 @@ app.get('/api/status', async (_req, res) => {
     timestamp: new Date().toISOString(),
     services: {
       server: { status: 'operational' },
-      storage: { status: 'not_checked', type: 'local-json-files' },
+      storage: {
+        status: storageStatus?.configured && (!storageStatus.reachable || !storageStatus.schemaReady)
+          ? 'degraded'
+          : 'operational',
+        type: storageStatus?.mode || 'initializing',
+        databaseConfigured: storageStatus?.configured || false,
+        databaseReachable: storageStatus?.reachable || false,
+        schemaReady: storageStatus?.schemaReady || false,
+        error: storageStatus?.error,
+      },
       providers: providers.map((provider) => ({
         id: provider.id,
         name: provider.name,
-        configured: provider.id === 'gemini-coprocessor' ? geminiConfigured : true,
+        configured: provider.id === 'gemini-coprocessor' ? geminiConfigured : provider.is_configured ?? provider.is_available,
         connectivity: provider.id === 'local-ollama'
           ? provider.is_available ? 'reachable' : 'unreachable'
           : provider.id === 'rare-offline-cognitive'
             ? 'local'
-            : 'not_checked',
+            : provider.id === 'gemini-coprocessor' && !geminiConfigured
+              ? 'not_configured'
+              : provider.id === 'gemini-coprocessor'
+            ? provider.is_available ? 'reachable' : 'configured_unreachable'
+              : 'not_checked',
       })),
     },
   });
@@ -2030,18 +2054,19 @@ app.get('/api/agents/runs/:id', (req, res) => {
 });
 
 // Universal Build Project Creation
-app.post('/api/agents/runs', (req, res) => {
+app.post('/api/agents/runs', async (req, res) => {
   const { title, targetDomain, objective } = req.body;
-  if (!title || !objective) {
+  if (typeof title !== 'string' || !title.trim() || typeof objective !== 'string' || !objective.trim()) {
     return res.status(400).json({ error: { message: 'Title and objective are required' } });
   }
 
-  const runId = `run_${Date.now().toString().slice(-4)}`;
+  const now = new Date().toISOString();
+  const runId = `run_${crypto.randomUUID()}`;
   const teamRun: MultiAgentTeamRun = {
     id: runId,
-    title,
-    targetDomain: targetDomain || 'web',
-    objective,
+    title: title.trim().slice(0, 160),
+    targetDomain: typeof targetDomain === 'string' && targetDomain.trim() ? targetDomain.trim().slice(0, 40) : 'web',
+    objective: objective.trim().slice(0, 4000),
     status: 'coordinating',
     currentStage: 'Assembling Specialist Team',
     userProgressMessage: 'Coordinating specialized agents for project...',
@@ -2124,139 +2149,201 @@ app.post('/api/agents/runs', (req, res) => {
     ],
     events: [
       {
-        id: `ev_${Date.now()}_1`,
+        id: `ev_${crypto.randomUUID()}`,
         time: new Date().toLocaleTimeString(),
+        createdAt: now,
         agentId: 'ag_coord',
         agentName: 'Project Coordinator',
         level: 'info',
-        message: 'Decomposed objective into sequential & concurrent tracks',
+        message: 'Started model-backed planning and live workspace verification.',
       },
     ],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
     artifacts: [],
     metrics: { durationSeconds: 0, tasksTotal: 5, tasksCompleted: 0, handoffsCount: 1, repairsCount: 0 },
   };
 
   activeAgentRuns.unshift(teamRun);
-
-  // Progressive lifecycle simulation
-  setTimeout(() => {
-    teamRun.currentStage = 'Implementing Components';
-    teamRun.userProgressMessage = 'Building components across frontend and services...';
-    teamRun.coordinator.progressPercent = 45;
-    teamRun.agents[0].status = 'completed';
-    teamRun.agents[0].progressPercent = 100;
-    teamRun.agents[1].status = 'working';
-    teamRun.agents[1].currentTask = 'Writing source code and linking modules';
-    teamRun.agents[1].progressPercent = 50;
-    teamRun.messages.push({
-      id: `msg_${Date.now()}_2`,
-      fromAgentId: 'ag_arch',
-      fromRole: 'architect',
-      fromName: 'Architect',
-      toAgentId: 'ag_dev',
-      toRole: targetDomain === 'android' ? 'frontend' : 'backend',
-      toName: 'Implementation Engineer',
-      type: 'handoff',
-      subject: 'Architecture Plan Delivered',
-      content: 'Design specification approved. Proceed with component implementation.',
-      timestamp: new Date().toLocaleTimeString(),
-    });
+  const persistRun = async () => {
+    teamRun.updatedAt = new Date().toISOString();
+    await persistentStorage?.persistProjectRun(teamRun);
+  };
+  const recordEvent = async (agentId: string, agentName: string, message: string, level: 'info' | 'warn' | 'error' | 'success', toolCalled?: string) => {
+    const createdAt = new Date().toISOString();
     teamRun.events.push({
-      id: `ev_${Date.now()}_2`,
-      time: new Date().toLocaleTimeString(),
-      agentId: 'ag_dev',
-      agentName: 'Implementation Engineer',
-      level: 'info',
-      message: 'Scaffolded core project structure and verified dependencies',
+      id: `ev_${crypto.randomUUID()}`,
+      time: new Date(createdAt).toLocaleTimeString(),
+      createdAt,
+      agentId,
+      agentName,
+      level,
+      message,
+      toolCalled,
     });
-  }, 1800);
+    await persistRun();
+  };
 
-  setTimeout(() => {
-    teamRun.currentStage = 'Running Verification Tests';
-    teamRun.userProgressMessage = 'Running test suites and verifying stability...';
-    teamRun.agents[1].status = 'completed';
-    teamRun.agents[1].progressPercent = 100;
-    teamRun.agents[2].status = 'working';
-    teamRun.agents[2].currentTask = 'Executing functional & regression tests';
-    teamRun.agents[2].progressPercent = 75;
-    teamRun.events.push({
-      id: `ev_${Date.now()}_3`,
-      time: new Date().toLocaleTimeString(),
-      agentId: 'ag_test',
-      agentName: 'QA & Test Engineer',
-      level: 'info',
-      message: 'Running unit test suite (16 tests executing)',
-      toolCalled: 'test_runner',
-    });
-  }, 3400);
-
-  setTimeout(() => {
-    teamRun.status = 'completed';
-    teamRun.currentStage = 'Delivered';
-    teamRun.userProgressMessage = 'Project completed and verified. Deliverables ready for download.';
+  try {
+    await persistRun();
+    teamRun.status = 'executing';
+    teamRun.currentStage = 'Planning with active model';
+    teamRun.coordinator.currentTask = 'Generate a concrete inspection plan';
+    const plan = await providerRegistry.generate(
+      `Create a concise, factual inspection plan for this project objective. Do not claim to build or modify files. Objective: ${teamRun.objective}`,
+      undefined,
+      { temperature: 0.2 },
+    );
     teamRun.coordinator.status = 'completed';
     teamRun.coordinator.progressPercent = 100;
-    teamRun.agents[2].status = 'completed';
-    teamRun.agents[2].progressPercent = 100;
-    teamRun.agents[3].status = 'completed';
-    teamRun.agents[3].progressPercent = 100;
-    const ext = targetDomain === 'android' ? 'apk' : targetDomain === 'windows' ? 'exe' : 'zip';
-    const filename = `${title.toLowerCase().replace(/\s+/g, '-')}-build.${ext}`;
-    teamRun.artifacts.push({
-      name: filename,
-      type: targetDomain === 'android' ? 'application/vnd.android.package-archive' : targetDomain === 'windows' ? 'application/octet-stream' : 'application/zip',
-      size: targetDomain === 'android' ? '17.2 MB' : targetDomain === 'windows' ? '12.8 MB' : '3.4 MB',
-      path: `dist/${filename}`,
+    teamRun.coordinator.completedTasks.push('Generate model-backed inspection plan');
+    teamRun.coordinator.lastAction = `Planning completed with ${plan.modelUsed}`;
+    teamRun.messages.push({
+      id: `msg_${crypto.randomUUID()}`,
+      fromAgentId: 'ag_coord',
+      fromRole: 'coordinator',
+      fromName: 'Project Coordinator',
+      toAgentId: 'ag_arch',
+      toRole: 'architect',
+      toName: 'Architect',
+      type: 'assignment',
+      subject: 'Evidence-based inspection plan',
+      content: plan.reply.slice(0, 4000),
+      timestamp: new Date().toLocaleTimeString(),
     });
-    teamRun.metrics.tasksCompleted = 5;
-    teamRun.events.push({
-      id: `ev_${Date.now()}_4`,
-      time: new Date().toLocaleTimeString(),
-      agentId: 'ag_rel',
-      agentName: 'Packaging Engineer',
-      level: 'success',
-      message: `Assembled package artifact: ${filename}`,
-    });
-  }, 4800);
+    await recordEvent('ag_coord', 'Project Coordinator', `Plan generated by ${plan.modelUsed} (${plan.providerType}).`, 'success');
 
-  res.status(201).json(teamRun);
+    teamRun.currentStage = 'Inspecting workspace';
+    teamRun.agents[0].status = 'working';
+    teamRun.agents[0].currentTask = 'Search project files for objective-related evidence';
+    const toolPlan = [
+      { agent: teamRun.agents[0], tool: 'SEARCH' as const, inputs: { query: teamRun.objective, scope: 'all' } },
+      { agent: teamRun.agents[1], tool: 'RESEARCH' as const, inputs: { query: teamRun.objective, maxResults: 5 } },
+      { agent: teamRun.agents[2], tool: 'RUN_TEST' as const, inputs: {} },
+      { agent: teamRun.agents[3], tool: 'BUILD_PROJECT' as const, inputs: {} },
+    ];
+    const toolResults: Array<{ tool: string; success: boolean; executionTimeMs: number; output?: unknown; error?: string }> = [];
+    for (const [index, step] of toolPlan.entries()) {
+      teamRun.currentStage = step.tool === 'RUN_TEST' ? 'Running verification' : step.tool === 'BUILD_PROJECT' ? 'Verifying build' : 'Inspecting workspace';
+      teamRun.userProgressMessage = `${step.agent.title}: executing ${step.tool}`;
+      step.agent.status = 'working';
+      step.agent.currentTask = `Execute ${step.tool} against the actual workspace or source`;
+      const result = await toolExecutor.execute(step.tool, step.inputs, { actor: `agent:${step.agent.id}` });
+      const outputFailed = result.output?.success === false;
+      const successful = result.success && !outputFailed;
+      toolResults.push({
+        tool: result.tool,
+        success: successful,
+        executionTimeMs: result.executionTimeMs,
+        output: result.output,
+        error: result.error || result.output?.error,
+      });
+      step.agent.status = successful ? 'completed' : 'failed';
+      step.agent.progressPercent = successful ? 100 : Math.round((index / toolPlan.length) * 100);
+      step.agent.lastAction = successful ? `${step.tool} completed` : `${step.tool} reported a failure`;
+      if (successful) step.agent.completedTasks.push(`${step.tool} completed`);
+      await recordEvent(
+        step.agent.id,
+        step.agent.name,
+        successful ? `${step.tool} completed in ${result.executionTimeMs} ms.` : `${step.tool} failed: ${result.error || result.output?.error || 'tool reported failure'}`,
+        successful ? 'success' : 'error',
+        step.tool,
+      );
+    }
+
+    const finishedAt = new Date().toISOString();
+    const report = {
+      runId,
+      title: teamRun.title,
+      targetDomain: teamRun.targetDomain,
+      objective: teamRun.objective,
+      generatedAt: finishedAt,
+      model: { provider: plan.providerType, model: plan.modelUsed, plan: plan.reply },
+      tools: toolResults,
+    };
+    const reportPath = `agent-runs/${runId}.json`;
+    const savedReport = documentStore.write(reportPath, JSON.stringify(report, null, 2));
+    const reportSize = savedReport.size;
+    teamRun.artifacts.push({
+      name: path.basename(reportPath),
+      type: 'application/json',
+      size: `${reportSize} bytes`,
+      sizeBytes: reportSize,
+      path: `documents/${reportPath}`,
+    });
+    teamRun.metrics.tasksCompleted = toolResults.filter((result) => result.success).length + 1;
+    teamRun.metrics.durationSeconds = Math.round((Date.now() - Date.parse(teamRun.createdAt)) / 1000);
+    teamRun.currentStage = toolResults.every((result) => result.success) ? 'Verification complete' : 'Verification finished with failures';
+    teamRun.status = toolResults.every((result) => result.success) ? 'completed' : 'failed';
+    teamRun.userProgressMessage = teamRun.status === 'completed'
+      ? 'Workspace inspection, research, tests, and build verification completed. See the run report for evidence.'
+      : 'Verification finished with one or more tool failures. See the run report for actual outputs.';
+    teamRun.coordinator.status = teamRun.status === 'completed' ? 'completed' : 'failed';
+    teamRun.coordinator.lastAction = `Run report saved to ${savedReport.path}`;
+    await recordEvent('ag_coord', 'Project Coordinator', `Saved evidence report to ${savedReport.path}. No platform package was generated.`, 'info');
+    await persistRun();
+    return res.status(201).json(teamRun);
+  } catch (error) {
+    teamRun.status = 'failed';
+    teamRun.currentStage = 'Run failed';
+    teamRun.userProgressMessage = error instanceof Error ? error.message : 'Agent run failed unexpectedly.';
+    teamRun.coordinator.status = 'failed';
+    await recordEvent('ag_coord', 'Project Coordinator', teamRun.userProgressMessage, 'error').catch(() => {});
+    await persistRun().catch(() => {});
+    return res.status(502).json({ error: { message: teamRun.userProgressMessage }, run: teamRun });
+  }
 });
 
 // Trigger Targeted Diagnose and Repair Loop
-app.post('/api/agents/runs/:id/repair', (req, res) => {
+app.post('/api/agents/runs/:id/repair', async (req, res) => {
   const run = activeAgentRuns.find((r) => r.id === req.params.id);
   if (!run) return res.status(404).json({ error: { message: 'Run not found' } });
 
-  run.status = 'executing';
-  run.currentStage = 'Diagnosing & Repairing Issue';
-  run.userProgressMessage = 'Diagnosing issue and applying targeted fix...';
-  run.events.push({
-    id: `ev_${Date.now()}`,
-    time: new Date().toLocaleTimeString(),
-    agentId: 'ag_test',
-    agentName: 'QA & Test Engineer',
-    level: 'warn',
-    message: 'Identified syntax/linking warning during verification',
-  });
-
-  setTimeout(() => {
-    run.status = 'completed';
-    run.currentStage = 'Delivered';
-    run.userProgressMessage = 'Repair applied and re-tested successfully.';
-    run.metrics.repairsCount += 1;
+  run.status = 'validating';
+  run.currentStage = 'Running diagnostic verification';
+  run.userProgressMessage = 'Running real diagnostic and test tools; no files will be modified.';
+  const appendEvent = (agentId: string, agentName: string, level: 'info' | 'warn' | 'error' | 'success', message: string, toolCalled?: string) => {
+    const createdAt = new Date().toISOString();
     run.events.push({
-      id: `ev_${Date.now()}`,
-      time: new Date().toLocaleTimeString(),
-      agentId: 'ag_coord',
-      agentName: 'Project Coordinator',
-      level: 'success',
-      message: 'Targeted repair verified. Zero regressions certified.',
+      id: `ev_${crypto.randomUUID()}`,
+      time: new Date(createdAt).toLocaleTimeString(),
+      createdAt,
+      agentId,
+      agentName,
+      level,
+      message,
+      toolCalled,
     });
-  }, 2200);
+  };
 
-  res.json({ success: true, message: 'Diagnose and repair cycle dispatched.' });
+  try {
+    const diagnostic = typeof req.body?.errorText === 'string' && req.body.errorText.trim()
+      ? await toolExecutor.execute('INSPECT_ERROR', { errorText: req.body.errorText })
+      : undefined;
+    if (diagnostic) {
+      appendEvent('ag_test', 'QA & Test Engineer', diagnostic.success ? 'info' : 'error', diagnostic.success ? 'Error text analyzed by INSPECT_ERROR.' : diagnostic.error || 'Error inspection failed.', 'INSPECT_ERROR');
+    }
+    const tests = await toolExecutor.execute('RUN_TEST', {});
+    const testsPassed = tests.success && tests.output?.success !== false;
+    appendEvent('ag_test', 'QA & Test Engineer', testsPassed ? 'success' : 'error', testsPassed ? `Test suite passed in ${tests.executionTimeMs} ms.` : `Test suite failed: ${tests.error || tests.output?.stderr || 'see tool output'}`, 'RUN_TEST');
+    run.status = testsPassed ? 'completed' : 'failed';
+    run.currentStage = testsPassed ? 'Verification complete' : 'Verification failed';
+    run.userProgressMessage = testsPassed
+      ? 'Diagnostic verification passed. No automatic source changes were made.'
+      : 'Diagnostic verification failed. Review the test output; no automatic source changes were made.';
+    run.updatedAt = new Date().toISOString();
+    run.metrics.durationSeconds += Math.round(tests.executionTimeMs / 1000);
+    await persistentStorage?.persistProjectRun(run);
+    return res.json({ success: testsPassed, message: run.userProgressMessage, diagnostic: diagnostic?.output, tests: tests.output || tests.error });
+  } catch (error) {
+    run.status = 'failed';
+    run.currentStage = 'Diagnostic failed';
+    run.userProgressMessage = error instanceof Error ? error.message : 'Diagnostic failed.';
+    appendEvent('ag_test', 'QA & Test Engineer', 'error', run.userProgressMessage);
+    run.updatedAt = new Date().toISOString();
+    await persistentStorage?.persistProjectRun(run);
+    return res.status(502).json({ success: false, message: run.userProgressMessage });
+  }
 });
 
 // Checkpoints
@@ -2500,107 +2587,92 @@ app.post('/api/user-memory/forget', (req, res) => {
 
 // Documents Management
 app.get('/api/documents', (req, res) => {
-  const list = Object.keys(documents).map((path) => ({
-    path,
-    size: documents[path].content.length,
-    format: documents[path].format,
-    updated_at: documents[path].updatedAt,
+  const list = documentStore.list().map((document) => ({
+    path: document.path,
+    size: document.size,
+    format: document.format,
+    updated_at: document.updatedAt,
   }));
   res.json(list);
 });
 
 app.get('/api/documents/*', (req, res) => {
   const docPath = (req.params as any)[0];
-  if (documents[docPath] !== undefined) {
-    return res.json({ path: docPath, ...documents[docPath] });
+  try {
+    const document = documentStore.read(docPath);
+    if (document) return res.json(document);
+  } catch (error) {
+    return res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Invalid document path.' } });
   }
   res.status(404).json({ error: { message: 'Document not found' } });
 });
 
-app.post('/api/documents', (req, res) => {
-  const { path: docPath, text, format } = req.body;
-  if (!docPath) return res.status(400).json({ error: { message: 'Document path required' } });
-  documents[docPath] = {
-    content: text || '',
-    format: format || 'text',
-    updatedAt: new Date().toISOString(),
-  };
-  res.status(201).json({ path: docPath, size: documents[docPath].content.length });
+app.post('/api/documents', async (req, res) => {
+  const { path: requestedPath, text, format, url } = req.body;
+  try {
+    if (url) {
+      const imported = await documentStore.importUrl(String(url));
+      const filename = String(requestedPath || `imports/${Date.now()}.${imported.format}`);
+      const saved = documentStore.write(filename, imported.content);
+      return res.status(201).json({ path: saved.path, size: saved.size, sourceUrl: imported.sourceUrl, format: saved.format });
+    }
+    if (!requestedPath) return res.status(400).json({ error: { message: 'Document path required' } });
+    const saved = documentStore.write(String(requestedPath), String(text ?? ''));
+    res.status(201).json({ path: saved.path, size: saved.size, format: saved.format });
+  } catch (error) {
+    res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Document could not be saved.' } });
+  }
 });
 
 // Universal Context-Aware Audio Transcription
-app.post('/api/documents/transcribe', (req, res) => {
-  const { audioName, mode = 'context_verified', sampleTopic = 'executive_strategy' } = req.body;
-
-  let transcriptContent = '';
-  let verifiedNotes: string[] = [];
-  let verifiedTerms: string[] = [];
-
-  if (sampleTopic === 'executive_strategy' || !sampleTopic) {
-    transcriptContent = `[00:00:00 - 00:00:18] Marcus (Chairperson): Welcome everyone. Let's begin the review of our cross-platform client rollouts for Windows and Android.\n[00:00:19 - 00:00:32] Elena (Engineering Lead): [Context-Verified Speech: "dual-device SQLite sync" | Confidence: 98.6%]\n[00:00:33 - 00:01:02] Elena: "When users transition between desktop workstations and mobile phones, state snapshots synchronize in under 450 milliseconds with deterministic conflict resolution."\n[00:01:03 - 00:01:14] Marcus: That directly satisfies our latency requirements. Does QA have validation numbers?\n[00:01:15 - 00:01:29] David (QA Lead): [Audience question: resolved from context as regression suite results]\n[00:01:30 - 00:01:54] David: "We ran 32 automated selftests across memory concurrency and platform bounds. All 32 passed with 97.4% test coverage."\n[00:01:55 - 00:02:10] Marcus: [Soft background movement] [inaudible / side-chatter in conference hall] Excellent work. Let's proceed to deployment.`;
-
-    verifiedNotes = [
-      'Acoustically soft phrase at 00:00:19 verified as "dual-device SQLite sync" from system context.',
-      'Audience query at 00:01:15 reconciled against subsequent test coverage figures.',
-      'Indistinct ambient side-chatter at 00:01:55 accurately marked as [inaudible] to avoid hallucinated text.',
-      'Standard punctuation, sentence capitalization, and speaker tags formatted cleanly.',
-    ];
-    verifiedTerms = ['dual-device SQLite sync', 'regression suite results'];
-  } else if (sampleTopic === 'academic_lecture') {
-    transcriptContent = `[00:00:00 - 00:00:25] Professor Vance: Today we analyze neuromuscular motor unit recruitment in skeletal muscle.\n[00:00:26 - 00:00:41] Student (Row 4): [Soft question: verified as "Henneman's size principle" from anatomical context]\n[00:00:42 - 00:01:18] Professor Vance: "Precisely. Smaller motor neurons with lower thresholds fire first before larger fast-twitch units are activated."\n[00:01:19 - 00:01:35] [inaudible / hallway chatter outside lecture hall]`;
-
-    verifiedNotes = [
-      'Soft student question resolved as "Henneman\'s size principle" using physiology corpus.',
-      'Clean sentence casing and academic nomenclature verified.',
-    ];
-    verifiedTerms = ["Henneman's size principle"];
-  } else {
-    transcriptContent = `[00:00:01 - 00:00:22] Host: Welcome to today's technical deep dive.\n[00:00:23 - 00:00:54] Guest: [Soft audio: verified as "single-writer lock concurrency"] We ensure atomic state snapshots before applying any code mutations.\n[00:00:55 - 00:01:12] Host: [garbled microphone pop] How fast is the rollback mechanism?\n[00:01:13 - 00:01:35] Guest: Under one second to restore verified checkpoints.`;
-
-    verifiedNotes = [
-      'Technical phrase verified from system architecture corpus.',
-      'Acoustic signal artifacts cleanly marked.',
-    ];
-    verifiedTerms = ['single-writer lock concurrency'];
+app.post('/api/documents/transcribe', async (req, res) => {
+  const rawAudio = String(req.body?.audioBase64 || req.body?.audio || '');
+  const dataUrl = rawAudio.match(/^data:([^;]+);base64,(.+)$/s);
+  const audioBase64 = dataUrl ? dataUrl[2] : rawAudio;
+  const mimeType = String(dataUrl?.[1] || req.body?.mimeType || 'audio/webm');
+  if (!audioBase64) return res.status(400).json({ error: { message: 'Audio data is required for transcription.' } });
+  if (!/^audio\/(webm|ogg|wav|mpeg|mp3|aac|flac)$/i.test(mimeType)) {
+    return res.status(400).json({ error: { message: 'Unsupported audio format.' } });
   }
-
-  const filename = `transcripts/${(audioName || 'meeting_recording').replace(/\.[^/.]+$/, '')}_verified.txt`;
-  documents[filename] = {
-    content: transcriptContent,
-    format: 'transcript',
-    updatedAt: new Date().toISOString(),
-  };
-
-  res.json({
-    success: true,
-    path: filename,
-    mode,
-    transcript: transcriptContent,
-    verifiedNotes,
-    uncertaintyCount: 1,
-    verifiedQuotations: verifiedTerms,
-  });
+  if (!process.env.GEMINI_API_KEY?.trim()) {
+    return res.status(503).json({ error: { message: 'Audio transcription requires GEMINI_API_KEY to be configured on the server.' } });
+  }
+  try {
+    const transcription = await providerRegistry.getGeminiProvider().transcribeAudio(audioBase64, mimeType);
+    const basename = String(req.body?.audioName || 'recording')
+      .replace(/\.[^/.]+$/, '')
+      .replace(/[^a-zA-Z0-9_-]+/g, '_')
+      .slice(0, 80) || 'recording';
+    const saved = documentStore.write(`transcripts/${basename}_transcript.txt`, transcription.text);
+    res.json({
+      success: true,
+      path: saved.path,
+      mode: 'verbatim',
+      transcript: transcription.text,
+      transcriptionModel: transcription.model,
+      verifiedNotes: [],
+      uncertaintyCount: (transcription.text.match(/\[(?:inaudible|unclear)\]/gi) || []).length,
+      verifiedQuotations: [],
+    });
+  } catch (error) {
+    res.status(502).json({ error: { message: error instanceof Error ? error.message : 'Audio transcription failed.' } });
+  }
 });
 
 // Format Conversion
 app.post('/api/documents/convert', (req, res) => {
   const { path: docPath, targetFormat } = req.body;
-  const doc = documents[docPath];
-  if (!doc) return res.status(404).json({ error: { message: 'Document not found' } });
-
-  const newPath = docPath.replace(/\.[^/.]+$/, `.${targetFormat}`);
-  documents[newPath] = {
-    content: doc.content,
-    format: targetFormat,
-    updatedAt: new Date().toISOString(),
-  };
-
-  res.json({
-    success: true,
-    originalPath: docPath,
-    convertedPath: newPath,
-    format: targetFormat,
-  });
+  try {
+    const doc = documentStore.read(String(docPath || ''));
+    if (!doc) return res.status(404).json({ error: { message: 'Document not found' } });
+    const format = String(targetFormat || '').toLowerCase().replace(/^\./, '');
+    const newPath = doc.path.replace(/\.[^/.]+$/, `.${format}`);
+    const converted = documentStore.convert(doc.content, format);
+    documentStore.write(newPath, converted);
+    res.json({ success: true, originalPath: doc.path, convertedPath: newPath, format });
+  } catch (error) {
+    res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Document conversion failed.' } });
+  }
 });
 
 // Research Engine
@@ -2608,37 +2680,37 @@ app.get('/api/research/items', (req, res) => {
   res.json(researchCache);
 });
 
-app.post('/api/research/search', (req, res) => {
-  const { query } = req.body;
-  const q = (query || '').toLowerCase();
-
-  const found = researchCache.filter((r) => r.query.toLowerCase().includes(q) || r.findings.toLowerCase().includes(q));
-
-  if (found.length > 0) {
-    return res.json({ query, results: found });
+app.post('/api/research/search', async (req, res) => {
+  const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
+  if (!query) return res.status(400).json({ error: { message: 'A research query is required.' } });
+  try {
+    const research = await researchService.search(query, Number(req.body?.maxResults) || 5);
+    const sources = research.findings.map((finding) => ({
+      name: finding.source,
+      url: finding.url,
+      credibility: finding.credibility,
+      date: finding.date,
+      quote: finding.snippet,
+      title: finding.title,
+    }));
+    const newResearch: ResearchItem & { sourceErrors: string[] } = {
+      id: `res_${Date.now()}`,
+      query,
+      subquestions: [],
+      findings: sources.map((source) => `${source.title}: ${source.quote}`).join('\n\n'),
+      sources,
+      synthesis: research.totalHits
+        ? `Retrieved ${research.totalHits} source records. Summaries are source excerpts, not independently verified claims.`
+        : 'No source results were retrieved. Check network access and the source errors before drawing conclusions.',
+      confidence: 0,
+      sourceErrors: research.sourceErrors,
+      timestamp: new Date().toISOString(),
+    };
+    researchCache.unshift(newResearch);
+    res.json({ query, results: [newResearch] });
+  } catch (error) {
+    res.status(502).json({ error: { message: error instanceof Error ? error.message : 'Research sources could not be reached.' } });
   }
-
-  const newResearch: ResearchItem = {
-    id: `res_${Date.now()}`,
-    query: query || 'General Inquiry',
-    subquestions: ['Core specifications', 'Cross-platform feasibility'],
-    findings: `Comprehensive investigation into "${query}". Evaluated across technical sources, publications, and verified references.`,
-    sources: [
-      {
-        name: 'Technical Architecture Index',
-        url: 'https://docs.rare.ai/architecture/spec.html',
-        credibility: 0.98,
-        date: '2026-09-12',
-        quote: 'Modular agent architecture enables predictable delegation without data leakage.',
-      },
-    ],
-    synthesis: `The investigation confirms that "${query}" can be planned and executed through RARE's collaborative agent pipeline.`,
-    confidence: 0.95,
-    timestamp: new Date().toISOString(),
-  };
-
-  researchCache.unshift(newResearch);
-  res.json({ query, results: [newResearch] });
 });
 
 // Updates Apply Endpoint
@@ -3294,6 +3366,17 @@ async function startServer() {
   if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
     throw new Error(`Invalid PORT value "${process.env.PORT}". Set PORT to an integer between 1 and 65535.`);
   }
+
+  persistentStorage = new PersistentJsonStore();
+  await persistentStorage.checkConnection();
+  await Promise.all([
+    durableStateStore.hydrate(persistentStorage),
+    memoryStore.initializePersistence(persistentStorage),
+    conversationStore.initializePersistence(persistentStorage),
+    checkpointStore.initializePersistence(persistentStorage),
+    trajectoryStore.initializePersistence(persistentStorage),
+    updateStore.initializePersistence(persistentStorage),
+  ]);
 
   const httpServer = http.createServer(app);
   let vite: import('vite').ViteDevServer | undefined;

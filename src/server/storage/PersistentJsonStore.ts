@@ -1,4 +1,6 @@
 import { Pool } from 'pg';
+import fs from 'fs';
+import path from 'path';
 
 export interface StoredSnapshotFile {
   relativePath: string;
@@ -10,10 +12,23 @@ export class PersistentJsonStore {
   private readonly pendingWrites = new Map<string, Promise<void>>();
   private readonly memoryDocs = new Map<string, any>();
   private readonly memoryFiles = new Map<string, StoredSnapshotFile[]>();
+  private readonly fallbackPath = path.resolve(
+    process.env.RARE_APP_ROOT || process.cwd(),
+    '.rare',
+    'state',
+    'persistent-documents.json',
+  );
+  private databaseStatus: { configured: boolean; reachable: boolean; schemaReady: boolean; error?: string };
 
   constructor(connectionString = process.env.DATABASE_URL) {
+    this.loadFallbackDocuments();
+    this.databaseStatus = {
+      configured: Boolean(connectionString),
+      reachable: false,
+      schemaReady: false,
+    };
     if (!connectionString) {
-      console.warn('[AI Studio] DATABASE_URL not set — using in-memory mock store');
+      console.warn('[AI Studio] DATABASE_URL not set — using local durable JSON storage');
       this.pool = null;
       return;
     }
@@ -32,18 +47,59 @@ export class PersistentJsonStore {
   }
 
   async checkConnection(): Promise<void> {
-    if (!this.pool) return;
+    if (!this.pool) {
+      this.databaseStatus = { configured: false, reachable: false, schemaReady: false };
+      return;
+    }
     try {
       await this.pool.query('SELECT 1');
-    } catch {
-      console.warn('[AI Studio] PostgreSQL query failed — continuing with in-memory fallback');
+      const result = await this.pool.query<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = current_schema() AND table_name = ANY($1::text[])`,
+        [[
+          'rare_persistent_documents',
+          'rare_checkpoint_files',
+          'projects',
+          'project_tasks',
+          'agent_events',
+          'artifacts',
+        ]],
+      );
+      const available = new Set(result.rows.map((row) => row.table_name));
+      const required = ['rare_persistent_documents', 'rare_checkpoint_files', 'projects', 'project_tasks', 'agent_events', 'artifacts'];
+      const missing = required.filter((table) => !available.has(table));
+      this.databaseStatus = {
+        configured: true,
+        reachable: true,
+        schemaReady: missing.length === 0,
+        error: missing.length > 0 ? `Database schema is missing: ${missing.join(', ')}` : undefined,
+      };
+      if (missing.length > 0) console.warn(`[AI Studio] Database schema is incomplete: ${missing.join(', ')}`);
+    } catch (error) {
+      this.databaseStatus = {
+        configured: true,
+        reachable: false,
+        schemaReady: false,
+        error: error instanceof Error ? error.message : 'Database connection failed',
+      };
+      console.warn('[AI Studio] PostgreSQL is unavailable — continuing with local durable JSON storage');
     }
+  }
+
+  getStatus(): { configured: boolean; reachable: boolean; schemaReady: boolean; error?: string; mode: string } {
+    return {
+      ...this.databaseStatus,
+      mode: this.pool && this.databaseStatus.reachable && this.databaseStatus.schemaReady
+        ? 'postgresql'
+        : 'local-json',
+    };
   }
 
   async getOrSeed<T>(key: string, initialValue: T): Promise<T> {
     if (!this.pool) {
       if (!this.memoryDocs.has(key)) {
         this.memoryDocs.set(key, initialValue);
+        this.saveFallbackDocuments();
       }
       return this.memoryDocs.get(key);
     }
@@ -54,12 +110,14 @@ export class PersistentJsonStore {
       );
       if (existing.rows.length > 0) return existing.rows[0].payload;
 
+      const fallbackValue = this.memoryDocs.has(key) ? this.memoryDocs.get(key) : initialValue;
+
       const inserted = await this.pool.query<{ payload: T }>(
         `INSERT INTO rare_persistent_documents (document_key, payload)
          VALUES ($1, $2::jsonb)
          ON CONFLICT (document_key) DO NOTHING
          RETURNING payload`,
-        [key, JSON.stringify(initialValue)],
+        [key, JSON.stringify(fallbackValue)],
       );
       if (inserted.rows.length > 0) return inserted.rows[0].payload;
 
@@ -76,12 +134,14 @@ export class PersistentJsonStore {
       if (!this.memoryDocs.has(key)) {
         this.memoryDocs.set(key, initialValue);
       }
+      this.saveFallbackDocuments();
       return this.memoryDocs.get(key);
     }
   }
 
   setDocument(key: string, value: unknown): void {
     this.memoryDocs.set(key, value);
+    this.saveFallbackDocuments();
     if (!this.pool) return;
     const payload = JSON.stringify(value);
     this.enqueue(key, async () => {
@@ -94,9 +154,71 @@ export class PersistentJsonStore {
           [key, payload],
         );
       } catch (err) {
+        this.databaseStatus = {
+          ...this.databaseStatus,
+          schemaReady: false,
+          error: err instanceof Error ? err.message : 'Database write failed',
+        };
         console.warn(`[AI Studio] Database write error for "${key}" — stored in-memory:`, err);
       }
     });
+  }
+
+  async persistProjectRun(run: Record<string, any>): Promise<void> {
+    if (!this.pool || !this.databaseStatus.schemaReady) return;
+    let client;
+    try {
+      client = await this.pool.connect();
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO projects (id, title, target_domain, objective, status, created_at, updated_at, payload)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+         ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, target_domain = EXCLUDED.target_domain,
+           objective = EXCLUDED.objective, status = EXCLUDED.status, updated_at = EXCLUDED.updated_at,
+           payload = EXCLUDED.payload`,
+        [run.id, run.title, run.targetDomain, run.objective, run.status, run.createdAt, run.updatedAt, JSON.stringify(run)],
+      );
+      for (const agent of run.agents || []) {
+        await client.query(
+          `INSERT INTO project_tasks (id, project_id, title, assigned_role, status, details, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+           ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, assigned_role = EXCLUDED.assigned_role,
+             status = EXCLUDED.status, details = EXCLUDED.details, updated_at = EXCLUDED.updated_at`,
+          [`${run.id}:${agent.id}`, run.id, agent.currentTask || agent.title, agent.role, agent.status, JSON.stringify(agent), run.createdAt, run.updatedAt],
+        );
+      }
+      for (const event of run.events || []) {
+        await client.query(
+          `INSERT INTO agent_events (id, project_id, agent_id, agent_name, level, message, tool_called, file_affected, created_at, payload)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
+           ON CONFLICT (id) DO UPDATE SET level = EXCLUDED.level, message = EXCLUDED.message,
+             tool_called = EXCLUDED.tool_called, file_affected = EXCLUDED.file_affected,
+             created_at = EXCLUDED.created_at, payload = EXCLUDED.payload`,
+          [event.id, run.id, event.agentId, event.agentName, event.level, event.message, event.toolCalled || null, event.fileAffected || null, event.createdAt || run.updatedAt, JSON.stringify(event)],
+        );
+      }
+      for (const artifact of run.artifacts || []) {
+        await client.query(
+          `INSERT INTO artifacts (id, project_id, name, media_type, size_bytes, storage_path, created_at, payload)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+           ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, media_type = EXCLUDED.media_type,
+             size_bytes = EXCLUDED.size_bytes, storage_path = EXCLUDED.storage_path,
+             created_at = EXCLUDED.created_at, payload = EXCLUDED.payload`,
+          [artifact.id || `${run.id}:${artifact.path}`, run.id, artifact.name, artifact.type, Number(artifact.sizeBytes) || 0, artifact.path, run.updatedAt, JSON.stringify(artifact)],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      if (client) await client.query('ROLLBACK').catch(() => {});
+      this.databaseStatus = {
+        ...this.databaseStatus,
+        schemaReady: false,
+        error: error instanceof Error ? error.message : 'Relational project persistence failed',
+      };
+      console.warn(`[AI Studio] Could not persist project run "${run.id}" relationally:`, error);
+    } finally {
+      client?.release();
+    }
   }
 
   async loadSnapshotFiles(checkpointId: string): Promise<StoredSnapshotFile[]> {
@@ -186,5 +308,27 @@ export class PersistentJsonStore {
     const next = (previous ? previous.catch(() => undefined) : Promise.resolve())
       .then(write);
     this.pendingWrites.set(key, next);
+  }
+
+  private loadFallbackDocuments(): void {
+    try {
+      const records = JSON.parse(fs.readFileSync(this.fallbackPath, 'utf8')) as Record<string, unknown>;
+      for (const [key, value] of Object.entries(records)) this.memoryDocs.set(key, value);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.warn('[AI Studio] Could not read local durable JSON state:', error);
+      }
+    }
+  }
+
+  private saveFallbackDocuments(): void {
+    try {
+      fs.mkdirSync(path.dirname(this.fallbackPath), { recursive: true });
+      const temporaryPath = `${this.fallbackPath}.tmp`;
+      fs.writeFileSync(temporaryPath, JSON.stringify(Object.fromEntries(this.memoryDocs), null, 2), 'utf8');
+      fs.renameSync(temporaryPath, this.fallbackPath);
+    } catch (error) {
+      console.warn('[AI Studio] Could not persist local durable JSON state:', error);
+    }
   }
 }

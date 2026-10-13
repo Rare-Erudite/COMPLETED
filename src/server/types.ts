@@ -13,6 +13,7 @@ export interface ModelInfo {
   architecture: string;
   type: ProviderType;
   requires_api_key: boolean;
+  is_configured?: boolean;
   is_available: boolean;
   active: boolean;
   weights_location: string;

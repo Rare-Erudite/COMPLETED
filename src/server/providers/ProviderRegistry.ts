@@ -142,6 +142,10 @@ export class ProviderRegistry {
     return this.offlineEngine;
   }
 
+  public getGeminiProvider(): GeminiCoprocessorProvider {
+    return this.geminiProvider;
+  }
+
   public getRareIntelligenceProvider(): RareIntelligenceProvider {
     return this.rareIntelligenceProvider;
   }

@@ -5,6 +5,7 @@ import { promisify } from 'util';
 import { ToolName, ToolSpec, ToolExecutionResult, RiskLevel } from '../types.js';
 import { MemoryStore } from '../storage/MemoryStore.js';
 import { CheckpointStore } from '../storage/CheckpointStore.js';
+import { ResearchService } from '../services/ResearchService.js';
 
 const execFileAsync = promisify(execFile);
 const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
@@ -214,7 +215,8 @@ export const TOOL_SPECS: Record<ToolName, ToolSpec> = {
 export class ToolExecutor {
   constructor(
     private memoryStore: MemoryStore,
-    private checkpointStore: CheckpointStore
+    private checkpointStore: CheckpointStore,
+    private researchService = new ResearchService(),
   ) {}
 
   public getSpecs(): ToolSpec[] {
@@ -391,7 +393,7 @@ export class ToolExecutor {
         case 'RUN_TEST': {
           const { testPath } = inputs;
           let testCmd = 'npm';
-          let testArgs = ['run', 'lint'];
+          let testArgs = ['test'];
           if (testPath) {
             testCmd = 'npx';
             testArgs = ['tsx', testPath];
@@ -399,7 +401,16 @@ export class ToolExecutor {
           try {
             const res = await execFileAsync(testCmd, testArgs, {
               cwd: PROJECT_ROOT,
-              timeout: 45000,
+              timeout: 120000,
+              maxBuffer: 2 * 1024 * 1024,
+              env: {
+                ...process.env,
+                OPENAI_API_KEY: '',
+                ANTHROPIC_API_KEY: '',
+                GEMINI_API_KEY: '',
+                RARE_API_TOKEN: '',
+                RARE_DEV_KEY: '',
+              },
             });
             output = {
               success: true,
@@ -422,6 +433,15 @@ export class ToolExecutor {
             const res = await execFileAsync('npx', ['vite', 'build'], {
               cwd: PROJECT_ROOT,
               timeout: 60000,
+              maxBuffer: 2 * 1024 * 1024,
+              env: {
+                ...process.env,
+                OPENAI_API_KEY: '',
+                ANTHROPIC_API_KEY: '',
+                GEMINI_API_KEY: '',
+                RARE_API_TOKEN: '',
+                RARE_DEV_KEY: '',
+              },
             });
             output = {
               success: true,
@@ -494,50 +514,7 @@ export class ToolExecutor {
         case 'RESEARCH': {
           const { query, maxResults = 5 } = inputs;
           if (!query) throw new Error('query is required');
-          const q = query.toLowerCase();
-
-          // Search knowledge base
-          const knowledgePath = path.resolve(PROJECT_ROOT, 'knowledge', 'knowledge.json');
-          const hits: any[] = [];
-          if (fs.existsSync(knowledgePath)) {
-            const kb = JSON.parse(fs.readFileSync(knowledgePath, 'utf-8'));
-            for (const entry of kb.entries || []) {
-              const full = `${entry.title} ${entry.text}`.toLowerCase();
-              if (q.split(' ').some((word: string) => word.length > 3 && full.includes(word))) {
-                hits.push({
-                  title: entry.title,
-                  source: entry.category || 'knowledge_base',
-                  credibility: 0.95,
-                  snippet: entry.text,
-                });
-              }
-            }
-          }
-
-          // Search docs
-          const docsDir = path.resolve(PROJECT_ROOT, 'docs');
-          if (fs.existsSync(docsDir)) {
-            const docFiles = fs.readdirSync(docsDir).slice(0, 15);
-            for (const docFile of docFiles) {
-              if (docFile.endsWith('.md')) {
-                const content = fs.readFileSync(path.resolve(docsDir, docFile), 'utf-8');
-                if (q.split(' ').some((w: string) => w.length > 3 && content.toLowerCase().includes(w))) {
-                  hits.push({
-                    title: docFile.replace('.md', ''),
-                    source: `docs/${docFile}`,
-                    credibility: 0.9,
-                    snippet: content.slice(0, 250).replace(/\n/g, ' '),
-                  });
-                }
-              }
-            }
-          }
-
-          output = {
-            query,
-            totalHits: hits.length,
-            findings: hits.slice(0, maxResults),
-          };
+          output = await this.researchService.search(String(query), Number(maxResults));
           break;
         }
 
