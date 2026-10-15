@@ -75,3 +75,14 @@ CREATE TABLE IF NOT EXISTS artifacts (
 
 CREATE INDEX IF NOT EXISTS artifacts_project_created_idx
   ON artifacts (project_id, created_at);
+
+CREATE TABLE IF NOT EXISTS rare_sessions (
+  session_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS rare_sessions_user_expires_idx
+  ON rare_sessions (user_id, expires_at DESC);

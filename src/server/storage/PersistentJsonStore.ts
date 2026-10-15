@@ -63,10 +63,11 @@ export class PersistentJsonStore {
           'project_tasks',
           'agent_events',
           'artifacts',
+          'rare_sessions',
         ]],
       );
       const available = new Set(result.rows.map((row) => row.table_name));
-      const required = ['rare_persistent_documents', 'rare_checkpoint_files', 'projects', 'project_tasks', 'agent_events', 'artifacts'];
+      const required = ['rare_persistent_documents', 'rare_checkpoint_files', 'projects', 'project_tasks', 'agent_events', 'artifacts', 'rare_sessions'];
       const missing = required.filter((table) => !available.has(table));
       this.databaseStatus = {
         configured: true,
@@ -276,6 +277,43 @@ export class PersistentJsonStore {
         if (client) client.release();
       }
     });
+  }
+
+  async saveSession(sessionId: string, userId: string, payload: any, expiresAtIso: string): Promise<void> {
+    if (!this.pool || !this.databaseStatus.schemaReady) return;
+    try {
+      await this.pool.query(
+        `INSERT INTO rare_sessions (session_id, user_id, payload, expires_at, created_at)
+         VALUES ($1, $2, $3::jsonb, $4::timestamptz, now())
+         ON CONFLICT (session_id) DO UPDATE SET
+           payload = EXCLUDED.payload, expires_at = EXCLUDED.expires_at`,
+        [sessionId, userId, JSON.stringify(payload), expiresAtIso],
+      );
+    } catch (err) {
+      console.warn(`[AI Studio] Database write error for session "${sessionId}":`, err);
+    }
+  }
+
+  async removeSession(sessionId: string): Promise<void> {
+    if (!this.pool || !this.databaseStatus.schemaReady) return;
+    try {
+      await this.pool.query('DELETE FROM rare_sessions WHERE session_id = $1', [sessionId]);
+    } catch (err) {
+      console.warn(`[AI Studio] Database delete error for session "${sessionId}":`, err);
+    }
+  }
+
+  async loadSessions(): Promise<Array<{ session_id: string; user_id: string; payload: any; expires_at: string }>> {
+    if (!this.pool || !this.databaseStatus.schemaReady) return [];
+    try {
+      const result = await this.pool.query<{ session_id: string; user_id: string; payload: any; expires_at: string }>(
+        'SELECT session_id, user_id, payload, expires_at FROM rare_sessions WHERE expires_at > now()',
+      );
+      return result.rows;
+    } catch (err) {
+      console.warn('[AI Studio] Database loadSessions error:', err);
+      return [];
+    }
   }
 
   async flush(): Promise<void> {

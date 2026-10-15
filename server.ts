@@ -229,6 +229,9 @@ function createSession(user: AppUser): SessionData {
     devExpiresAt: 0,
   };
   activeSessions.set(sessionId, session);
+  if (persistentStorage) {
+    void persistentStorage.saveSession(sessionId, user.id, session, new Date(session.expiresAt).toISOString());
+  }
   return session;
 }
 
@@ -239,12 +242,18 @@ function getSession(req: express.Request): SessionData | null {
   if (!session) return null;
   if (Date.now() > session.expiresAt) {
     activeSessions.delete(sessionId);
+    if (persistentStorage) {
+      void persistentStorage.removeSession(sessionId);
+    }
     return null;
   }
   return session;
 }
 
 function revokeSession(sessionId: string): boolean {
+  if (persistentStorage) {
+    void persistentStorage.removeSession(sessionId);
+  }
   return activeSessions.delete(sessionId);
 }
 
@@ -3617,6 +3626,15 @@ async function startServer() {
     trajectoryStore.initializePersistence(persistentStorage),
     updateStore.initializePersistence(persistentStorage),
   ]);
+
+  if (persistentStorage) {
+    const dbSessions = await persistentStorage.loadSessions();
+    for (const row of dbSessions) {
+      if (row.payload && row.payload.id) {
+        activeSessions.set(row.payload.id, row.payload);
+      }
+    }
+  }
 
   const httpServer = http.createServer(app);
   let vite: import('vite').ViteDevServer | undefined;
