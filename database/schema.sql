@@ -35,6 +35,7 @@ CREATE INDEX IF NOT EXISTS projects_user_updated_idx
 CREATE TABLE IF NOT EXISTS project_tasks (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL DEFAULT 'usr_system_legacy',
   title TEXT NOT NULL,
   assigned_role TEXT NOT NULL,
   status TEXT NOT NULL,
@@ -43,12 +44,13 @@ CREATE TABLE IF NOT EXISTS project_tasks (
   updated_at TIMESTAMPTZ NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS project_tasks_project_updated_idx
-  ON project_tasks (project_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS project_tasks_user_updated_idx
+  ON project_tasks (user_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS agent_events (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL DEFAULT 'usr_system_legacy',
   agent_id TEXT NOT NULL,
   agent_name TEXT NOT NULL,
   level TEXT NOT NULL CHECK (level IN ('info', 'warn', 'error', 'success')),
@@ -59,12 +61,13 @@ CREATE TABLE IF NOT EXISTS agent_events (
   payload JSONB NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS agent_events_project_created_idx
-  ON agent_events (project_id, created_at);
+CREATE INDEX IF NOT EXISTS agent_events_user_created_idx
+  ON agent_events (user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL DEFAULT 'usr_system_legacy',
   name TEXT NOT NULL,
   media_type TEXT NOT NULL,
   size_bytes BIGINT NOT NULL DEFAULT 0 CHECK (size_bytes >= 0),
@@ -73,8 +76,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
   payload JSONB NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS artifacts_project_created_idx
-  ON artifacts (project_id, created_at);
+CREATE INDEX IF NOT EXISTS artifacts_user_created_idx
+  ON artifacts (user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS rare_sessions (
   session_id TEXT PRIMARY KEY,

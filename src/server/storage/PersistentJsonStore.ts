@@ -182,31 +182,31 @@ export class PersistentJsonStore {
       );
       for (const agent of run.agents || []) {
         await client.query(
-          `INSERT INTO project_tasks (id, project_id, title, assigned_role, status, details, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
-           ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, assigned_role = EXCLUDED.assigned_role,
+          `INSERT INTO project_tasks (id, project_id, user_id, title, assigned_role, status, details, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
+           ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, title = EXCLUDED.title, assigned_role = EXCLUDED.assigned_role,
              status = EXCLUDED.status, details = EXCLUDED.details, updated_at = EXCLUDED.updated_at`,
-          [`${run.id}:${agent.id}`, run.id, agent.currentTask || agent.title, agent.role, agent.status, JSON.stringify(agent), run.createdAt, run.updatedAt],
+          [`${run.id}:${agent.id}`, run.id, userId, agent.currentTask || agent.title, agent.role, agent.status, JSON.stringify(agent), run.createdAt, run.updatedAt],
         );
       }
       for (const event of run.events || []) {
         await client.query(
-          `INSERT INTO agent_events (id, project_id, agent_id, agent_name, level, message, tool_called, file_affected, created_at, payload)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
-           ON CONFLICT (id) DO UPDATE SET level = EXCLUDED.level, message = EXCLUDED.message,
+          `INSERT INTO agent_events (id, project_id, user_id, agent_id, agent_name, level, message, tool_called, file_affected, created_at, payload)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+           ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, level = EXCLUDED.level, message = EXCLUDED.message,
              tool_called = EXCLUDED.tool_called, file_affected = EXCLUDED.file_affected,
              created_at = EXCLUDED.created_at, payload = EXCLUDED.payload`,
-          [event.id, run.id, event.agentId, event.agentName, event.level, event.message, event.toolCalled || null, event.fileAffected || null, event.createdAt || run.updatedAt, JSON.stringify(event)],
+          [event.id, run.id, userId, event.agentId, event.agentName, event.level, event.message, event.toolCalled || null, event.fileAffected || null, event.createdAt || run.updatedAt, JSON.stringify(event)],
         );
       }
       for (const artifact of run.artifacts || []) {
         await client.query(
-          `INSERT INTO artifacts (id, project_id, name, media_type, size_bytes, storage_path, created_at, payload)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-           ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, media_type = EXCLUDED.media_type,
+          `INSERT INTO artifacts (id, project_id, user_id, name, media_type, size_bytes, storage_path, created_at, payload)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+           ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, name = EXCLUDED.name, media_type = EXCLUDED.media_type,
              size_bytes = EXCLUDED.size_bytes, storage_path = EXCLUDED.storage_path,
              created_at = EXCLUDED.created_at, payload = EXCLUDED.payload`,
-          [artifact.id || `${run.id}:${artifact.path}`, run.id, artifact.name, artifact.type, Number(artifact.sizeBytes) || 0, artifact.path, run.updatedAt, JSON.stringify(artifact)],
+          [artifact.id || `${run.id}:${artifact.path}`, run.id, userId, artifact.name, artifact.type, Number(artifact.sizeBytes) || 0, artifact.path, run.updatedAt, JSON.stringify(artifact)],
         );
       }
       await client.query('COMMIT');
@@ -300,6 +300,21 @@ export class PersistentJsonStore {
       await this.pool.query('DELETE FROM rare_sessions WHERE session_id = $1', [sessionId]);
     } catch (err) {
       console.warn(`[AI Studio] Database delete error for session "${sessionId}":`, err);
+    }
+  }
+
+  async loadSession(sessionId: string): Promise<any | null> {
+    if (!this.pool || !this.databaseStatus.schemaReady) return null;
+    try {
+      const result = await this.pool.query<{ payload: any }>(
+        'SELECT payload FROM rare_sessions WHERE session_id = $1 AND expires_at > now()',
+        [sessionId],
+      );
+      if (result.rows.length > 0) return result.rows[0].payload;
+      return null;
+    } catch (err) {
+      console.warn(`[AI Studio] Database loadSession error for "${sessionId}":`, err);
+      return null;
     }
   }
 

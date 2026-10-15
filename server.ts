@@ -935,7 +935,7 @@ async function generateAssistantReply(
 // API Endpoints
 // -----------------------------------------------------------------------------
 
-// Health
+// Public Health Check Endpoint (Intentionally public and unauthenticated for uptime monitors & load balancers)
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
@@ -1563,12 +1563,12 @@ app.post('/api/intelligence/repair', requireDeveloperAuth, async (req: Authentic
   });
 });
 
-app.get('/api/intelligence/trajectories', (req, res) => {
+app.get('/api/intelligence/trajectories', requireAuth, (_req, res) => {
   res.json(trajectoryStore.getAll());
 });
 
 // Real Checkpoints List
-app.get('/api/checkpoints', (req, res) => {
+app.get('/api/checkpoints', requireAuth, (_req, res) => {
   res.json(checkpointStore.getAll());
 });
 
@@ -1584,7 +1584,7 @@ app.post('/api/tools/execute', requireAuth, async (req: AuthenticatedRequest, re
   }
   const session = req.session!;
   const isDevAuth = Boolean(session.isDeveloper && Date.now() < (session.devExpiresAt || 0));
-  const privilegedTools = ['WRITE_FILE', 'EXECUTE_COMMAND', 'RESTORE_CHECKPOINT', 'SELF_DEVELOP'];
+  const privilegedTools = ['WRITE_FILE', 'READ_FILE', 'EXECUTE_COMMAND', 'RESTORE_CHECKPOINT', 'SELF_DEVELOP'];
   if (privilegedTools.includes(tool) && !isDevAuth) {
     return res.status(403).json({ error: { message: `Executing privileged tool '${tool}' requires developer authorization.` } });
   }
@@ -1621,6 +1621,9 @@ app.post('/api/developer/auth', requireAuth, (req: AuthenticatedRequest, res) =>
     session.isDeveloper = true;
     session.devExpiresAt = Date.now() + 4 * 3600 * 1000;
     setSessionCookie(res, session.id);
+    if (persistentStorage) {
+      void persistentStorage.saveSession(session.id, session.userId, session, new Date(session.expiresAt).toISOString());
+    }
 
     auditLog.unshift({
       id: `aud_${Date.now()}`,
@@ -1649,6 +1652,9 @@ app.post('/api/developer/logout', (req: AuthenticatedRequest, res) => {
   if (session) {
     session.isDeveloper = false;
     session.devExpiresAt = 0;
+    if (persistentStorage) {
+      void persistentStorage.saveSession(session.id, session.userId, session, new Date(session.expiresAt).toISOString());
+    }
   }
   res.json({ success: true, message: 'Developer session locked.' });
 });
@@ -2904,12 +2910,12 @@ app.post('/api/documents/convert', requireAuth, (req: AuthenticatedRequest, res)
   }
 });
 
-// Research Engine
+// Research Engine - Public cached research items index (Intentionally read-only and unauthenticated)
 app.get('/api/research/items', (req, res) => {
   res.json(researchCache);
 });
 
-app.post('/api/research/search', async (req, res) => {
+app.post('/api/research/search', requireAuth, async (req: AuthenticatedRequest, res) => {
   const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
   if (!query) return res.status(400).json({ error: { message: 'A research query is required.' } });
   try {
@@ -2960,7 +2966,7 @@ app.post('/api/updates/apply', requireAuth, (req: AuthenticatedRequest, res) => 
   });
 });
 
-// Diagnostics Selftest Matrix
+// Diagnostics Selftest Matrix - Public read-only system diagnostic status (Intentionally unauthenticated)
 app.get('/api/tools/selftest', (req, res) => {
   res.json({
     allPassed: true,
@@ -3346,16 +3352,17 @@ app.get('/api/images/status', (req, res) => {
 });
 
 // Image Gallery List
-app.get('/api/images/gallery', (req, res) => {
+app.get('/api/images/gallery', requireAuth, (req: AuthenticatedRequest, res) => {
+  const userImages = imageGallery.filter((img: any) => img.userId === req.user!.id);
   res.json({
-    images: imageGallery,
-    total: imageGallery.length,
+    images: userImages,
+    total: userImages.length,
   });
 });
 
 // Delete Image from Gallery
-app.delete('/api/images/gallery/:id', (req, res) => {
-  const idx = imageGallery.findIndex((img) => img.id === req.params.id);
+app.delete('/api/images/gallery/:id', requireAuth, (req: AuthenticatedRequest, res) => {
+  const idx = imageGallery.findIndex((img: any) => img.id === req.params.id && img.userId === req.user!.id);
   if (idx !== -1) {
     imageGallery.splice(idx, 1);
     return res.json({ success: true });
@@ -3364,7 +3371,7 @@ app.delete('/api/images/gallery/:id', (req, res) => {
 });
 
 // Generate Image Endpoint (Gemini 3 Pro Image & Nano Banana 2.1)
-app.post('/api/images/generate', async (req, res) => {
+app.post('/api/images/generate', requireAuth, async (req: AuthenticatedRequest, res) => {
   const {
     prompt,
     model = 'gemini-3-pro-image-preview',
@@ -3433,8 +3440,9 @@ app.post('/api/images/generate', async (req, res) => {
     source = 'procedural_renderer';
   }
 
-  const newRecord: ImageRecord = {
+  const newRecord: ImageRecord & { userId: string } = {
     id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    userId: req.user!.id,
     url: generatedUrl,
     prompt: cleanPrompt,
     model: validModel,
@@ -3469,7 +3477,7 @@ app.post('/api/images/generate', async (req, res) => {
 });
 
 // Edit Image Endpoint (Gemini Nano Banana 2.1)
-app.post('/api/images/edit', async (req, res) => {
+app.post('/api/images/edit', requireAuth, async (req: AuthenticatedRequest, res) => {
   const {
     image,
     prompt,
@@ -3553,8 +3561,9 @@ app.post('/api/images/edit', async (req, res) => {
     source = 'procedural_renderer';
   }
 
-  const newRecord: ImageRecord = {
+  const newRecord: ImageRecord & { userId: string } = {
     id: `img_edit_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    userId: req.user!.id,
     url: editedUrl,
     originalUrl: typeof image === 'string' && image.length > 10 ? image : undefined,
     prompt: cleanPrompt,
