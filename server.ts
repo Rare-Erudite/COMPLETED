@@ -1479,7 +1479,7 @@ app.get('/api/v1/providers/available', async (_req, res) => {
   }
 });
 
-app.post('/api/v1/providers/active', (req, res) => {
+app.post('/api/v1/providers/active', requireDeveloperAuth, (req: AuthenticatedRequest, res) => {
   try {
     const { providerId } = req.body;
     engine.providers.setActiveProvider(providerId);
@@ -1492,7 +1492,7 @@ app.post('/api/v1/providers/active', (req, res) => {
   }
 });
 
-app.post('/api/v1/providers/load-local', async (_req, res) => {
+app.post('/api/v1/providers/load-local', requireDeveloperAuth, async (_req: AuthenticatedRequest, res) => {
   try {
     const localProvider = engine.providers.getProvider('local-transformers') as any;
     const success = await localProvider.loadModel();
@@ -1540,16 +1540,15 @@ app.post('/api/intelligence/evaluate', async (req, res) => {
 });
 
 // Real Self-Diagnosis & Repair Loop using SelfDevelopmentEngine
-app.post('/api/intelligence/repair', async (req, res) => {
-  const session = getSession(req);
-  const isAuth = Boolean(session?.isDeveloper && Date.now() < (session.devExpiresAt || 0));
+app.post('/api/intelligence/repair', requireDeveloperAuth, async (req: AuthenticatedRequest, res) => {
+  const session = req.session!;
   const { sampleTask = 'Execute diagnosis and verify rollback on error' } = req.body;
-  const result = await selfDevEngine.executeCycle({ instruction: sampleTask }, isAuth);
+  const result = await selfDevEngine.executeCycle({ instruction: sampleTask }, true);
 
   auditLog.unshift({
     id: `aud_${Date.now()}`,
     timestamp: new Date().toISOString(),
-    actor: isAuth ? (session?.user.email || 'developer') : 'system',
+    actor: session.user.email || session.user.id,
     action: 'repair_cycle_executed',
     kind: 'dev_privileged',
     details: `Executed repair cycle: ${result.status} (checkpoint: ${result.checkpointId}).`,
@@ -1578,19 +1577,23 @@ app.get('/api/tools', (req, res) => {
   res.json(toolExecutor.getSpecs());
 });
 
-app.post('/api/tools/execute', async (req, res) => {
+app.post('/api/tools/execute', requireAuth, async (req: AuthenticatedRequest, res) => {
   const { tool, inputs = {} } = req.body;
   if (!tool) {
     return res.status(400).json({ error: { message: 'tool name is required.' } });
   }
-  const session = getSession(req);
-  const isAuth = Boolean(session?.isDeveloper && Date.now() < (session.devExpiresAt || 0));
-  const result = await toolExecutor.execute(tool, inputs, { isDeveloperAuth: isAuth });
+  const session = req.session!;
+  const isDevAuth = Boolean(session.isDeveloper && Date.now() < (session.devExpiresAt || 0));
+  const privilegedTools = ['WRITE_FILE', 'EXECUTE_COMMAND', 'RESTORE_CHECKPOINT', 'SELF_DEVELOP'];
+  if (privilegedTools.includes(tool) && !isDevAuth) {
+    return res.status(403).json({ error: { message: `Executing privileged tool '${tool}' requires developer authorization.` } });
+  }
+  const result = await toolExecutor.execute(tool, inputs, { isDeveloperAuth: isDevAuth });
   res.json(result);
 });
 
 
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', requireAuth, (req: AuthenticatedRequest, res) => {
   const { assistant_name, autonomy_level: newAutonomy, theme: newTheme } = req.body;
   if (assistant_name) appSettings.assistantName = assistant_name.trim();
   if (typeof newAutonomy === 'number') appSettings.autonomyLevel = newAutonomy;
@@ -1606,7 +1609,7 @@ app.post('/api/settings', (req, res) => {
 });
 
 // Developer Authentication Gate
-app.post('/api/developer/auth', (req: AuthenticatedRequest, res) => {
+app.post('/api/developer/auth', requireAuth, (req: AuthenticatedRequest, res) => {
   const { passkey } = req.body;
   if (!currentDeveloperPasskey) {
     return res.status(503).json({
@@ -1614,18 +1617,7 @@ app.post('/api/developer/auth', (req: AuthenticatedRequest, res) => {
     });
   }
   if (passkey === currentDeveloperPasskey) {
-    let session = getSession(req);
-    if (!session) {
-      const devOwner = registeredUsers.get('rarelivescore@gmail.com') || {
-        id: 'usr_owner_1',
-        name: 'RARE Core Owner',
-        email: 'rarelivescore@gmail.com',
-        provider: 'google',
-        role: 'developer',
-        createdAt: new Date().toISOString(),
-      };
-      session = createSession(devOwner);
-    }
+    const session = req.session!;
     session.isDeveloper = true;
     session.devExpiresAt = Date.now() + 4 * 3600 * 1000;
     setSessionCookie(res, session.id);
@@ -1638,7 +1630,7 @@ app.post('/api/developer/auth', (req: AuthenticatedRequest, res) => {
       kind: 'dev_privileged',
       details: 'Developer authorization gate unlocked with valid passkey for session.',
     });
-    return res.json({ success: true, message: 'Developer session active.', sessionId: session.id });
+    return res.json({ success: true, message: 'Developer session active.' });
   }
 
   auditLog.unshift({
@@ -1765,7 +1757,6 @@ app.get('/api/user/me', (req: AuthenticatedRequest, res) => {
   res.json({
     success: true,
     user: session.user,
-    sessionId: session.id,
     isDeveloper: Boolean(session.isDeveloper && Date.now() < (session.devExpiresAt || 0)),
   });
 });
@@ -1833,7 +1824,6 @@ app.post('/api/user/oauth', async (req, res) => {
     res.json({
       success: true,
       user: session.user,
-      sessionId: session.id,
     });
   } catch (err: any) {
     return res.status(401).json({
@@ -1873,7 +1863,6 @@ app.post('/api/user/signup', async (req, res) => {
   res.json({
     success: true,
     user: session.user,
-    sessionId: session.id,
   });
 });
 
@@ -1907,7 +1896,6 @@ app.post('/api/user/login', async (req, res) => {
   res.json({
     success: true,
     user: session.user,
-    sessionId: session.id,
   });
 });
 
@@ -2026,7 +2014,6 @@ app.post('/api/user/verify-otp', (req, res) => {
   res.json({
     success: true,
     user: session.user,
-    sessionId: session.id,
   });
 });
 
@@ -2137,7 +2124,6 @@ app.post('/api/user/verify-email-otp', (req, res) => {
   res.json({
     success: true,
     user: session.user,
-    sessionId: session.id,
   });
 });
 
@@ -2957,7 +2943,7 @@ app.post('/api/research/search', async (req, res) => {
 });
 
 // Updates Apply Endpoint
-app.post('/api/updates/apply', (req, res) => {
+app.post('/api/updates/apply', requireAuth, (req: AuthenticatedRequest, res) => {
   const { version } = req.body;
   auditLog.unshift({
     id: `aud_${Date.now()}`,
@@ -3193,7 +3179,7 @@ app.get('/api/plugins', (req, res) => {
   res.json(pluginsDirectory);
 });
 
-app.post('/api/plugins/:id/toggle', (req, res) => {
+app.post('/api/plugins/:id/toggle', requireDeveloperAuth, (req: AuthenticatedRequest, res) => {
   const plugin = pluginsDirectory.find((p) => p.id === req.params.id);
   if (!plugin) return res.status(404).json({ error: { message: 'Plugin not found' } });
   plugin.installed = !plugin.installed;

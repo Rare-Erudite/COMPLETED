@@ -95,6 +95,7 @@ export async function runUserIsolationSecurityTests() {
   });
   countAssert(signupA.status === 200, 'User A signup succeeded');
   countAssert(Boolean(signupA.cookie), 'User A signup must issue session cookie');
+  countAssert(signupA.data.sessionId === undefined, 'Signup JSON payload must NOT expose session secret');
   const cookieA = signupA.cookie!;
   const userAId = signupA.data.user.id;
 
@@ -207,7 +208,15 @@ export async function runUserIsolationSecurityTests() {
 
   // 5. Developer Authorization Isolation Across Sessions
   console.log('5. Testing developer session isolation...');
-  const passkey = process.env.RARE_DEV_KEY || 'dev_master_key_045';
+  const passkey = process.env.RARE_DEV_KEY || '';
+
+  // Unauthenticated developer auth attempt must be rejected (requireAuth)
+  const unauthDevAuth = await request('/api/developer/auth', {
+    method: 'POST',
+    body: { passkey },
+  });
+  countAssert(unauthDevAuth.status === 401, 'Unauthenticated developer auth attempt must return HTTP 401');
+
   const devAuthA = await request('/api/developer/auth', {
     method: 'POST',
     cookie: cookieA,
