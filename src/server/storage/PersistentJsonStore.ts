@@ -175,7 +175,7 @@ export class PersistentJsonStore {
       await client.query(
         `INSERT INTO projects (id, user_id, title, target_domain, objective, status, created_at, updated_at, payload)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-         ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, title = EXCLUDED.title, target_domain = EXCLUDED.target_domain,
+         ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, target_domain = EXCLUDED.target_domain,
            objective = EXCLUDED.objective, status = EXCLUDED.status, updated_at = EXCLUDED.updated_at,
            payload = EXCLUDED.payload`,
         [run.id, userId, run.title, run.targetDomain, run.objective, run.status, run.createdAt, run.updatedAt, JSON.stringify(run)],
@@ -184,7 +184,7 @@ export class PersistentJsonStore {
         await client.query(
           `INSERT INTO project_tasks (id, project_id, user_id, title, assigned_role, status, details, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
-           ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, title = EXCLUDED.title, assigned_role = EXCLUDED.assigned_role,
+           ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, assigned_role = EXCLUDED.assigned_role,
              status = EXCLUDED.status, details = EXCLUDED.details, updated_at = EXCLUDED.updated_at`,
           [`${run.id}:${agent.id}`, run.id, userId, agent.currentTask || agent.title, agent.role, agent.status, JSON.stringify(agent), run.createdAt, run.updatedAt],
         );
@@ -193,7 +193,7 @@ export class PersistentJsonStore {
         await client.query(
           `INSERT INTO agent_events (id, project_id, user_id, agent_id, agent_name, level, message, tool_called, file_affected, created_at, payload)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
-           ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, level = EXCLUDED.level, message = EXCLUDED.message,
+           ON CONFLICT (id) DO UPDATE SET level = EXCLUDED.level, message = EXCLUDED.message,
              tool_called = EXCLUDED.tool_called, file_affected = EXCLUDED.file_affected,
              created_at = EXCLUDED.created_at, payload = EXCLUDED.payload`,
           [event.id, run.id, userId, event.agentId, event.agentName, event.level, event.message, event.toolCalled || null, event.fileAffected || null, event.createdAt || run.updatedAt, JSON.stringify(event)],
@@ -203,7 +203,7 @@ export class PersistentJsonStore {
         await client.query(
           `INSERT INTO artifacts (id, project_id, user_id, name, media_type, size_bytes, storage_path, created_at, payload)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
-           ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, name = EXCLUDED.name, media_type = EXCLUDED.media_type,
+           ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, media_type = EXCLUDED.media_type,
              size_bytes = EXCLUDED.size_bytes, storage_path = EXCLUDED.storage_path,
              created_at = EXCLUDED.created_at, payload = EXCLUDED.payload`,
           [artifact.id || `${run.id}:${artifact.path}`, run.id, userId, artifact.name, artifact.type, Number(artifact.sizeBytes) || 0, artifact.path, run.updatedAt, JSON.stringify(artifact)],
