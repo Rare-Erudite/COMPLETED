@@ -89,7 +89,7 @@ const appSettings = durableStateStore.trackObject('app_settings', {
 });
 
 // Developer authorization secret
-let currentDeveloperPasskey = process.env.RARE_DEV_KEY?.trim() || 'dev_master_key_045';
+let currentDeveloperPasskey = process.env.RARE_DEV_KEY?.trim() || null;
 
 // Access requests dispatched to owner (rarelivescore@gmail.com)
 interface DevAccessRequest {
