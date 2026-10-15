@@ -22,7 +22,9 @@ export class DocumentStore {
   }
 
   private getUserRoot(userId?: string): string {
-    if (!userId || !userId.trim()) return this.root;
+    if (!userId || !userId.trim()) {
+      throw new Error('Authenticated user ID is required for document storage.');
+    }
     const cleanId = userId.replace(/[^a-zA-Z0-9_-]/g, '_');
     return path.join(this.root, 'users', cleanId);
   }

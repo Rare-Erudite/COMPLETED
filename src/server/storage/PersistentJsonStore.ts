@@ -7,11 +7,24 @@ export interface StoredSnapshotFile {
   content: Buffer;
 }
 
+export interface StoredAppUser {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  passwordHash?: string;
+  provider: 'google' | 'outlook' | 'email' | 'phone';
+  role: 'developer' | 'user';
+  createdAt: string;
+}
+
 export class PersistentJsonStore {
   private readonly pool: Pool | null = null;
   private readonly pendingWrites = new Map<string, Promise<void>>();
   private readonly memoryDocs = new Map<string, any>();
   private readonly memoryFiles = new Map<string, StoredSnapshotFile[]>();
+  private readonly memoryUsers = new Map<string, StoredAppUser>();
+  private readonly memorySessions = new Map<string, any>();
   private readonly fallbackPath = path.resolve(
     process.env.RARE_APP_ROOT || process.cwd(),
     '.rare',
@@ -85,6 +98,21 @@ export class PersistentJsonStore {
       };
       console.warn('[AI Studio] PostgreSQL is unavailable — continuing with local durable JSON storage');
     }
+  }
+
+  private requireReadyPostgres(): Pool {
+    if (
+      !this.pool ||
+      !this.databaseStatus.configured ||
+      !this.databaseStatus.reachable ||
+      !this.databaseStatus.schemaReady
+    ) {
+      throw new Error(
+        this.databaseStatus.error ||
+        'PostgreSQL is unavailable or its schema is not ready.',
+      );
+    }
+    return this.pool;
   }
 
   getStatus(): { configured: boolean; reachable: boolean; schemaReady: boolean; error?: string; mode: string } {
@@ -177,7 +205,8 @@ export class PersistentJsonStore {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
          ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, target_domain = EXCLUDED.target_domain,
            objective = EXCLUDED.objective, status = EXCLUDED.status, updated_at = EXCLUDED.updated_at,
-           payload = EXCLUDED.payload`,
+           payload = EXCLUDED.payload
+         WHERE projects.user_id = EXCLUDED.user_id`,
         [run.id, userId, run.title, run.targetDomain, run.objective, run.status, run.createdAt, run.updatedAt, JSON.stringify(run)],
       );
       for (const agent of run.agents || []) {
@@ -185,7 +214,8 @@ export class PersistentJsonStore {
           `INSERT INTO project_tasks (id, project_id, user_id, title, assigned_role, status, details, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
            ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, assigned_role = EXCLUDED.assigned_role,
-             status = EXCLUDED.status, details = EXCLUDED.details, updated_at = EXCLUDED.updated_at`,
+             status = EXCLUDED.status, details = EXCLUDED.details, updated_at = EXCLUDED.updated_at
+           WHERE project_tasks.user_id = EXCLUDED.user_id`,
           [`${run.id}:${agent.id}`, run.id, userId, agent.currentTask || agent.title, agent.role, agent.status, JSON.stringify(agent), run.createdAt, run.updatedAt],
         );
       }
@@ -195,7 +225,8 @@ export class PersistentJsonStore {
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
            ON CONFLICT (id) DO UPDATE SET level = EXCLUDED.level, message = EXCLUDED.message,
              tool_called = EXCLUDED.tool_called, file_affected = EXCLUDED.file_affected,
-             created_at = EXCLUDED.created_at, payload = EXCLUDED.payload`,
+             created_at = EXCLUDED.created_at, payload = EXCLUDED.payload
+           WHERE agent_events.user_id = EXCLUDED.user_id`,
           [event.id, run.id, userId, event.agentId, event.agentName, event.level, event.message, event.toolCalled || null, event.fileAffected || null, event.createdAt || run.updatedAt, JSON.stringify(event)],
         );
       }
@@ -205,7 +236,8 @@ export class PersistentJsonStore {
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, media_type = EXCLUDED.media_type,
              size_bytes = EXCLUDED.size_bytes, storage_path = EXCLUDED.storage_path,
-             created_at = EXCLUDED.created_at, payload = EXCLUDED.payload`,
+             created_at = EXCLUDED.created_at, payload = EXCLUDED.payload
+           WHERE artifacts.user_id = EXCLUDED.user_id`,
           [artifact.id || `${run.id}:${artifact.path}`, run.id, userId, artifact.name, artifact.type, Number(artifact.sizeBytes) || 0, artifact.path, run.updatedAt, JSON.stringify(artifact)],
         );
       }
@@ -279,42 +311,306 @@ export class PersistentJsonStore {
     });
   }
 
-  async saveSession(sessionId: string, userId: string, payload: any, expiresAtIso: string): Promise<void> {
-    if (!this.pool || !this.databaseStatus.schemaReady) return;
+  async saveSession(
+    sessionId: string,
+    userId: string,
+    payload: any,
+    expiresAtIso: string,
+  ): Promise<void> {
+    if (
+      !sessionId ||
+      !userId ||
+      payload?.id !== sessionId ||
+      payload?.userId !== userId ||
+      payload?.user?.id !== userId
+    ) {
+      throw new Error('Session identity validation failed.');
+    }
+
+    if (!this.pool || !this.databaseStatus.schemaReady) {
+      this.memorySessions.set(sessionId, { ...payload, userId, expiresAtIso });
+      return;
+    }
+
     try {
-      await this.pool.query(
-        `INSERT INTO rare_sessions (session_id, user_id, payload, expires_at, created_at)
+      const result = await this.pool.query(
+        `INSERT INTO rare_sessions
+           (session_id, user_id, payload, expires_at, created_at)
          VALUES ($1, $2, $3::jsonb, $4::timestamptz, now())
-         ON CONFLICT (session_id) DO UPDATE SET
-           payload = EXCLUDED.payload, expires_at = EXCLUDED.expires_at`,
+         ON CONFLICT (session_id) DO UPDATE
+           SET payload = EXCLUDED.payload,
+               expires_at = EXCLUDED.expires_at
+           WHERE rare_sessions.user_id = EXCLUDED.user_id
+         RETURNING session_id`,
         [sessionId, userId, JSON.stringify(payload), expiresAtIso],
       );
+
+      if (result.rowCount !== 1) {
+        throw new Error(
+          'Session persistence failed or the session ID belongs to a different user.',
+        );
+      }
     } catch (err) {
-      console.warn(`[AI Studio] Database write error for session "${sessionId}":`, err);
+      console.warn(`[AI Studio] Database saveSession error — falling back to memory:`, err);
+      this.memorySessions.set(sessionId, { ...payload, userId, expiresAtIso });
+      if (process.env.NODE_ENV === 'production' && this.databaseStatus.configured) {
+        throw err;
+      }
     }
   }
 
   async removeSession(sessionId: string): Promise<void> {
-    if (!this.pool || !this.databaseStatus.schemaReady) return;
+    if (!sessionId) {
+      throw new Error('A session ID is required for revocation.');
+    }
+
+    this.memorySessions.delete(sessionId);
+
+    if (!this.pool || !this.databaseStatus.schemaReady) {
+      return;
+    }
+
     try {
-      await this.pool.query('DELETE FROM rare_sessions WHERE session_id = $1', [sessionId]);
+      await this.pool.query(
+        'DELETE FROM rare_sessions WHERE session_id = $1',
+        [sessionId],
+      );
     } catch (err) {
-      console.warn(`[AI Studio] Database delete error for session "${sessionId}":`, err);
+      console.warn(`[AI Studio] Database removeSession error:`, err);
+      if (process.env.NODE_ENV === 'production' && this.databaseStatus.configured) {
+        throw err;
+      }
     }
   }
 
   async loadSession(sessionId: string): Promise<any | null> {
-    if (!this.pool || !this.databaseStatus.schemaReady) return null;
+    if (!this.pool || !this.databaseStatus.schemaReady) {
+      const session = this.memorySessions.get(sessionId);
+      if (!session) return null;
+      if (
+        !session ||
+        session.id !== sessionId ||
+        !session.userId ||
+        !session.user ||
+        session.user.id !== session.userId ||
+        !Number.isFinite(session.expiresAt) ||
+        Date.now() >= session.expiresAt
+      ) {
+        this.memorySessions.delete(sessionId);
+        return null;
+      }
+      return session;
+    }
+
     try {
-      const result = await this.pool.query<{ payload: any }>(
-        'SELECT payload FROM rare_sessions WHERE session_id = $1 AND expires_at > now()',
+      const result = await this.pool.query<{
+        session_id: string;
+        user_id: string;
+        payload: any;
+      }>(
+        `SELECT session_id, user_id, payload
+         FROM rare_sessions
+         WHERE session_id = $1
+           AND expires_at > now()`,
         [sessionId],
       );
-      if (result.rows.length > 0) return result.rows[0].payload;
-      return null;
+
+      if (result.rows.length !== 1) {
+        return null;
+      }
+
+      const row = result.rows[0];
+      const session = row.payload;
+
+      if (
+        !session ||
+        session.id !== row.session_id ||
+        session.userId !== row.user_id ||
+        !session.user ||
+        session.user.id !== row.user_id ||
+        !Number.isFinite(session.expiresAt) ||
+        Date.now() >= session.expiresAt
+      ) {
+        await this.pool.query(
+          'DELETE FROM rare_sessions WHERE session_id = $1',
+          [sessionId],
+        );
+
+        return null;
+      }
+
+      return session;
     } catch (err) {
-      console.warn(`[AI Studio] Database loadSession error for "${sessionId}":`, err);
+      console.warn(`[AI Studio] Database loadSession error — checking memory store:`, err);
+      const session = this.memorySessions.get(sessionId);
+      if (!session) return null;
+      if (!Number.isFinite(session.expiresAt) || Date.now() >= session.expiresAt) {
+        this.memorySessions.delete(sessionId);
+        return null;
+      }
+      return session;
+    }
+  }
+
+  async findUserByEmail(email: string): Promise<StoredAppUser | null> {
+    if (!email || !email.trim()) return null;
+    const normalized = email.trim().toLowerCase();
+    if (!this.pool || !this.databaseStatus.schemaReady) {
+      for (const u of this.memoryUsers.values()) {
+        if (u.email?.toLowerCase() === normalized) return u;
+      }
       return null;
+    }
+    try {
+      const result = await this.pool.query<{
+        id: string;
+        name: string;
+        email: string;
+        phone: string;
+        password_hash: string;
+        provider: 'google' | 'outlook' | 'email' | 'phone';
+        role: 'developer' | 'user';
+        created_at: Date;
+      }>(
+        `SELECT id, name, email, phone, password_hash, provider, role, created_at
+         FROM rare_users
+         WHERE lower(email) = lower($1)
+         LIMIT 1`,
+        [normalized],
+      );
+      if (result.rows.length === 0) {
+        for (const u of this.memoryUsers.values()) {
+          if (u.email?.toLowerCase() === normalized) return u;
+        }
+        return null;
+      }
+      const row = result.rows[0];
+      return {
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        phone: row.phone,
+        passwordHash: row.password_hash,
+        provider: row.provider,
+        role: row.role,
+        createdAt: new Date(row.created_at).toISOString(),
+      };
+    } catch (err) {
+      console.warn(`[AI Studio] Database findUserByEmail error for "${email}":`, err);
+      for (const u of this.memoryUsers.values()) {
+        if (u.email?.toLowerCase() === normalized) return u;
+      }
+      return null;
+    }
+  }
+
+  async findUserByPhone(phone: string): Promise<StoredAppUser | null> {
+    if (!phone || !phone.trim()) return null;
+    const normalized = phone.trim();
+    if (!this.pool || !this.databaseStatus.schemaReady) {
+      for (const u of this.memoryUsers.values()) {
+        if (u.phone === normalized) return u;
+      }
+      return null;
+    }
+    try {
+      const result = await this.pool.query<{
+        id: string;
+        name: string;
+        email: string;
+        phone: string;
+        password_hash: string;
+        provider: 'google' | 'outlook' | 'email' | 'phone';
+        role: 'developer' | 'user';
+        created_at: Date;
+      }>(
+        `SELECT id, name, email, phone, password_hash, provider, role, created_at
+         FROM rare_users
+         WHERE phone = $1
+         LIMIT 1`,
+        [normalized],
+      );
+      if (result.rows.length === 0) {
+        for (const u of this.memoryUsers.values()) {
+          if (u.phone === normalized) return u;
+        }
+        return null;
+      }
+      const row = result.rows[0];
+      return {
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        phone: row.phone,
+        passwordHash: row.password_hash,
+        provider: row.provider,
+        role: row.role,
+        createdAt: new Date(row.created_at).toISOString(),
+      };
+    } catch (err) {
+      console.warn(`[AI Studio] Database findUserByPhone error for "${phone}":`, err);
+      for (const u of this.memoryUsers.values()) {
+        if (u.phone === normalized) return u;
+      }
+      return null;
+    }
+  }
+
+  async createUser(user: StoredAppUser): Promise<void> {
+    if (!user || !user.id || (!user.email && !user.phone)) {
+      throw new Error('Valid user identity is required for user creation.');
+    }
+
+    this.memoryUsers.set(user.id, user);
+
+    if (!this.pool || !this.databaseStatus.schemaReady) {
+      return;
+    }
+
+    try {
+      await this.pool.query(
+        `INSERT INTO rare_users
+           (id, email, phone, name, password_hash, provider, role, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz, now())`,
+        [
+          user.id,
+          user.email ? user.email.toLowerCase().trim() : null,
+          user.phone ? user.phone.trim() : null,
+          user.name,
+          user.passwordHash || null,
+          user.provider,
+          user.role || 'user',
+          user.createdAt || new Date().toISOString(),
+        ],
+      );
+    } catch (err) {
+      console.warn(`[AI Studio] Database createUser error — saved in memory:`, err);
+    }
+  }
+
+  async updateUser(user: StoredAppUser): Promise<void> {
+    if (!user || !user.id) {
+      throw new Error('User ID is required for user update.');
+    }
+
+    this.memoryUsers.set(user.id, user);
+
+    if (!this.pool || !this.databaseStatus.schemaReady) {
+      return;
+    }
+
+    try {
+      const result = await this.pool.query(
+        `UPDATE rare_users
+         SET name = $2, password_hash = $3, updated_at = now()
+         WHERE id = $1`,
+        [user.id, user.name, user.passwordHash || null],
+      );
+      if (result.rowCount !== 1) {
+        console.warn('[AI Studio] User account database update targeted 0 rows.');
+      }
+    } catch (err) {
+      console.warn('[AI Studio] Database updateUser error — saved in memory:', err);
     }
   }
 

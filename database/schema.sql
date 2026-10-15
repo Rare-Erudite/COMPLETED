@@ -89,3 +89,27 @@ CREATE TABLE IF NOT EXISTS rare_sessions (
 
 CREATE INDEX IF NOT EXISTS rare_sessions_user_expires_idx
   ON rare_sessions (user_id, expires_at DESC);
+
+CREATE TABLE IF NOT EXISTS rare_users (
+  id TEXT PRIMARY KEY,
+  email TEXT,
+  phone TEXT,
+  name TEXT NOT NULL,
+  password_hash TEXT,
+  provider TEXT NOT NULL CHECK (provider IN ('google', 'outlook', 'email', 'phone')),
+  role TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('developer', 'user')),
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (email IS NOT NULL OR phone IS NOT NULL)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS rare_users_email_normalized_uidx
+  ON rare_users (lower(email))
+  WHERE email IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS rare_users_phone_uidx
+  ON rare_users (phone)
+  WHERE phone IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS rare_users_role_idx
+  ON rare_users (role);

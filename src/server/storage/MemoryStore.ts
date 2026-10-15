@@ -176,13 +176,17 @@ export class MemoryStore {
     return newRecord;
   }
 
-  public update(id: string, partial: Partial<Omit<MemoryRecord, 'id'>>): MemoryRecord | null {
+  public update(id: string, partial: Partial<Omit<MemoryRecord, 'id'>>, userId?: string): MemoryRecord | null {
     const existing = this.memories.get(id);
     if (!existing) return null;
+    if (userId && existing.userId && existing.userId !== userId) return null;
 
+    const { userId: _ignoreUser, id: _ignoreId, ...safePartial } = partial as any;
     const updated: MemoryRecord = {
       ...existing,
-      ...partial,
+      ...safePartial,
+      id: existing.id,
+      userId: existing.userId,
     };
     this.memories.set(id, updated);
     this.saveToDisk();

@@ -207,7 +207,7 @@ function clearSessionCookie(res: express.Response) {
   res.setHeader('Set-Cookie', cookieOptions.join('; '));
 }
 
-function createSession(user: AppUser): SessionData {
+async function createSession(user: AppUser): Promise<SessionData> {
   const sessionId = `sess_${crypto.randomBytes(32).toString('hex')}`;
   const now = Date.now();
   const cleanUser: AppUser = {
@@ -230,31 +230,38 @@ function createSession(user: AppUser): SessionData {
   };
   activeSessions.set(sessionId, session);
   if (persistentStorage) {
-    void persistentStorage.saveSession(sessionId, user.id, session, new Date(session.expiresAt).toISOString());
+    await persistentStorage.saveSession(sessionId, user.id, session, new Date(session.expiresAt).toISOString());
   }
   return session;
 }
 
-function getSession(req: express.Request): SessionData | null {
+async function getSession(req: express.Request): Promise<SessionData | null> {
   const sessionId = getSessionIdFromRequest(req);
   if (!sessionId) return null;
+  if (persistentStorage) {
+    const loaded = await persistentStorage.loadSession(sessionId);
+    if (!loaded) {
+      activeSessions.delete(sessionId);
+      return null;
+    }
+    activeSessions.set(sessionId, loaded);
+    return loaded;
+  }
   const session = activeSessions.get(sessionId);
   if (!session) return null;
   if (Date.now() > session.expiresAt) {
     activeSessions.delete(sessionId);
-    if (persistentStorage) {
-      void persistentStorage.removeSession(sessionId);
-    }
     return null;
   }
   return session;
 }
 
-function revokeSession(sessionId: string): boolean {
+async function revokeSession(sessionId: string): Promise<boolean> {
+  activeSessions.delete(sessionId);
   if (persistentStorage) {
-    void persistentStorage.removeSession(sessionId);
+    await persistentStorage.removeSession(sessionId);
   }
-  return activeSessions.delete(sessionId);
+  return true;
 }
 
 interface AuthenticatedRequest extends express.Request {
@@ -262,8 +269,8 @@ interface AuthenticatedRequest extends express.Request {
   user?: AppUser;
 }
 
-function requireAuth(req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) {
-  const session = getSession(req);
+async function requireAuth(req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) {
+  const session = await getSession(req);
   if (!session) {
     return res.status(401).json({ error: { message: 'Authentication required. Invalid or expired session.' } });
   }
@@ -272,8 +279,8 @@ function requireAuth(req: AuthenticatedRequest, res: express.Response, next: exp
   next();
 }
 
-function requireDeveloperAuth(req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) {
-  const session = getSession(req);
+async function requireDeveloperAuth(req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) {
+  const session = await getSession(req);
   if (!session || !session.isDeveloper || Date.now() >= (session.devExpiresAt || 0)) {
     return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   }
@@ -1105,11 +1112,11 @@ app.get('/api/download/exe', (req, res) => {
 // Dual-Channel Over-The-Air (OTA) & System Updates API
 // Supports Public (all users) and Developer (restricted) channels
 // -----------------------------------------------------------------------------
-app.get('/api/updates/check', (req, res) => {
+app.get('/api/updates/check', async (req, res) => {
   const clientVersion = String(req.query.clientVersion || '1.0.0').trim();
   let requestedChannel = (req.query.channel === 'developer' ? 'developer' : 'public') as UpdateChannel;
 
-  const session = getSession(req);
+  const session = await getSession(req);
   const isAuth = Boolean(session?.isDeveloper && Date.now() < (session.devExpiresAt || 0));
   if (requestedChannel === 'developer' && !isAuth) {
     requestedChannel = 'public';
@@ -1122,9 +1129,9 @@ app.get('/api/updates/check', (req, res) => {
   });
 });
 
-app.get('/api/updates/list', (req, res) => {
+app.get('/api/updates/list', async (req, res) => {
   let requestedChannel = (req.query.channel === 'developer' ? 'developer' : 'public') as UpdateChannel;
-  const session = getSession(req);
+  const session = await getSession(req);
   const isAuth = Boolean(session?.isDeveloper && Date.now() < (session.devExpiresAt || 0));
   if (requestedChannel === 'developer' && !isAuth) {
     requestedChannel = 'public';
@@ -1348,14 +1355,30 @@ app.post('/api/voice/synthesize', async (req, res) => {
 });
 
 // Settings & Themes
+const userSettingsMap = new Map<string, { assistantName: string; autonomyLevel: number; activeTheme: ActiveTheme }>();
+
+function getUserSettings(userId: string) {
+  let settings = userSettingsMap.get(userId);
+  if (!settings) {
+    settings = {
+      assistantName: appSettings.assistantName,
+      autonomyLevel: appSettings.autonomyLevel,
+      activeTheme: appSettings.activeTheme,
+    };
+    userSettingsMap.set(userId, settings);
+  }
+  return settings;
+}
+
 app.get('/api/settings', async (req, res) => {
-  const session = getSession(req);
+  const session = await getSession(req);
   const { info: activeInfo } = await providerRegistry.getActiveProvider();
   const lastEval = benchmarkSuite.getLastReport();
+  const userSettings = session?.userId ? getUserSettings(session.userId) : appSettings;
   res.json({
-    assistant_name: appSettings.assistantName,
-    autonomy_level: appSettings.autonomyLevel,
-    theme: appSettings.activeTheme,
+    assistant_name: userSettings.assistantName,
+    autonomy_level: userSettings.autonomyLevel,
+    theme: userSettings.activeTheme,
     model_provider: activeInfo.id,
     model_name: `${activeInfo.name} (${activeInfo.version})`,
     requires_api_key: activeInfo.requires_api_key,
@@ -1595,16 +1618,17 @@ app.post('/api/tools/execute', requireAuth, async (req: AuthenticatedRequest, re
 
 app.post('/api/settings', requireAuth, (req: AuthenticatedRequest, res) => {
   const { assistant_name, autonomy_level: newAutonomy, theme: newTheme } = req.body;
-  if (assistant_name) appSettings.assistantName = assistant_name.trim();
-  if (typeof newAutonomy === 'number') appSettings.autonomyLevel = newAutonomy;
+  const userSettings = getUserSettings(req.user!.id);
+  if (assistant_name) userSettings.assistantName = assistant_name.trim();
+  if (typeof newAutonomy === 'number') userSettings.autonomyLevel = newAutonomy;
   if (newTheme && ['blue', 'white', 'dark', 'red', 'green', 'yellow'].includes(newTheme)) {
-    appSettings.activeTheme = newTheme;
+    userSettings.activeTheme = newTheme;
   }
   res.json({
     success: true,
-    assistant_name: appSettings.assistantName,
-    autonomy_level: appSettings.autonomyLevel,
-    theme: appSettings.activeTheme,
+    assistant_name: userSettings.assistantName,
+    autonomy_level: userSettings.autonomyLevel,
+    theme: userSettings.activeTheme,
   });
 });
 
@@ -1647,13 +1671,13 @@ app.post('/api/developer/auth', requireAuth, (req: AuthenticatedRequest, res) =>
   return res.status(401).json({ error: { message: 'Invalid developer passkey.' } });
 });
 
-app.post('/api/developer/logout', (req: AuthenticatedRequest, res) => {
-  const session = getSession(req);
+app.post('/api/developer/logout', async (req: AuthenticatedRequest, res) => {
+  const session = await getSession(req);
   if (session) {
     session.isDeveloper = false;
     session.devExpiresAt = 0;
     if (persistentStorage) {
-      void persistentStorage.saveSession(session.id, session.userId, session, new Date(session.expiresAt).toISOString());
+      await persistentStorage.saveSession(session.id, session.userId, session, new Date(session.expiresAt).toISOString());
     }
   }
   res.json({ success: true, message: 'Developer session locked.' });
@@ -1755,8 +1779,8 @@ function normalizePhone(raw: string): string {
 }
 
 // User Session & Me / Logout Endpoints
-app.get('/api/user/me', (req: AuthenticatedRequest, res) => {
-  const session = getSession(req);
+app.get('/api/user/me', async (req: AuthenticatedRequest, res) => {
+  const session = await getSession(req);
   if (!session) {
     return res.status(401).json({ success: false, error: 'Unauthenticated' });
   }
@@ -1767,10 +1791,10 @@ app.get('/api/user/me', (req: AuthenticatedRequest, res) => {
   });
 });
 
-app.post('/api/user/logout', (req: AuthenticatedRequest, res) => {
+app.post('/api/user/logout', async (req: AuthenticatedRequest, res) => {
   const sessionId = getSessionIdFromRequest(req);
   if (sessionId) {
-    revokeSession(sessionId);
+    await revokeSession(sessionId);
   }
   clearSessionCookie(res);
   res.json({ success: true, message: 'Logged out successfully.' });
@@ -1788,6 +1812,13 @@ app.post('/api/user/oauth', async (req, res) => {
     });
   }
 
+  if (process.env.NODE_ENV === 'production' && provider === 'google' && !process.env.GOOGLE_CLIENT_ID?.trim()) {
+    return res.status(503).json({
+      success: false,
+      error: 'Google OAuth authentication is unconfigured (GOOGLE_CLIENT_ID is missing).',
+    });
+  }
+
   try {
     let verifiedProfile;
     if (provider === 'google') {
@@ -1799,7 +1830,7 @@ app.post('/api/user/oauth', async (req, res) => {
     }
 
     const cleanEmail = verifiedProfile.email.toLowerCase().trim();
-    let existing = registeredUsers.get(cleanEmail);
+    let existing = persistentStorage ? await persistentStorage.findUserByEmail(cleanEmail) : registeredUsers.get(cleanEmail);
 
     if (!existing) {
       existing = {
@@ -1807,10 +1838,13 @@ app.post('/api/user/oauth', async (req, res) => {
         name: verifiedProfile.name,
         email: cleanEmail,
         provider: verifiedProfile.provider,
-        role: 'user', // Developer privileges require explicit passkey authorization
+        role: 'user',
         createdAt: new Date().toISOString(),
       };
       registeredUsers.set(cleanEmail, existing);
+      if (persistentStorage) {
+        await persistentStorage.createUser(existing);
+      }
     } else {
       existing.name = verifiedProfile.name || existing.name;
     }
@@ -1824,7 +1858,7 @@ app.post('/api/user/oauth', async (req, res) => {
       details: `Verified identity for ${existing.name} (${cleanEmail}) via ${provider} token verification.`,
     });
 
-    const session = createSession(existing);
+    const session = await createSession(existing);
     setSessionCookie(res, session.id);
 
     res.json({
@@ -1845,7 +1879,8 @@ app.post('/api/user/signup', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Email and password are required.' });
   }
   const cleanEmail = email.toLowerCase().trim();
-  if (registeredUsers.has(cleanEmail)) {
+  const existingUser = persistentStorage ? await persistentStorage.findUserByEmail(cleanEmail) : registeredUsers.get(cleanEmail);
+  if (existingUser || registeredUsers.has(cleanEmail)) {
     return res.status(400).json({ success: false, error: 'An account with this email already exists.' });
   }
 
@@ -1858,12 +1893,15 @@ app.post('/api/user/signup', async (req, res) => {
     email: cleanEmail,
     passwordHash,
     provider: 'email',
-    role: 'user', // Developer privileges require explicit passkey authorization
+    role: 'user',
     createdAt: new Date().toISOString(),
   };
   registeredUsers.set(cleanEmail, user);
+  if (persistentStorage) {
+    await persistentStorage.createUser(user);
+  }
 
-  const session = createSession(user);
+  const session = await createSession(user);
   setSessionCookie(res, session.id);
 
   res.json({
@@ -1878,7 +1916,7 @@ app.post('/api/user/login', async (req, res) => {
     return res.status(400).json({ success: false, error: 'Email and password are required.' });
   }
   const cleanEmail = email.toLowerCase().trim();
-  const existing = registeredUsers.get(cleanEmail);
+  const existing = persistentStorage ? await persistentStorage.findUserByEmail(cleanEmail) : registeredUsers.get(cleanEmail);
 
   if (!existing) {
     return res.status(401).json({ success: false, error: 'Invalid email or password.' });
@@ -1892,11 +1930,14 @@ app.post('/api/user/login', async (req, res) => {
 
   if (needsRehash) {
     existing.passwordHash = await hashPasswordScrypt(password);
-    delete existing.password;
-    registeredUsers.set(cleanEmail, existing);
+    delete (existing as any).password;
+    registeredUsers.set(cleanEmail, existing as any);
+    if (persistentStorage) {
+      await persistentStorage.updateUser(existing as any);
+    }
   }
 
-  const session = createSession(existing);
+  const session = await createSession(existing);
   setSessionCookie(res, session.id);
 
   res.json({
@@ -1965,7 +2006,7 @@ app.post('/api/user/send-otp', async (req, res) => {
   });
 });
 
-app.post('/api/user/verify-otp', (req, res) => {
+app.post('/api/user/verify-otp', async (req, res) => {
   const { phone, code, name } = req.body;
   if (!phone || !code) {
     return res.status(400).json({ success: false, error: 'Phone and verification code are required.' });
@@ -2001,7 +2042,7 @@ app.post('/api/user/verify-otp', (req, res) => {
   // Code verified! Invalidate immediately so it cannot be reused
   activeOtpRecords.delete(cleanPhone);
 
-  let existing = registeredUsers.get(cleanPhone);
+  let existing = persistentStorage ? await persistentStorage.findUserByPhone(cleanPhone) : registeredUsers.get(cleanPhone);
   if (!existing) {
     existing = {
       id: `usr_phone_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -2012,9 +2053,12 @@ app.post('/api/user/verify-otp', (req, res) => {
       createdAt: new Date().toISOString(),
     };
     registeredUsers.set(cleanPhone, existing);
+    if (persistentStorage) {
+      await persistentStorage.createUser(existing);
+    }
   }
 
-  const session = createSession(existing);
+  const session = await createSession(existing);
   setSessionCookie(res, session.id);
 
   res.json({
@@ -2075,7 +2119,7 @@ app.post('/api/user/send-email-otp', async (req, res) => {
   });
 });
 
-app.post('/api/user/verify-email-otp', (req, res) => {
+app.post('/api/user/verify-email-otp', async (req, res) => {
   const { email, code, name } = req.body;
   if (!email || !code) {
     return res.status(400).json({ success: false, error: 'Email and verification code are required.' });
@@ -2111,7 +2155,7 @@ app.post('/api/user/verify-email-otp', (req, res) => {
   // Code verified! Invalidate immediately so it cannot be reused
   activeOtpRecords.delete(cleanEmail);
 
-  let existing = registeredUsers.get(cleanEmail);
+  let existing = persistentStorage ? await persistentStorage.findUserByEmail(cleanEmail) : registeredUsers.get(cleanEmail);
   if (!existing) {
     existing = {
       id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -2122,9 +2166,12 @@ app.post('/api/user/verify-email-otp', (req, res) => {
       createdAt: new Date().toISOString(),
     };
     registeredUsers.set(cleanEmail, existing);
+    if (persistentStorage) {
+      await persistentStorage.createUser(existing);
+    }
   }
 
-  const session = createSession(existing);
+  const session = await createSession(existing);
   setSessionCookie(res, session.id);
 
   res.json({
@@ -2563,7 +2610,7 @@ app.get('/api/conversations', requireAuth, (req: AuthenticatedRequest, res) => {
 
 app.get('/api/conversations/:id', requireAuth, (req: AuthenticatedRequest, res) => {
   let conv = conversationStore.getById(req.params.id);
-  if (conv && conv.userId && conv.userId !== req.user!.id) {
+  if (conv && conv.userId !== req.user!.id) {
     return res.status(403).json({ error: { message: 'Access denied.' } });
   }
   if (!conv) {
@@ -2592,7 +2639,7 @@ app.post('/api/conversations', requireAuth, (req: AuthenticatedRequest, res) => 
   const convId = (id as string) || `conv_${Date.now()}`;
   const existing = conversationStore.getById(convId);
   if (existing) {
-    if (existing.userId && existing.userId !== userKey) {
+    if (existing.userId !== userKey) {
       return res.status(403).json({ error: { message: 'Access denied.' } });
     }
     return res.status(200).json(existing);
@@ -2618,7 +2665,7 @@ app.post('/api/conversations', requireAuth, (req: AuthenticatedRequest, res) => 
 // Rename conversation
 app.post('/api/conversations/:id/rename', requireAuth, (req: AuthenticatedRequest, res) => {
   const conv = conversationStore.getById(req.params.id);
-  if (!conv || (conv.userId && conv.userId !== req.user!.id)) {
+  if (!conv || conv.userId !== req.user!.id) {
     return res.status(404).json({ error: { message: 'Conversation not found' } });
   }
   const { title } = req.body;
@@ -2632,7 +2679,7 @@ app.post('/api/conversations/:id/rename', requireAuth, (req: AuthenticatedReques
 // Delete conversation
 app.delete('/api/conversations/:id', requireAuth, (req: AuthenticatedRequest, res) => {
   const conv = conversationStore.getById(req.params.id);
-  if (!conv || (conv.userId && conv.userId !== req.user!.id)) {
+  if (!conv || conv.userId !== req.user!.id) {
     return res.status(404).json({ error: { message: 'Conversation not found' } });
   }
   const ok = conversationStore.delete(req.params.id);
@@ -2645,7 +2692,7 @@ app.delete('/api/conversations/:id', requireAuth, (req: AuthenticatedRequest, re
 // Edit specific message
 app.put('/api/conversations/:id/messages/:msgId', requireAuth, (req: AuthenticatedRequest, res) => {
   const conv = conversationStore.getById(req.params.id);
-  if (!conv || (conv.userId && conv.userId !== req.user!.id)) {
+  if (!conv || conv.userId !== req.user!.id) {
     return res.status(404).json({ error: { message: 'Conversation not found' } });
   }
 
@@ -2663,7 +2710,7 @@ app.put('/api/conversations/:id/messages/:msgId', requireAuth, (req: Authenticat
 // Delete specific message
 app.delete('/api/conversations/:id/messages/:msgId', requireAuth, (req: AuthenticatedRequest, res) => {
   const conv = conversationStore.getById(req.params.id);
-  if (!conv || (conv.userId && conv.userId !== req.user!.id)) {
+  if (!conv || conv.userId !== req.user!.id) {
     return res.status(404).json({ error: { message: 'Conversation not found' } });
   }
 
@@ -2677,7 +2724,7 @@ app.delete('/api/conversations/:id/messages/:msgId', requireAuth, (req: Authenti
 
 app.post('/api/conversations/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   let conv = conversationStore.getById(req.params.id);
-  if (conv && conv.userId && conv.userId !== req.user!.id) {
+  if (conv && conv.userId !== req.user!.id) {
     return res.status(403).json({ error: { message: 'Access denied.' } });
   }
   if (!conv) {
@@ -2783,7 +2830,7 @@ app.put('/api/memories/:id', requireAuth, (req: AuthenticatedRequest, res) => {
   if (!existing || existing.userId !== req.user!.id) {
     return res.status(404).json({ error: { message: 'Memory not found' } });
   }
-  const updated = memoryStore.update(req.params.id, req.body);
+  const updated = memoryStore.update(req.params.id, req.body, req.user!.id);
   if (!updated) return res.status(404).json({ error: { message: 'Memory not found' } });
   res.json(updated);
 });
