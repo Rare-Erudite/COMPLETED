@@ -170,13 +170,14 @@ export class PersistentJsonStore {
     try {
       client = await this.pool.connect();
       await client.query('BEGIN');
+      const userId = run.userId || 'usr_system_legacy';
       await client.query(
-        `INSERT INTO projects (id, title, target_domain, objective, status, created_at, updated_at, payload)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-         ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, target_domain = EXCLUDED.target_domain,
+        `INSERT INTO projects (id, user_id, title, target_domain, objective, status, created_at, updated_at, payload)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+         ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, title = EXCLUDED.title, target_domain = EXCLUDED.target_domain,
            objective = EXCLUDED.objective, status = EXCLUDED.status, updated_at = EXCLUDED.updated_at,
            payload = EXCLUDED.payload`,
-        [run.id, run.title, run.targetDomain, run.objective, run.status, run.createdAt, run.updatedAt, JSON.stringify(run)],
+        [run.id, userId, run.title, run.targetDomain, run.objective, run.status, run.createdAt, run.updatedAt, JSON.stringify(run)],
       );
       for (const agent of run.agents || []) {
         await client.query(

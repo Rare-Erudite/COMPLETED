@@ -2,9 +2,13 @@
 -- Runtime startup intentionally does not run DDL.
 CREATE TABLE IF NOT EXISTS rare_persistent_documents (
   document_key TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL DEFAULT 'usr_system_legacy',
   payload JSONB NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS rare_persistent_docs_user_idx
+  ON rare_persistent_documents (user_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS rare_checkpoint_files (
   checkpoint_id TEXT NOT NULL,
@@ -15,6 +19,7 @@ CREATE TABLE IF NOT EXISTS rare_checkpoint_files (
 
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL DEFAULT 'usr_system_legacy',
   title TEXT NOT NULL,
   target_domain TEXT NOT NULL,
   objective TEXT NOT NULL,
@@ -23,6 +28,9 @@ CREATE TABLE IF NOT EXISTS projects (
   updated_at TIMESTAMPTZ NOT NULL,
   payload JSONB NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS projects_user_updated_idx
+  ON projects (user_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS project_tasks (
   id TEXT PRIMARY KEY,

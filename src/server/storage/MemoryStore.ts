@@ -11,6 +11,7 @@ const CONVERSATIONS_FILE = path.resolve(KNOWLEDGE_DIR, 'conversations.json');
 const SEED_MEMORIES: MemoryRecord[] = [
   {
     id: 'mem_seed_01',
+    userId: 'usr_system_legacy',
     kind: 'preference',
     text: 'Active UI theme is Blue. The system supports 6 custom themes: Blue, White, Dark, Red, Green, and Yellow.',
     tags: ['ui', 'theme', 'preference'],
@@ -21,6 +22,7 @@ const SEED_MEMORIES: MemoryRecord[] = [
   },
   {
     id: 'mem_seed_02',
+    userId: 'usr_system_legacy',
     kind: 'technical_constraint',
     text: 'Architecture follows strict 10-step self-development with isolated checkpoints, permission gates, and rollback guarantees.',
     tags: ['architecture', 'self_dev', 'safety'],
@@ -31,6 +33,7 @@ const SEED_MEMORIES: MemoryRecord[] = [
   },
   {
     id: 'mem_seed_03',
+    userId: 'usr_system_legacy',
     kind: 'preference',
     text: 'Discussion on custom high-top sneakers: obsidian black and cobalt blue colorway with gum sole, minimalist silhouette, premium breathable leather.',
     tags: ['shoes', 'sneakers', 'fashion', 'design'],
@@ -41,6 +44,7 @@ const SEED_MEMORIES: MemoryRecord[] = [
   },
   {
     id: 'mem_seed_04',
+    userId: 'usr_system_legacy',
     kind: 'technical_constraint',
     text: 'Offline first: Base intelligence operates without an external API key. Tool primitives validate file paths and require passkey for core self-modification.',
     tags: ['offline', 'security', 'tools'],
@@ -107,8 +111,12 @@ export class MemoryStore {
     this.persistence?.setDocument('memories', arr);
   }
 
-  public getAll(): MemoryRecord[] {
-    return Array.from(this.memories.values()).sort(
+  public getAll(userId?: string): MemoryRecord[] {
+    const all = Array.from(this.memories.values());
+    const filtered = userId && userId.trim()
+      ? all.filter((m) => m.userId === userId)
+      : all;
+    return filtered.sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   }
@@ -117,8 +125,8 @@ export class MemoryStore {
     return this.memories.get(id);
   }
 
-  public search(query?: string, tags?: string[]): MemoryRecord[] {
-    let results = this.getAll();
+  public search(query?: string, tags?: string[], userId?: string): MemoryRecord[] {
+    let results = this.getAll(userId);
 
     if (tags && tags.length > 0) {
       const lowerTags = tags.map((t) => t.toLowerCase());
@@ -142,6 +150,7 @@ export class MemoryStore {
 
   public store(record: {
     text: string;
+    userId?: string;
     kind?: MemoryRecord['kind'];
     tags?: string[];
     importance?: number;
@@ -152,6 +161,7 @@ export class MemoryStore {
   }): MemoryRecord {
     const newRecord: MemoryRecord = {
       id: record.id || `mem_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      userId: record.userId,
       timestamp: record.timestamp || new Date().toISOString(),
       kind: record.kind || 'fact',
       text: record.text,

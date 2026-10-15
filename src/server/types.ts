@@ -100,6 +100,7 @@ export interface ToolExecutionResult {
 // -----------------------------------------------------------------------------
 export interface MemoryRecord {
   id: string;
+  userId?: string;
   kind: 'preference' | 'project_decision' | 'technical_constraint' | 'discussion' | 'fact' | 'identity' | 'user_fact';
   text: string;
   tags: string[];
