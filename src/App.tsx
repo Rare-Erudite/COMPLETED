@@ -4793,7 +4793,20 @@ function LiveVoiceView({
     startListening();
 
     // Natural greeting spoken immediately
-    const naturalGreeting = await generateNaturalCallGreeting();
+    const greetingResult = await safePost<any>('/api/voice/chat', {
+  speech: 'Hello',
+  isGreeting: true,
+  recentMessages: transcript.slice(-10).map((message) => ({
+    role: message.sender === 'assistant' ? 'assistant' : 'user',
+    content: message.text.slice(0, 800),
+  })),
+});
+
+const naturalGreeting =
+  typeof greetingResult?.reply === 'string' &&
+  greetingResult.reply.trim()
+    ? greetingResult.reply.trim()
+    : await generateNaturalCallGreeting();
     if (!activeRef.current) return;
 
     setTranscript([
