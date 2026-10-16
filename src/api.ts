@@ -332,18 +332,74 @@ async function executeStandaloneLocalRoute(url: string, options?: RequestInit): 
     };
   }
 
-  // 2. Live Voice Conversation Endpoint
+    // 2. Live Voice Conversation Endpoint
   if (pathname === '/api/voice/chat' && method === 'POST') {
-    const speech = body.speech || '';
-    const history = getLocalJson<Array<{ role: string; content: string }>>('rare_voice_history_v1', []);
+    const speech =
+      typeof body.speech === 'string'
+        ? body.speech.trim()
+        : '';
+
+    if (!speech) {
+      return {
+        error: { message: 'Speech query is required.' },
+      };
+    }
+
+    const isGreeting = body.isGreeting === true;
+    const prompt = isGreeting ? 'Hello' : speech;
+
+    const storedHistory = getLocalJson<
+      Array<{ role: string; content: string }>
+    >('rare_voice_history_v1', []);
+
+    const submittedHistory = Array.isArray(body.recentMessages)
+      ? body.recentMessages
+          .slice(-10)
+          .filter(
+            (item: any) =>
+              item &&
+              (item.role === 'user' || item.role === 'assistant') &&
+              typeof item.content === 'string' &&
+              item.content.trim().length > 0
+          )
+          .map((item: any) => ({
+            role: item.role,
+            content: item.content.trim().slice(0, 800),
+          }))
+      : [];
+
+    const contextHistory = (
+      submittedHistory.length > 0
+        ? submittedHistory
+        : storedHistory.slice(-10)
+    ).slice(-10);
+
     const gen = await generateDynamicBrainReply({
-      prompt: speech,
+      prompt,
       assistantName,
+      personaMode: 'casual',
       isVoiceCall: true,
-      recentMessages: history.slice(-6),
+      recentMessages: contextHistory,
     });
-    history.push({ role: 'user', content: speech }, { role: 'assistant', content: gen.content });
-    setLocalJson('rare_voice_history_v1', history.slice(-20));
+
+    // Do not record the synthetic "Hello" prompt as a user utterance.
+    if (isGreeting) {
+      storedHistory.push({
+        role: 'assistant',
+        content: gen.content,
+      });
+    } else {
+      storedHistory.push(
+        { role: 'user', content: speech },
+        { role: 'assistant', content: gen.content }
+      );
+    }
+
+    setLocalJson(
+      'rare_voice_history_v1',
+      storedHistory.slice(-20)
+    );
+
     return { reply: gen.content };
   }
 
