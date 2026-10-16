@@ -665,86 +665,28 @@ export async function generateDynamicBrainReply(options: {
     };
   }
 
-  // 7. Code & Software Engineering Synthesis
-  if (!isVoiceCall && /\b(write code|write a function|in python|in javascript|in typescript|react component|sql query|html page|algorithm)\b/i.test(lower)) {
-    if (lower.includes('python')) {
-      return {
-        content: `Here's a clean Python implementation tailored to your request:\n\n\`\`\`python\ndef process_items(items):\n    \"\"\"Clean, modular implementation\"\"\"\n    return [x for x in items if x is not None]\n\nif __name__ == "__main__":\n    data = [10, 20, 30, 40]\n    print("Output:", process_items(data))\n\`\`\`\n\nTell me if you'd like to adjust the inputs or add extra logic!`,
-      };
-    }
-    return {
-      content: `Here is a clean TypeScript implementation:\n\n\`\`\`typescript\nexport function runTask<T>(input: T[]): T[] {\n  return input.filter((item): item is NonNullable<T> => item != null);\n}\n\`\`\`\n\nLet me know how you'd like to extend or customize this.`,
-    };
-  }
+    // 7. Honest fallback when live research and specific local rules
+  // cannot produce a reliable answer.
+  //
+  // A rule-based fallback must not invent generic code, definitions,
+  // explanations, or conversational filler and label them as reasoning.
+  const looksLikeCodeRequest =
+    /\b(write code|write a function|in python|in javascript|in typescript|react component|sql query|html page|algorithm|implement|debug|fix this code|refactor)\b/i.test(
+      lower
+    );
 
-  // 8. Dynamic, Contextual Reasoning & Conversational Response
-  const prevUserTurn = [...recentMessages].reverse().find((m) => m.role === 'user' && m.content !== q);
-  const isQuestion = q.endsWith('?') || /^(what|why|how|when|where|who|can|could|should|would|is|are|do|does|explain|tell)\b/i.test(lower);
-
-  // Concept & Definition Knowledge Synthesis
-  if (/^(what (is|are)|tell me about|explain)\s+(.+)/i.test(lower)) {
-    const topicMatch = lower.match(/^(what (is|are)|tell me about|explain)\s+(.+)/i);
-    const rawTopic = (topicMatch?.[3] || '').replace(/[?.]+$/, '').trim();
-
-    if (/\bshoes?\b/i.test(rawTopic)) {
-      return {
-        content: `**Shoes** are items of footwear designed primarily to protect and comfort the human foot across various terrains, climates, and daily activities.\n\n• **Core Structure:** They typically consist of a durable outer sole (outsole) for grip and shock absorption, an insole for cushioning and arch support, an upper that encloses the foot, and fastening mechanisms like laces, straps, or slip-on collars.\n• **Materials:** Constructed from leather, canvas, engineered mesh, rubber, polyurethane, and lightweight foams (such as EVA).\n• **Function & Varieties:** From athletic running sneakers and heavy-duty work boots to casual loafers and formal dress shoes, footwear is tailored for biomechanical stability, thermal protection, and personal style.`,
-        thought: thinkHarder ? `[Cognitive Analysis: Footwear Biomechanics & Material Design] Subject: "${rawTopic}".` : undefined,
-      };
-    }
-
-    if (/\b(computer|laptop|pc)\b/i.test(rawTopic)) {
-      return {
-        content: `A **computer** is an electronic device that manipulates information and data according to stored program instructions.\n\n• **Core Architecture:** It operates via the Von Neumann architecture, comprising a Central Processing Unit (CPU) for arithmetic and logic computation, Random Access Memory (RAM) for fast volatile working storage, non-volatile storage (SSD/HDD), and input/output interfaces.\n• **Operation:** Binary signals (1s and 0s) represent instructions and data, translated from high-level software through compilers and operating systems to hardware transistor gates.`,
-        thought: thinkHarder ? `[Cognitive Analysis: Computer Architecture & Digital Logic]` : undefined,
-      };
-    }
-
-    if (/\b(ai|artificial intelligence|machine learning|llm|chatgpt)\b/i.test(rawTopic)) {
-      return {
-        content: `**Artificial Intelligence (AI)** refers to computer systems engineered to perform cognitive tasks traditionally associated with human intellect — including natural language comprehension, pattern recognition, spatial reasoning, and decision-making.\n\n• **Neural Networks & LLMs:** Modern systems like ChatGPT and Gemini utilize deep transformer architectures trained on vast corpora of text, predicting contextual tokens through self-attention mechanisms and reinforced through alignment techniques (RLHF).\n• **Capabilities:** From synthesizing code and translating languages to analyzing complex data, AI acts as a computational reasoning amplifier.`,
-        thought: thinkHarder ? `[Cognitive Analysis: Neural Transformers & Deep Learning Foundations]` : undefined,
-      };
-    }
-
-    // Dynamic direct explanatory synthesis for other concepts
-    const cleanTopic = rawTopic.replace(/^(a|an|the)\s+/i, '');
-    const capitalizedTopic = cleanTopic.charAt(0).toUpperCase() + cleanTopic.slice(1);
-    return {
-      content: `### ${capitalizedTopic}\n\n**${capitalizedTopic}** can be understood through its primary function, structure, and real-world significance:\n\n1. **Definition & Purpose:** At its core, ${cleanTopic} serves as a key concept or tool designed to address a specific objective, whether in physical reality, human society, or digital systems.\n2. **How It Operates:** It functions through defined principles, interacting with its environment and dependent components to deliver predictable, reliable outcomes.\n3. **Practical Context:** In everyday use, understanding ${cleanTopic} allows you to leverage its strengths effectively while working around any natural constraints.\n\nWould you like to explore technical mechanisms, history, or practical use cases?`,
-      thought: thinkHarder ? `[Cognitive Reasoning: Concept Deconstruction of "${cleanTopic}"]` : undefined,
-    };
-  }
-
-  if (isVoiceCall) {
-    const spokenReplies = isQuestion
-      ? [
-          `Regarding ${q.replace(/[?]+$/, '')}, the key is understanding the core purpose and how it works in practice. Tell me what angle you'd like to explore and we can dive right in.`,
-          `That makes sense. When looking at ${q.replace(/[?]+$/, '')}, it really comes down to the fundamentals and practical execution. What part are you thinking about?`,
-        ]
-      : [
-          `I hear you on that. ${prevUserTurn ? 'It connects right into what you mentioned earlier too.' : ''} Tell me more about what you're thinking.`,
-          `That makes a lot of sense. What's the next step you're considering for it?`,
-        ];
-    return {
-      content: pickVaried('voice_general', spokenReplies),
-    };
-  }
-
-  const chatReplies = isQuestion
-    ? [
-        `Here is a clear breakdown for **${q}**:\n\n• **Core Principle:** Looking directly at the question, the most important factor is understanding the underlying mechanics and how each piece fits together.\n• **Practical Application:** In real-world scenarios, breaking this down into straightforward, concrete steps ensures accuracy and clarity.\n\nLet me know which specific angle or application you'd like to dive into!`,
-        `Analyzing **${q}**:\n\n1. **Foundation:** Identify the fundamental principles governing the topic.\n2. **Execution:** Apply those principles to your specific goals and context.\n\nFeel free to ask for detailed examples, technical breakdowns, or step-by-step guidance!`,
-      ]
-    : [
-        `Understood — on **"${q}"**${prevUserTurn ? `, continuing from our discussion earlier` : ''}.\n\nHow would you like to proceed? We can explore further details, plan next steps, or build out an implementation.`,
-        `Noted on **"${q}"**. I've kept this in mind for our session — let me know what you'd like to tackle next!`,
-      ];
+  const fallbackReply = looksLikeCodeRequest
+    ? 'I can see that you need task-specific code. However, the fallback currently handling this request cannot reliably generate and verify that implementation. I will not give you placeholder code and pretend it solves your problem. Restore a working model provider or load the local neural model, then try this request again.'
+    : 'I could not produce a sufficiently reliable answer with the current fallback. It can handle certain specific operations, but it is not a substitute for a capable generative language model. I do not want to fill the gap with a generic explanation that may not answer your question. Restore a working model provider or load the local neural model, then try again.';
 
   return {
-    content: pickVaried('chat_general', chatReplies),
+    content: isVoiceCall
+      ? looksLikeCodeRequest
+        ? 'I understand you need working code, but my current fallback cannot reliably build and verify it. I do not want to guess. We can retry when the model is available.'
+        : 'I could not work out a reliable answer just now. I do not want to guess or give you a generic response that misses your question. We can try again when the model is available.'
+      : fallbackReply,
     thought: thinkHarder
-      ? `Standalone Cognitive Brain • Context Active • Local Time: ${env.localTimeFormatted}`
+      ? 'Fallback disclosure: no model-backed answer was produced for this request.'
       : undefined,
   };
 }
