@@ -1004,17 +1004,77 @@ app.delete('/api/updates/:id', (req, res) => {
   res.status(404).json({ error: { message: 'Update not found.' } });
 });
 
-// Live Voice Fast-Inference Endpoint
+// Live Voice Inference Endpoint
 app.post('/api/voice/chat', async (req, res) => {
-  const { speech } = req.body;
-  if (!speech || typeof speech !== 'string' || !speech.trim()) {
-    return res.status(400).json({ error: { message: 'Speech query is required.' } });
+  const body = req.body || {};
+  const speech =
+    typeof body.speech === 'string'
+      ? body.speech.trim()
+      : '';
+
+  if (!speech) {
+    return res.status(400).json({
+      error: { message: 'Speech query is required.' },
+    });
   }
+
+  // Accept only short, ordinary conversation context. Do not accept
+  // arbitrary roles, non-text content, or an unlimited transcript.
+  const recentMessages: ChatMessage[] = Array.isArray(body.recentMessages)
+    ? body.recentMessages
+        .slice(-10)
+        .filter(
+          (item: any) =>
+            item &&
+            (item.role === 'user' || item.role === 'assistant') &&
+            typeof item.content === 'string' &&
+            item.content.trim().length > 0
+        )
+        .map((item: any, index: number) => ({
+          id: `voice_context_${Date.now()}_${index}`,
+          role: item.role as 'user' | 'assistant',
+          content: item.content.trim().slice(0, 800),
+          timestamp: new Date().toISOString(),
+        }))
+    : [];
+
+  // "Hello" is used as the model prompt for a newly opened call.
+  // The greeting is not treated as a user transcript entry by the UI.
+  const prompt = body.isGreeting === true ? 'Hello' : speech;
+
   try {
-    const { reply, thought } = await generateAssistantReply(speech.trim(), false, undefined, 'casual', undefined, true);
-    res.json({ reply, thought });
+    const { reply, thought } = await generateAssistantReply(
+      prompt,
+      false,
+      undefined,
+      'casual',
+      recentMessages,
+      true
+    );
+
+    if (typeof reply !== 'string' || !reply.trim()) {
+      return res.status(502).json({
+        error: { message: 'The voice model returned an empty response.' },
+      });
+    }
+
+    return res.json({
+      reply: reply.trim(),
+      thought,
+    });
   } catch (err: any) {
-    res.json({ reply: "I heard you, but encountered a momentary processing delay. Let me know what you'd like to do next." });
+    console.error(
+      '[Voice Chat] Inference failed:',
+      err instanceof Error ? err.message : err
+    );
+
+    // Do not send a fabricated response with HTTP 200.
+    return res.status(502).json({
+      error: {
+        message: 'Voice inference failed. No assistant reply was generated.',
+        retryable: true,
+      },
+    });
   }
 });
 
