@@ -1372,7 +1372,14 @@ app.post('/api/v1/providers/active', (req, res) => {
     }
 
     // Change the provider used by the RARE-INTELLIGENCE engine.
-    engine.providers.setActiveProvider(providerId);
+    engine.providers.setActiveProvider(
+  providerId as
+    | 'local-transformers'
+    | 'ollama'
+    | 'gemini'
+    | 'openai-compatible'
+    | 'diagnostic-mock'
+);
 
     // The engine provider IDs and regular-chat provider IDs are
     // different in this project, so translate only supported choices.
