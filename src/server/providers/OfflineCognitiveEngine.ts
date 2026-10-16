@@ -408,30 +408,91 @@ export class OfflineCognitiveEngine implements IModelProvider {
     }
 
     // -------------------------------------------------------------------------
-    // E. Research Intent
-    // -------------------------------------------------------------------------
-    if (isResearchIntent) {
-      const researchQuery = prompt.replace(/^(research|investigate|look up|find evidence on)\s+/i, '').trim();
-      toolCalls.push({ tool: 'RESEARCH', arguments: { query: researchQuery, maxResults: 3 } });
-      const res = await this.toolExecutor.execute('RESEARCH', { query: researchQuery, maxResults: 3 });
+// E. Research Intent — report only evidence actually returned by the tool
+// -------------------------------------------------------------------------
+if (isResearchIntent) {
+  const researchQuery = prompt
+    .replace(/^(research|investigate|look up|find evidence on)\s+/i, '')
+    .trim();
 
-      let findingsSummary = '';
-      if (res.success && res.output.findings?.length > 0) {
-        findingsSummary = res.output.findings
-          .map((f: any) => `• **${f.title}** (${f.source}): "${f.snippet.slice(0, 160)}..."`)
-          .join('\n\n');
-      } else {
-        findingsSummary = `• **Core Synthesis on ${researchQuery}**: Analyzed structural principles, domain standards, and practical implementation patterns for "${researchQuery}".`;
-      }
+  toolCalls.push({
+    tool: 'RESEARCH',
+    arguments: {
+      query: researchQuery,
+      maxResults: 3,
+    },
+  });
 
-      return {
-        reply: `### Research Investigation: "${researchQuery}"\n\n${findingsSummary}\n\nLet me know if you want to turn these findings into a document or software build.`,
-        thought,
-        modelUsed: 'RARE Standalone Cognitive Core',
-        providerType: 'offline_cognitive',
-        toolCalls,
-      };
+  const researchResult = await this.toolExecutor.execute(
+    'RESEARCH',
+    {
+      query: researchQuery,
+      maxResults: 3,
     }
+  );
+
+  const findings =
+    researchResult.success &&
+    Array.isArray(researchResult.output?.findings)
+      ? researchResult.output.findings
+      : [];
+
+  // Never turn an empty or failed search into invented "findings."
+  if (findings.length === 0) {
+    const failureReason = researchResult.success
+      ? 'the research tool returned no results'
+      : 'the research tool reported a failure';
+
+    return {
+      reply:
+        `I attempted to research "${researchQuery}", but ${failureReason}. ` +
+        'I have not verified this topic, so I will not invent findings or ' +
+        'claim that sources support a conclusion. Please try again when ' +
+        'the research service is working.',
+      thought,
+      modelUsed: 'RARE Standalone Cognitive Core',
+      providerType: 'offline_cognitive',
+      toolCalls,
+    };
+  }
+
+  const findingsSummary = findings
+    .map((finding: any) => {
+      const title =
+        typeof finding.title === 'string'
+          ? finding.title
+          : 'Untitled result';
+
+      const source =
+        typeof finding.source === 'string'
+          ? finding.source
+          : 'Source not identified';
+
+      const snippet =
+        typeof finding.snippet === 'string'
+          ? finding.snippet.slice(0, 240)
+          : 'No extract was returned.';
+
+      return (
+        `• **${title}** (${source}): ` +
+        `${snippet}${finding.snippet?.length > 240 ? '…' : ''}`
+      );
+    })
+    .join('\n\n');
+
+  return {
+    reply:
+      `### Research Investigation: "${researchQuery}"\n\n` +
+      `${findingsSummary}\n\n` +
+      'These are the findings returned by the research tool. ' +
+      'Their accuracy and completeness still depend on the source material. ' +
+      'Ask for a deeper comparison if you need more detail.',
+    thought,
+    modelUsed: 'RARE Standalone Cognitive Core',
+    providerType: 'offline_cognitive',
+    toolCalls,
+  };
+}
 
     // -------------------------------------------------------------------------
     // F. Schedule / Alarm Intent
