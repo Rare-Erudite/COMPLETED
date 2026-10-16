@@ -4544,15 +4544,32 @@ function LiveVoiceView({
     setTranscript((prev) => [...prev, userEntry]);
 
     try {
+      
       const data = await safePost<any>('/api/voice/chat', {
-  speech: cleaned,
-  recentMessages: transcript.slice(-10).map((message) => ({
-    role: message.sender === 'assistant' ? 'assistant' : 'user',
-    content: message.text.slice(0, 800),
-  })),
-});
+        speech: cleaned,
+        recentMessages: transcript.slice(-10).map((message) => ({
+          role: message.sender === 'assistant' ? 'assistant' : 'user',
+          content: message.text.slice(0, 800),
+        })),
+      });
+
+      let replyText = data?.reply;
+
+      if (!replyText) {
+        const localGen = await generateDynamicBrainReply({
+          prompt: cleaned,
+          assistantName,
+          personaMode: 'casual',
+          isVoiceCall: true,
+          recentMessages: transcript.slice(-6).map((message) => ({
+            role: message.sender,
+            content: message.text,
+          })),
+        });
+
         replyText = localGen.content;
       }
+
 
       const botEntry = {
         sender: 'assistant' as const,
