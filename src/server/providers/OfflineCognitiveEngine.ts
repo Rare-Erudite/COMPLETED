@@ -102,57 +102,15 @@ export class OfflineCognitiveEngine implements IModelProvider {
     return { matched: false };
   }
 
-  private synthesizeCodeSnippet(prompt: string): { matched: boolean; reply?: string } {
-    const lower = prompt.toLowerCase();
-    const isCodeRequest =
-      /\b(write|create|generate|show|give\s+me|example\s+of|how\s+to\s+write|function\s+to|script\s+to|code\s+for)\b/i.test(prompt) &&
-      /\b(code|function|script|class|component|program|algorithm|python|javascript|typescript|react|html|css|sql|rust|java|kotlin|c\+\+|bash|api|regex|loop|array|sort|fetch)\b/i.test(prompt);
-
-    if (!isCodeRequest) return { matched: false };
-
-    const lang = lower.includes('python')
-      ? 'python'
-      : lower.includes('rust')
-      ? 'rust'
-      : lower.includes('sql')
-      ? 'sql'
-      : lower.includes('html')
-      ? 'html'
-      : lower.includes('kotlin') || lower.includes('android')
-      ? 'kotlin'
-      : lower.includes('react') || lower.includes('tsx')
-      ? 'tsx'
-      : 'typescript';
-
-    const topic = prompt
-      .replace(/^(can\s+you\s+|please\s+|could\s+you\s+)?(write|create|generate|show\s+me|give\s+me)\s+(a\s+|an\s+|some\s+)?/i, '')
-      .trim();
-
-    if (lang === 'python') {
-      return {
-        matched: true,
-        reply: `Here is a clean, self-contained **Python** implementation for **${topic}**:\n\n\`\`\`python\nfrom typing import List, Dict, Any\n\ndef execute_task(data: List[Any]) -> Dict[str, Any]:\n    \"\"\"\n    Processes input records for: ${topic.replace(/"/g, "'")}\n    \"\"\"\n    if not data:\n        return {"status": "empty", "count": 0, "results": []}\n\n    processed = [item for item in data if item is not None]\n    return {\n        "status": "success",\n        "count": len(processed),\n        "results": processed,\n    }\n\nif __name__ == "__main__":\n    sample = ["alpha", "beta", "gamma"]\n    output = execute_task(sample)\n    print(f"Completed: {output['count']} items processed -> {output['results']}")\n\`\`\`\n\nLet me know if you want to customize the inputs, add file/network handling, or adapt it for a specific library.`,
-      };
-    }
-
-    if (lang === 'sql') {
-      return {
-        matched: true,
-        reply: `Here is a production-ready **SQL** schema and query for **${topic}**:\n\n\`\`\`sql\nCREATE TABLE IF NOT EXISTS records (\n    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n    title VARCHAR(255) NOT NULL,\n    status VARCHAR(50) NOT NULL DEFAULT 'active',\n    metadata JSONB DEFAULT '{}'::jsonb,\n    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n\nCREATE INDEX IF NOT EXISTS idx_records_status_created ON records (status, created_at DESC);\n\n-- Query active records\nSELECT id, title, status, created_at\nFROM records\nWHERE status = 'active'\nORDER BY created_at DESC\nLIMIT 50;\n\`\`\`\n\nTell me if you'd like joins, aggregations, or migrations added to this query.`,
-      };
-    }
-
-    if (lang === 'tsx') {
-      return {
-        matched: true,
-        reply: `Here is a modular **React + TypeScript** component for **${topic}**:\n\n\`\`\`tsx\nimport React, { useState } from 'react';\n\ninterface Props {\n  title?: string;\n}\n\nexport const CustomModule: React.FC<Props> = ({ title = '${topic.slice(0, 40).replace(/'/g, '')}' }) => {\n  const [items, setItems] = useState<string[]>(['Initial Item']);\n  const [input, setInput] = useState('');\n\n  const handleAdd = (e: React.FormEvent) => {\n    e.preventDefault();\n    if (!input.trim()) return;\n    setItems((prev) => [...prev, input.trim()]);\n    setInput('');\n  };\n\n  return (\n    <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 text-white space-y-3">\n      <h3 className="text-sm font-bold">{title}</h3>\n      <form onSubmit={handleAdd} className="flex gap-2">\n        <input\n          value={input}\n          onChange={(e) => setInput(e.target.value)}\n          placeholder="Add new entry..."\n          className="flex-1 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs"\n        />\n        <button type="submit" className="px-3 py-1.5 rounded-lg bg-indigo-600 text-xs font-semibold">\n          Add\n        </button>\n      </form>\n      <ul className="space-y-1 text-xs text-slate-300">\n        {items.map((item, idx) => (\n          <li key={idx} className="p-2 rounded bg-slate-950/60">• {item}</li>\n        ))}\n      </ul>\n    </div>\n  );\n};\n\`\`\`\n\nWould you like me to wire this into a full project build in the **Projects** workspace?`,
-      };
-    }
-
-    return {
-      matched: true,
-      reply: `Here is a clean, strongly-typed **TypeScript** implementation for **${topic}**:\n\n\`\`\`typescript\nexport interface ExecutionResult<T> {\n  ok: boolean;\n  data: T;\n  timestamp: string;\n}\n\nexport function runOperation<T>(payload: T): ExecutionResult<T> {\n  return {\n    ok: true,\n    data: payload,\n    timestamp: new Date().toISOString(),\n  };\n}\n\n// Example usage:\nconst result = runOperation({ task: "${topic.slice(0, 50).replace(/"/g, "'")}", verified: true });\nconsole.log(result);\n\`\`\`\n\nIf you want to compile this into a full standalone application (Android APK, Windows EXE, or Web app), just say **"Build an app for..."** and I will launch the multi-agent builder.`,
-    };
+    private synthesizeCodeSnippet(
+    _prompt: string
+  ): { matched: boolean; reply?: string } {
+    // Do not generate generic placeholder code and label it as a
+    // solution to the user's specific programming request.
+    //
+    // Genuine code generation must come from an available language model
+    // or a real, task-specific implementation workflow.
+    return { matched: false };
   }
 
   public async generate(
