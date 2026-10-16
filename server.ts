@@ -1299,14 +1299,54 @@ app.get('/api/v1/providers/available', async (_req, res) => {
 
 app.post('/api/v1/providers/active', (req, res) => {
   try {
-    const { providerId } = req.body;
-    engine.providers.setActiveProvider(providerId);
-    if (providerId === 'local-transformers') {
-      providerRegistry.setPreferredProvider('local-transformers');
+    const providerId =
+      typeof req.body?.providerId === 'string'
+        ? req.body.providerId.trim()
+        : '';
+
+    if (!providerId) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'A provider ID is required.' },
+      });
     }
-    res.json({ success: true, activeProvider: providerId });
+
+    // Change the provider used by the RARE-INTELLIGENCE engine.
+    engine.providers.setActiveProvider(providerId);
+
+    // The engine provider IDs and regular-chat provider IDs are
+    // different in this project, so translate only supported choices.
+    const engineToChatProvider: Record<string, string> = {
+      'local-transformers': 'local-transformers',
+      ollama: 'local-ollama',
+      gemini: 'gemini-coprocessor',
+    };
+
+    const chatProvider = engineToChatProvider[providerId];
+
+    if (chatProvider) {
+      providerRegistry.setPreferredProvider(chatProvider);
+    }
+
+    return res.json({
+      success: true,
+      activeProvider: providerId,
+      chatProviderSynced: Boolean(chatProvider),
+      chatProvider: chatProvider || null,
+      message: chatProvider
+        ? 'Engine and chat provider selections have been synchronized.'
+        : 'Engine provider changed. Regular chat does not have a direct matching provider for this selection.',
+    });
   } catch (err: any) {
-    res.status(400).json({ success: false, error: { message: err.message } });
+    return res.status(400).json({
+      success: false,
+      error: {
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Unable to change the active provider.',
+      },
+    });
   }
 });
 
