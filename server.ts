@@ -689,11 +689,26 @@ async function generateAssistantReply(
     .map((m) => `• [${m.kind}] ${m.text}`)
     .join('\n');
 
-  const historyLines = (recentMessages || [])
-    .slice(-6)
-    .map((m) => `${m.role === 'user' ? 'User' : 'RARE'}: ${m.content.slice(0, 300)}`)
-    .join('\n');
+  
+const allMessages = recentMessages || [];
+const lastMessage = allMessages[allMessages.length - 1];
 
+const latestMessageIsCurrentPrompt =
+  lastMessage?.role === 'user' &&
+  lastMessage.content.trim() === prompt.trim();
+
+const previousMessages = latestMessageIsCurrentPrompt
+  ? allMessages.slice(0, -1)
+  : allMessages;
+
+const historyLines = previousMessages
+  .slice(-10)
+  .map(
+    (m) =>
+      `${m.role === 'user' ? 'User' : 'RARE'}: ${m.content.slice(0, 800)}`
+  )
+  .join('\n');
+  
   const combinedContext = [
     memoryLines ? `Durable Memory:\n${memoryLines}` : '',
     historyLines ? `Recent Conversation:\n${historyLines}` : '',
