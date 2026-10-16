@@ -678,8 +678,6 @@ export async function generateDynamicBrainReply(options: {
   }
 
   // 8. Dynamic, Contextual Reasoning & Conversational Response
-  const prevUserTurn = [...recentMessages].reverse().find((m) => m.role === 'user' && m.content !== q);
-  const isQuestion = q.endsWith('?') || /^(what|why|how|when|where|who|can|could|should|would|is|are|do|does|explain|tell)\b/i.test(lower);
 
   // Concept & Definition Knowledge Synthesis
   if (/^(what (is|are)|tell me about|explain)\s+(.+)/i.test(lower)) {
@@ -707,45 +705,33 @@ export async function generateDynamicBrainReply(options: {
       };
     }
 
-    // Dynamic direct explanatory synthesis for other concepts
-    const cleanTopic = rawTopic.replace(/^(a|an|the)\s+/i, '');
-    const capitalizedTopic = cleanTopic.charAt(0).toUpperCase() + cleanTopic.slice(1);
-    return {
-      content: `### ${capitalizedTopic}\n\n**${capitalizedTopic}** can be understood through its primary function, structure, and real-world significance:\n\n1. **Definition & Purpose:** At its core, ${cleanTopic} serves as a key concept or tool designed to address a specific objective, whether in physical reality, human society, or digital systems.\n2. **How It Operates:** It functions through defined principles, interacting with its environment and dependent components to deliver predictable, reliable outcomes.\n3. **Practical Context:** In everyday use, understanding ${cleanTopic} allows you to leverage its strengths effectively while working around any natural constraints.\n\nWould you like to explore technical mechanisms, history, or practical use cases?`,
-      thought: thinkHarder ? `[Cognitive Reasoning: Concept Deconstruction of "${cleanTopic}"]` : undefined,
-    };
+    // Unknown concepts must not receive an invented generic definition.
+    // Let the query continue to the explicit offline-capability fallback below.
   }
 
-  if (isVoiceCall) {
-    const spokenReplies = isQuestion
-      ? [
-          `Regarding ${q.replace(/[?]+$/, '')}, the key is understanding the core purpose and how it works in practice. Tell me what angle you'd like to explore and we can dive right in.`,
-          `That makes sense. When looking at ${q.replace(/[?]+$/, '')}, it really comes down to the fundamentals and practical execution. What part are you thinking about?`,
-        ]
-      : [
-          `I hear you on that. ${prevUserTurn ? 'It connects right into what you mentioned earlier too.' : ''} Tell me more about what you're thinking.`,
-          `That makes a lot of sense. What's the next step you're considering for it?`,
-        ];
-    return {
-      content: pickVaried('voice_general', spokenReplies),
-    };
-  }
+  // The offline fallback must be transparent rather than presenting a template
+  // as if it were the result of general-purpose neural reasoning.
+  const previousUserTurn = [...recentMessages]
+    .reverse()
+    .find((message) => message.role === 'user' && message.content.trim() !== q);
 
-  const chatReplies = isQuestion
-    ? [
-        `Here is a clear breakdown for **${q}**:\n\n• **Core Principle:** Looking directly at the question, the most important factor is understanding the underlying mechanics and how each piece fits together.\n• **Practical Application:** In real-world scenarios, breaking this down into straightforward, concrete steps ensures accuracy and clarity.\n\nLet me know which specific angle or application you'd like to dive into!`,
-        `Analyzing **${q}**:\n\n1. **Foundation:** Identify the fundamental principles governing the topic.\n2. **Execution:** Apply those principles to your specific goals and context.\n\nFeel free to ask for detailed examples, technical breakdowns, or step-by-step guidance!`,
-      ]
+  const historyLimit =
+    'I can see recent conversation messages, but history alone does not verify facts or provide a reasoning model.';
+
+  const fallbackContent = isVoiceCall
+    ? `I can't reliably reason about that in this offline mode because no general-purpose neural model is configured here.${
+        previousUserTurn ? ` ${historyLimit}` : ''
+      } I can still help with supported calculations, saved-memory recall, or facts returned by a successful live lookup.`
     : [
-        `Understood — on **"${q}"**${prevUserTurn ? `, continuing from our discussion earlier` : ''}.\n\nHow would you like to proceed? We can explore further details, plan next steps, or build out an implementation.`,
-        `Noted on **"${q}"**. I've kept this in mind for our session — let me know what you'd like to tackle next!`,
-      ];
+        "I can't give a reliable answer to that in this offline mode because no general-purpose neural model is configured here. I won't invent an explanation or present generic filler as knowledge.",
+        previousUserTurn ? historyLimit : '',
+        'I can still handle supported calculations, saved-memory recall, and factual information returned by a successful live lookup.',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
 
   return {
-    content: pickVaried('chat_general', chatReplies),
-    thought: thinkHarder
-      ? `Standalone Cognitive Brain • Context Active • Local Time: ${env.localTimeFormatted}`
-      : undefined,
+    content: fallbackContent,
   };
 }
 
