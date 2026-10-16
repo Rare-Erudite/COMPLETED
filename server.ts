@@ -708,6 +708,10 @@ async function generateAssistantReply(
     thinkHarder,
     persona,
     isVoiceCall: Boolean(isVoiceCall),
+    recentMessages: (recentMessages || []).slice(-6).map((message) => ({
+      role: message.role,
+      content: message.content,
+    })),
     systemPrompt: isVoiceCall
       ? `You are ${appSettings.assistantName}, speaking in a live, natural human phone call. Keep your reply warm, conversational, concise (1 to 3 spoken sentences), with zero markdown formatting or bullet points. Adapt naturally if the user corrects you or changes topics.`
       : undefined,

@@ -2,7 +2,7 @@ import assert from 'assert';
 import { MemoryStore } from '../src/server/storage/MemoryStore.js';
 import { CheckpointStore } from '../src/server/storage/CheckpointStore.js';
 import { ToolExecutor } from '../src/server/tools/ToolExecutor.js';
-import { OfflineCognitiveEngine } from '../src/server/providers/OfflineCognitiveEngine.js';
+import { OfflineCognitiveEngine, setOfflineEngineBrainObserver } from '../src/server/providers/OfflineCognitiveEngine.js';
 import { ProviderRegistry } from '../src/server/providers/ProviderRegistry.js';
 import { GeminiCoprocessorProvider } from '../src/server/providers/GeminiCoprocessorProvider.js';
 
@@ -56,6 +56,52 @@ export async function runModelProviderTests() {
   assert.strictEqual(regRes.providerType, 'offline_cognitive', 'Registry fell back to offline engine');
 
   if (originalKey) process.env.GEMINI_API_KEY = originalKey;
+
+  // 5. Test OfflineCognitiveEngine forwards recentMessages history to generateDynamicBrainReply
+  let capturedOptionsNormal: any = null;
+  let capturedOptionsVoice: any = null;
+
+  try {
+    setOfflineEngineBrainObserver((opts: any) => {
+      if (opts.isVoiceCall) {
+        capturedOptionsVoice = opts;
+      } else {
+        capturedOptionsNormal = opts;
+      }
+    });
+
+    const history = [
+      { role: 'user', content: 'RARE_HISTORY_FORWARD_TEST_7319' },
+      { role: 'assistant', content: 'RARE_HISTORY_REPLY_TEST_8426' },
+    ];
+
+    // Normal conversational path
+    await offlineEngine.generate('Tell me about quantum computing', undefined, {
+      recentMessages: history,
+    });
+
+    assert.ok(capturedOptionsNormal, 'generateDynamicBrainReply should be called for normal path');
+    assert.deepStrictEqual(
+      capturedOptionsNormal.recentMessages,
+      history,
+      'Normal conversational path must forward exact recentMessages history'
+    );
+
+    // Voice call path
+    await offlineEngine.generate('Hello there', undefined, {
+      isVoiceCall: true,
+      recentMessages: history,
+    } as any);
+
+    assert.ok(capturedOptionsVoice, 'generateDynamicBrainReply should be called for voice path');
+    assert.deepStrictEqual(
+      capturedOptionsVoice.recentMessages,
+      history,
+      'Voice call path must forward exact recentMessages history'
+    );
+  } finally {
+    setOfflineEngineBrainObserver(null);
+  }
 
   console.log('✓ Model Providers & Offline Intelligence tests passed.');
 }

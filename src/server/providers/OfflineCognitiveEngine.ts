@@ -7,7 +7,13 @@ import {
 } from '../types.js';
 import { MemoryStore } from '../storage/MemoryStore.js';
 import { ToolExecutor } from '../tools/ToolExecutor.js';
-import { generateDynamicBrainReply } from '../../engine/standalone-brain.js';
+import * as standaloneBrain from '../../engine/standalone-brain.js';
+
+let brainReplyObserver: ((options: any) => void) | null = null;
+
+export function setOfflineEngineBrainObserver(observer: ((options: any) => void) | null): void {
+  brainReplyObserver = observer;
+}
 
 export class OfflineCognitiveEngine implements IModelProvider {
   constructor(
@@ -158,7 +164,14 @@ export class OfflineCognitiveEngine implements IModelProvider {
   public async generate(
     prompt: string,
     context?: string,
-    options?: GenerationOptions & { persona?: string; thinkHarder?: boolean }
+    options?: GenerationOptions & {
+      persona?: string;
+      thinkHarder?: boolean;
+      recentMessages?: Array<{
+        role: string;
+        content: string;
+      }>;
+    }
   ): Promise<GenerationResult> {
     const trimmed = prompt.trim();
     const lower = trimmed.toLowerCase();
@@ -224,14 +237,17 @@ export class OfflineCognitiveEngine implements IModelProvider {
     // A. If Voice Call mode is active, use the conversational voice brain directly
     // -------------------------------------------------------------------------
     if ((options as any)?.isVoiceCall && !isBuildIntent && !isScheduleIntent && !isMemorySaveIntent) {
-      const voiceGen = await generateDynamicBrainReply({
+      const brainArgs = {
         prompt: trimmed,
         assistantName: 'RARE',
         personaMode: options?.persona || 'casual',
         thinkHarder: Boolean(options?.thinkHarder),
         isVoiceCall: true,
+        recentMessages: options?.recentMessages,
         memories: allRecentMemories.map((m) => ({ topic: m.kind, content: m.text })),
-      });
+      };
+      if (brainReplyObserver) brainReplyObserver(brainArgs);
+      const voiceGen = await standaloneBrain.generateDynamicBrainReply(brainArgs);
       return {
         reply: voiceGen.content,
         thought: voiceGen.thought || thought,
@@ -248,13 +264,16 @@ export class OfflineCognitiveEngine implements IModelProvider {
         lower
       );
     if (greetingMatch) {
-      const dynGreet = await generateDynamicBrainReply({
+      const brainArgs = {
         prompt: trimmed,
         assistantName: 'RARE',
         personaMode: options?.persona || 'casual',
         thinkHarder: Boolean(options?.thinkHarder),
         isVoiceCall: false,
-      });
+        recentMessages: options?.recentMessages,
+      };
+      if (brainReplyObserver) brainReplyObserver(brainArgs);
+      const dynGreet = await standaloneBrain.generateDynamicBrainReply(brainArgs);
       return {
         reply: dynGreet.content,
         thought,
@@ -286,13 +305,16 @@ export class OfflineCognitiveEngine implements IModelProvider {
       lower.includes('what model are you') ||
       /\b(weather|raining|rain|temperature|forecast|what\s+time\s+is\s+it|current\s+time|today'?s\s+date|what\s+day\s+is\s+today|where\s+am\s+i)\b/i.test(lower)
     ) {
-      const dynIdentityOrEnv = await generateDynamicBrainReply({
+      const brainArgs = {
         prompt: trimmed,
         assistantName: 'RARE',
         personaMode: options?.persona || 'casual',
         thinkHarder: Boolean(options?.thinkHarder),
         isVoiceCall: false,
-      });
+        recentMessages: options?.recentMessages,
+      };
+      if (brainReplyObserver) brainReplyObserver(brainArgs);
+      const dynIdentityOrEnv = await standaloneBrain.generateDynamicBrainReply(brainArgs);
       return {
         reply: dynIdentityOrEnv.content,
         thought: dynIdentityOrEnv.thought || thought,
@@ -624,14 +646,17 @@ export class OfflineCognitiveEngine implements IModelProvider {
     // -------------------------------------------------------------------------
     // J & K. Live Web Research, General Knowledge & Dynamic Compositional Reasoning
     // -------------------------------------------------------------------------
-    const dynReply = await generateDynamicBrainReply({
+    const brainArgs = {
       prompt: trimmed,
       assistantName: 'RARE',
       personaMode: options?.persona || 'casual',
       thinkHarder: Boolean(options?.thinkHarder),
       isVoiceCall: Boolean((options as any)?.isVoiceCall),
+      recentMessages: options?.recentMessages,
       memories: allRecentMemories.map((m) => ({ topic: m.kind, content: m.text })),
-    });
+    };
+    if (brainReplyObserver) brainReplyObserver(brainArgs);
+    const dynReply = await standaloneBrain.generateDynamicBrainReply(brainArgs);
 
     const memoryHint =
       pastMemories.length > 0 && !dynReply.content.includes(pastMemories[0].text)
