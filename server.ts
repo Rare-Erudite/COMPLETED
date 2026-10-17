@@ -1783,6 +1783,27 @@ function normalizePhone(raw: string): string {
   return digitsOnly.startsWith('+') ? digitsOnly : `+${digitsOnly}`;
 }
 
+app.post('/api/user/guest-session', (_req, res) => {
+  // A guest receives a unique owner ID, not the shared literal "guest".
+  const guestId = `guest_${crypto.randomUUID()}`;
+  const session = issueSessionForOwner(guestId);
+
+  return res.json({
+    success: true,
+    sessionToken: session.sessionToken,
+    expiresAt: session.expiresAt,
+  });
+});
+
+app.post('/api/user/logout', (req, res) => {
+  const token = readBearerSessionToken(req);
+
+  if (token) {
+    userSessions.delete(hashUserSessionToken(token));
+  }
+
+  return res.json({ success: true });
+});
 // User Accounts Authentication System (Real Verified Google, Outlook, Email, Phone)
 app.post('/api/user/oauth', async (req, res) => {
   const { provider = 'google', token, idToken, accessToken } = req.body;
