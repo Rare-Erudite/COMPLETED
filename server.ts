@@ -133,6 +133,89 @@ let registeredUsers: Map<string, AppUser> = new Map([
   ],
 ]);
 registeredUsers = durableStateStore.trackMap('registered_users', registeredUsers);
+type UserSessionRecord = {
+  userId: string;
+  expiresAt: number;
+};
+
+const USER_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+let userSessions: Map<string, UserSessionRecord> = new Map();
+userSessions = durableStateStore.trackMap('user_sessions', userSessions);
+
+function hashUserSessionToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function issueSessionForOwner(userId: string): {
+  sessionToken: string;
+  expiresAt: number;
+} {
+  const sessionToken = crypto.randomBytes(32).toString('base64url');
+  const expiresAt = Date.now() + USER_SESSION_TTL_MS;
+
+  // Store only the token hash, not the reusable bearer token.
+  userSessions.set(hashUserSessionToken(sessionToken), {
+    userId,
+    expiresAt,
+  });
+
+  return { sessionToken, expiresAt };
+}
+
+function issueUserSession(user: AppUser): {
+  sessionToken: string;
+  expiresAt: number;
+} {
+  // Preserve the existing email/phone ownership key used by RARE's UI.
+  const ownerId = String(user.email || user.phone || user.id)
+    .trim()
+    .toLowerCase();
+
+  return issueSessionForOwner(ownerId);
+}
+
+function readBearerSessionToken(req: express.Request): string | null {
+  const authorization = String(req.headers.authorization || '');
+  const match = /^Bearer\s+(\S+)$/i.exec(authorization);
+
+  return match?.[1] || null;
+}
+
+const requireConversationSession: express.RequestHandler = (
+  req,
+  res,
+  next
+) => {
+  const token = readBearerSessionToken(req);
+
+  if (!token) {
+    return res.status(401).json({
+      error: {
+        message: 'A valid RARE session is required.',
+      },
+    });
+  }
+
+  const tokenHash = hashUserSessionToken(token);
+  const session = userSessions.get(tokenHash);
+
+  if (!session || session.expiresAt <= Date.now()) {
+    if (session) {
+      userSessions.delete(tokenHash);
+    }
+
+    return res.status(401).json({
+      error: {
+        message: 'Your RARE session is missing or expired. Please sign in again.',
+      },
+    });
+  }
+
+  // This identity comes from the server's session record, never the request body.
+  res.locals.rareUserId = session.userId;
+  return next();
+};
 
 interface AuditEvent {
   id: string;
