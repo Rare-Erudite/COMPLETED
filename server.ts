@@ -3613,8 +3613,14 @@ async function startServer() {
     throw new Error(`Invalid PORT value "${process.env.PORT}". Set PORT to an integer between 1 and 65535.`);
   }
 
-  persistentStorage = new PersistentJsonStore();
+    persistentStorage = new PersistentJsonStore();
   await persistentStorage.checkConnection();
+
+  // Production must never start with local-only authentication sessions.
+  if (isProduction) {
+    persistentStorage.requireReadyPostgres();
+  }
+
   await Promise.all([
     durableStateStore.hydrate(persistentStorage),
     memoryStore.initializePersistence(persistentStorage),
@@ -3623,6 +3629,51 @@ async function startServer() {
     trajectoryStore.initializePersistence(persistentStorage),
     updateStore.initializePersistence(persistentStorage),
   ]);
+
+  const localAuthFallbackAllowed =
+    process.env.NODE_ENV !== 'production' &&
+    !process.argv.includes('--production') &&
+    process.env.RARE_ALLOW_LOCAL_STORAGE_FALLBACK === 'true';
+
+  // Migrate legacy accounts only into the authoritative authentication store.
+  if (
+    persistentStorage.getStatus().mode === 'postgresql' ||
+    localAuthFallbackAllowed
+  ) {
+    for (const [, legacyUser] of legacyRegisteredUsers) {
+      const normalizedEmail = legacyUser.email
+        ? legacyUser.email.trim().toLowerCase()
+        : null;
+
+      const normalizedPhone = legacyUser.phone
+        ? normalizePhone(legacyUser.phone)
+        : null;
+
+      let passwordHash = legacyUser.passwordHash || null;
+
+      // Old plaintext passwords, if present in legacy state, are never copied
+      // to the new user table in plaintext.
+      if (!passwordHash && legacyUser.password) {
+        passwordHash = await hashPassword(legacyUser.password);
+      }
+
+      const createdAt = legacyUser.createdAt &&
+        Number.isFinite(Date.parse(legacyUser.createdAt))
+        ? new Date(legacyUser.createdAt).toISOString()
+        : new Date().toISOString();
+
+      await persistentStorage.importLegacyAuthUserIfAbsent({
+        id: legacyUser.id || `usr_${crypto.randomUUID()}`,
+        name: legacyUser.name || normalizedEmail?.split('@')[0] || 'RARE User',
+        email: normalizedEmail,
+        phone: normalizedPhone,
+        passwordHash,
+        provider: legacyUser.provider,
+        role: legacyUser.role,
+        createdAt,
+      });
+    }
+  }
 
   const httpServer = http.createServer(app);
   let vite: import('vite').ViteDevServer | undefined;
