@@ -299,12 +299,12 @@ export function AuthModal({
         tokenToVerify = outlookEmail.trim();
       }
 
-      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>('/api/user/oauth', {
+      const res = await safePost<{ success: boolean; user: UserAccount; sessionToken: string; expiresAt: number; error?: string }>('/api/user/oauth', {
         provider: 'outlook',
         token: tokenToVerify,
       });
 
-      if (res?.success && res.user) {
+      if (res?.success && res.user && res.sessionToken) {
         saveDeviceAccount({
           name: res.user.name,
           email: res.user.email || 'microsoft_user',
@@ -312,7 +312,7 @@ export function AuthModal({
           avatarColor: '#0078D4',
           lastUsed: new Date().toISOString(),
         });
-        onLoginSuccess(res.user);
+        onLoginSuccess(res.user, res.sessionToken);
         onClose();
       } else {
         setError(res?.error || 'Microsoft identity verification failed. Token rejected by server.');
