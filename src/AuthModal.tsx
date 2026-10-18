@@ -354,8 +354,8 @@ export function AuthModal({
         password,
         name: name.trim() || cleanEmail.split('@')[0],
       });
-      if (res?.success && res.user) {
-        onLoginSuccess(res.user);
+      if (res?.success && res.user && res.sessionToken) {
+        onLoginSuccess(res.user, res.sessionToken);
         onClose();
       } else {
         setError(res?.error || 'Authentication failed. Please verify credentials or request a 6-digit code.');
