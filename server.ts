@@ -1897,8 +1897,12 @@ app.post('/api/user/signup', (req, res) => {
   };
   registeredUsers.set(cleanEmail, user);
 
+    const { sessionToken, expiresAt } = issueUserSession(user);
+
   res.json({
     success: true,
+    sessionToken,
+    expiresAt,
     user: {
       id: user.id,
       name: user.name,
