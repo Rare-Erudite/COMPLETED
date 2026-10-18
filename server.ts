@@ -2174,8 +2174,12 @@ app.post('/api/user/verify-email-otp', (req, res) => {
     registeredUsers.set(cleanEmail, existing);
   }
 
+    const { sessionToken, expiresAt } = issueUserSession(existing);
+
   res.json({
     success: true,
+    sessionToken,
+    expiresAt,
     user: {
       id: existing.id,
       name: existing.name,
