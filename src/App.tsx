@@ -1329,7 +1329,8 @@ export default function App() {
         currentUser={currentUser}
         initialMode={authModalMode}
         onClose={() => setAuthModalOpen(false)}
-        onLoginSuccess={(user) => {
+                onLoginSuccess={(user, sessionToken) => {
+          storeUserSessionToken(sessionToken);
           setCurrentUser(user);
           localStorage.setItem('rare_user_account', JSON.stringify(user));
           if (user.role === 'developer') {
@@ -1337,6 +1338,7 @@ export default function App() {
           }
         }}
         onLogout={() => {
+          void clearUserSession();
           setCurrentUser(null);
           localStorage.removeItem('rare_user_account');
         }}
