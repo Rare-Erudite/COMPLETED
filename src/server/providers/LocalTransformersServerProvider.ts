@@ -1,6 +1,7 @@
 import { IModelProvider, ModelInfo, GenerationOptions, GenerationResult } from '../types.js';
 import { engine } from '../../engine/engine.js';
 import { LocalTransformersProvider } from '../../engine/providers/transformers-local.js';
+import { buildRareSystemPrompt } from './RarePrompt.js';
 
 export class LocalTransformersServerProvider implements IModelProvider {
   private getLocalProvider(): LocalTransformersProvider {
@@ -36,6 +37,21 @@ export class LocalTransformersServerProvider implements IModelProvider {
     return local.hasCachedWeights() || local.isReady;
   }
 
+  /** Starts loading (and, if needed, downloading) the model in the background. Never throws. */
+  public preload(): void {
+    try {
+      const local = this.getLocalProvider();
+      if (local.isReady) return;
+      console.log('[LocalModel] Background load started (first run downloads ~786 MB).');
+      local
+        .loadModel()
+        .then(() => console.log('[LocalModel] Qwen 2.5 0.5B is loaded and ready.'))
+        .catch((err: any) => console.warn('[LocalModel] Background load failed:', err?.message || err));
+    } catch (err: any) {
+      console.warn('[LocalModel] Could not start background load:', err?.message || err);
+    }
+  }
+
   public async generate(
     prompt: string,
     context?: string,
@@ -50,15 +66,32 @@ export class LocalTransformersServerProvider implements IModelProvider {
       }
     }
 
-    const systemInstruction = options?.systemPrompt || 'You are RARE-INTELLIGENCE, a helpful AI assistant.';
-    const formattedPrompt = context
-      ? `System Context:\n${context}\n\nUser Question:\n${prompt}`
-      : prompt;
+    const extra = (options || {}) as any;
 
-    const result = await local.generate(formattedPrompt, {
-      systemInstruction,
+    // 1. System prompt (+ only the few memories that matched this message).
+    let system: string = options?.systemPrompt || buildRareSystemPrompt('RARE', extra.persona);
+    const memoryLines: string[] = Array.isArray(extra.memoryContext) ? extra.memoryContext : [];
+    if (memoryLines.length > 0) {
+      system += `\n\nThings the user told you earlier (use them only if relevant):\n${memoryLines
+        .map((m) => `- ${String(m).slice(0, 200)}`)
+        .join('\n')}`;
+    }
+
+    // 2. Real chat turns, so the model uses its chat template instead of raw text.
+    const messages: Array<{ role: string; content: string }> = [];
+    const history: Array<{ role: string; content: string }> = Array.isArray(extra.history) ? extra.history : [];
+    for (const turn of history) {
+      if (!turn || !turn.content) continue;
+      messages.push({ role: turn.role === 'assistant' ? 'model' : 'user', content: String(turn.content) });
+    }
+    // Fallback: if the caller sent no history, keep the old context block so nothing is lost.
+    const finalUser = history.length === 0 && context ? `${context}\n\nUser: ${prompt}` : prompt;
+    messages.push({ role: 'user', content: finalUser });
+
+    const result = await local.generate(messages as any, {
+      systemInstruction: system,
       temperature: options?.temperature ?? 0.7,
-      maxOutputTokens: options?.maxTokens ?? 256,
+      maxOutputTokens: options?.maxTokens ?? 400,
     });
 
     return {
