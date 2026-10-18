@@ -163,7 +163,466 @@ export class PersistentJsonStore {
       }
     });
   }
+  /**
+   * Authentication and session data must use PostgreSQL in production.
+   * Local persistence is permitted only when explicitly enabled in
+   * development and never when --production is present.
+   */
+  public requireReadyPostgres(): Pool | null {
+    const isProduction =
+      process.env.NODE_ENV === 'production' ||
+      process.argv.includes('--production');
 
+    if (
+      this.pool &&
+      this.databaseStatus.reachable &&
+      this.databaseStatus.schemaReady
+    ) {
+      return this.pool;
+    }
+
+    const allowLocalFallback =
+      !isProduction &&
+      !process.argv.includes('--production') &&
+      process.env.RARE_ALLOW_LOCAL_STORAGE_FALLBACK === 'true';
+
+    if (allowLocalFallback) {
+      return null;
+    }
+
+    throw new Error(
+      'Authentication storage requires a reachable PostgreSQL database ' +
+      'with rare_users and rare_sessions installed. ' +
+      (this.databaseStatus.error || '')
+    );
+  }
+
+  private saveLocalAuthState(): void {
+    this.memoryDocs.set(
+      'rare_auth_users',
+      Array.from(this.localAuthUsers.values())
+    );
+    this.memoryDocs.set(
+      'rare_auth_sessions',
+      Array.from(this.localAuthSessions.entries())
+    );
+    this.saveFallbackDocuments();
+  }
+
+  private toStoredAuthUser(row: AuthUserRow): StoredAuthUser {
+    return {
+      id: row.id,
+      name: row.name,
+      email: row.email,
+      phone: row.phone,
+      passwordHash: row.passwordHash,
+      provider: row.provider,
+      role: row.role,
+      createdAt: new Date(row.createdAt).toISOString(),
+    };
+  }
+
+  public async getAuthUserByEmail(
+    email: string
+  ): Promise<StoredAuthUser | null> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const pool = this.requireReadyPostgres();
+
+    if (!pool) {
+      for (const user of this.localAuthUsers.values()) {
+        if (user.email?.toLowerCase() === normalizedEmail) {
+          return { ...user };
+        }
+      }
+      return null;
+    }
+
+    const result = await pool.query<AuthUserRow>(
+      `SELECT
+         id,
+         name,
+         email,
+         phone,
+         password_hash AS "passwordHash",
+         provider,
+         role,
+         created_at AS "createdAt"
+       FROM rare_users
+       WHERE lower(email) = $1
+       LIMIT 1`,
+      [normalizedEmail]
+    );
+
+    return result.rows[0]
+      ? this.toStoredAuthUser(result.rows[0])
+      : null;
+  }
+
+  public async getAuthUserByPhone(
+    phone: string
+  ): Promise<StoredAuthUser | null> {
+    const normalizedPhone = phone.trim();
+    const pool = this.requireReadyPostgres();
+
+    if (!pool) {
+      for (const user of this.localAuthUsers.values()) {
+        if (user.phone === normalizedPhone) {
+          return { ...user };
+        }
+      }
+      return null;
+    }
+
+    const result = await pool.query<AuthUserRow>(
+      `SELECT
+         id,
+         name,
+         email,
+         phone,
+         password_hash AS "passwordHash",
+         provider,
+         role,
+         created_at AS "createdAt"
+       FROM rare_users
+       WHERE phone = $1
+       LIMIT 1`,
+      [normalizedPhone]
+    );
+
+    return result.rows[0]
+      ? this.toStoredAuthUser(result.rows[0])
+      : null;
+  }
+
+  public async getAuthUserById(
+    id: string
+  ): Promise<StoredAuthUser | null> {
+    const pool = this.requireReadyPostgres();
+
+    if (!pool) {
+      const user = this.localAuthUsers.get(id);
+      return user ? { ...user } : null;
+    }
+
+    const result = await pool.query<AuthUserRow>(
+      `SELECT
+         id,
+         name,
+         email,
+         phone,
+         password_hash AS "passwordHash",
+         provider,
+         role,
+         created_at AS "createdAt"
+       FROM rare_users
+       WHERE id = $1
+       LIMIT 1`,
+      [id]
+    );
+
+    return result.rows[0]
+      ? this.toStoredAuthUser(result.rows[0])
+      : null;
+  }
+
+  public async createAuthUser(
+    user: StoredAuthUser
+  ): Promise<StoredAuthUser> {
+    const pool = this.requireReadyPostgres();
+
+    if (!pool) {
+      const emailExists = user.email
+        ? await this.getAuthUserByEmail(user.email)
+        : null;
+      const phoneExists = user.phone
+        ? await this.getAuthUserByPhone(user.phone)
+        : null;
+
+      if (emailExists || phoneExists) {
+        const error = new Error('An account with this identity already exists.');
+        (error as NodeJS.ErrnoException).code = '23505';
+        throw error;
+      }
+
+      this.localAuthUsers.set(user.id, { ...user });
+      this.saveLocalAuthState();
+      return { ...user };
+    }
+
+    const result = await pool.query<AuthUserRow>(
+      `INSERT INTO rare_users (
+         id,
+         name,
+         email,
+         phone,
+         password_hash,
+         provider,
+         role,
+         created_at,
+         updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+       RETURNING
+         id,
+         name,
+         email,
+         phone,
+         password_hash AS "passwordHash",
+         provider,
+         role,
+         created_at AS "createdAt"`,
+      [
+        user.id,
+        user.name,
+        user.email,
+        user.phone,
+        user.passwordHash,
+        user.provider,
+        user.role,
+        user.createdAt,
+      ]
+    );
+
+    return this.toStoredAuthUser(result.rows[0]);
+  }
+
+  /**
+   * A verified OAuth login may update a user's display name, but it must
+   * never overwrite an existing password, account role, or provider.
+   */
+  public async upsertVerifiedOAuthUser(input: {
+    id: string;
+    name: string;
+    email: string;
+    provider: 'google' | 'outlook';
+    createdAt: string;
+  }): Promise<StoredAuthUser> {
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const pool = this.requireReadyPostgres();
+
+    if (!pool) {
+      const existing = await this.getAuthUserByEmail(normalizedEmail);
+      if (existing) {
+        existing.name = input.name || existing.name;
+        this.localAuthUsers.set(existing.id, existing);
+        this.saveLocalAuthState();
+        return { ...existing };
+      }
+
+      return this.createAuthUser({
+        id: input.id,
+        name: input.name,
+        email: normalizedEmail,
+        phone: null,
+        passwordHash: null,
+        provider: input.provider,
+        role: 'user',
+        createdAt: input.createdAt,
+      });
+    }
+
+    const result = await pool.query<AuthUserRow>(
+      `INSERT INTO rare_users (
+         id,
+         name,
+         email,
+         phone,
+         password_hash,
+         provider,
+         role,
+         created_at,
+         updated_at
+       )
+       VALUES ($1, $2, $3, NULL, NULL, $4, 'user', $5, now())
+       ON CONFLICT (email)
+       DO UPDATE SET
+         name = EXCLUDED.name,
+         updated_at = now()
+       RETURNING
+         id,
+         name,
+         email,
+         phone,
+         password_hash AS "passwordHash",
+         provider,
+         role,
+         created_at AS "createdAt"`,
+      [
+        input.id,
+        input.name,
+        normalizedEmail,
+        input.provider,
+        input.createdAt,
+      ]
+    );
+
+    return this.toStoredAuthUser(result.rows[0]);
+  }
+
+  /**
+   * Import legacy accounts without overwriting existing PostgreSQL accounts.
+   */
+  public async importLegacyAuthUserIfAbsent(
+    user: StoredAuthUser
+  ): Promise<void> {
+    const pool = this.requireReadyPostgres();
+
+    if (!pool) {
+      const existing = user.email
+        ? await this.getAuthUserByEmail(user.email)
+        : user.phone
+          ? await this.getAuthUserByPhone(user.phone)
+          : null;
+
+      if (!existing) {
+        this.localAuthUsers.set(user.id, { ...user });
+        this.saveLocalAuthState();
+      }
+      return;
+    }
+
+    await pool.query(
+      `INSERT INTO rare_users (
+         id,
+         name,
+         email,
+         phone,
+         password_hash,
+         provider,
+         role,
+         created_at,
+         updated_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+       ON CONFLICT DO NOTHING`,
+      [
+        user.id,
+        user.name,
+        user.email,
+        user.phone,
+        user.passwordHash,
+        user.provider,
+        user.role,
+        user.createdAt,
+      ]
+    );
+  }
+
+  public async updateAuthUserPasswordHash(
+    userId: string,
+    passwordHash: string
+  ): Promise<void> {
+    const pool = this.requireReadyPostgres();
+
+    if (!pool) {
+      const user = this.localAuthUsers.get(userId);
+      if (!user) throw new Error('Authentication account not found.');
+      user.passwordHash = passwordHash;
+      this.localAuthUsers.set(userId, user);
+      this.saveLocalAuthState();
+      return;
+    }
+
+    const result = await pool.query(
+      `UPDATE rare_users
+       SET password_hash = $2, updated_at = now()
+       WHERE id = $1`,
+      [userId, passwordHash]
+    );
+
+    if (result.rowCount !== 1) {
+      throw new Error('Authentication account could not be updated.');
+    }
+  }
+
+  public async createAuthSession(
+    tokenHash: string,
+    ownerId: string,
+    accountId: string | null,
+    expiresAt: number
+  ): Promise<void> {
+    const pool = this.requireReadyPostgres();
+
+    const session: StoredAuthSession = {
+      ownerId,
+      accountId,
+      expiresAt,
+    };
+
+    if (!pool) {
+      this.localAuthSessions.set(tokenHash, session);
+      this.saveLocalAuthState();
+      return;
+    }
+
+    await pool.query(
+      `INSERT INTO rare_sessions (
+         token_hash,
+         owner_id,
+         account_id,
+         expires_at
+       )
+       VALUES ($1, $2, $3, $4)`,
+      [
+        tokenHash,
+        ownerId,
+        accountId,
+        new Date(expiresAt),
+      ]
+    );
+  }
+
+  public async getAuthSession(
+    tokenHash: string
+  ): Promise<StoredAuthSession | null> {
+    const pool = this.requireReadyPostgres();
+
+    if (!pool) {
+      const session = this.localAuthSessions.get(tokenHash);
+      return session ? { ...session } : null;
+    }
+
+    const result = await pool.query<{
+      ownerId: string;
+      accountId: string | null;
+      expiresAt: number | string;
+    }>(
+      `SELECT
+         owner_id AS "ownerId",
+         account_id AS "accountId",
+         (EXTRACT(EPOCH FROM expires_at) * 1000)::bigint AS "expiresAt"
+       FROM rare_sessions
+       WHERE token_hash = $1
+         AND revoked_at IS NULL
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    const row = result.rows[0];
+    if (!row) return null;
+
+    return {
+      ownerId: row.ownerId,
+      accountId: row.accountId,
+      expiresAt: Number(row.expiresAt),
+    };
+  }
+
+  public async deleteAuthSession(tokenHash: string): Promise<void> {
+    const pool = this.requireReadyPostgres();
+
+    if (!pool) {
+      if (this.localAuthSessions.delete(tokenHash)) {
+        this.saveLocalAuthState();
+      }
+      return;
+    }
+
+    await pool.query(
+      'DELETE FROM rare_sessions WHERE token_hash = $1',
+      [tokenHash]
+    );
+  }
   async persistProjectRun(run: Record<string, any>): Promise<void> {
     if (!this.pool || !this.databaseStatus.schemaReady) return;
     let client;
