@@ -193,7 +193,6 @@ export function resolveApiUrl(path: string): string {
   const normalizedBase = normalizeBackendUrl(base);
   return `${normalizedBase}${path.startsWith('/') ? path : `/${path}`}`;
 }
-const SESSION_TOKEN_KEY = 'rare_session_token';
 
 export function getStoredSessionToken(): string {
   if (typeof window === 'undefined') return '';
