@@ -666,42 +666,124 @@ export async function safeFetch<T>(
   fallback?: T,
   retries = 0
 ): Promise<T | null> {
-  // If running inside the standalone Android APK without an explicit custom server override,
-  // or if the network call fails, fulfill immediately via the built-in standalone router!
   const storedCustomUrl = getStoredBackendUrl();
-  if (isStandaloneMobileApp() && !storedCustomUrl) {
-    const localResult = await executeStandaloneLocalRoute(url, options);
-    if (localResult !== null) {
-      updateConnectionState(true);
-      return localResult as T;
+  const useLocalFirst = isStandaloneMobileApp() && !storedCustomUrl;
+
+  // Preserve explicit on-device standalone operation.
+  if (useLocalFirst) {
+    try {
+      const localResult = await executeStandaloneLocalRoute(url, options);
+      if (localResult !== null) {
+        updateConnectionState(true);
+        return localResult as T;
+      }
+    } catch {
+      // Continue only if the local route cannot handle this request.
     }
   }
 
+  // Conversation requests require a server-issued session when using a backend.
+  // Call fetch directly in the initializer so this cannot recurse through safeFetch.
+  if (
+    !useLocalFirst &&
+    isConversationApiRequest(url) &&
+    !getStoredSessionToken()
+  ) {
+    await initializeGuestSessionToken();
+  }
+
+  let lastNetworkError: unknown;
+  let receivedHttpResponse = false;
+
   for (let i = 0; i <= retries; i++) {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
     try {
       const fullUrl = resolveApiUrl(url);
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 6500);
-      const res = await fetch(fullUrl, { ...options, signal: controller.signal });
-      clearTimeout(timeout);
+      timeoutId = setTimeout(() => controller.abort(), 6500);
+
+      const headers = new Headers(options?.headers || {});
+      const token = getStoredSessionToken();
+
+      // Never send a stored bearer token to an unrelated absolute URL.
+      if (token && isTrustedBackendRequest(fullUrl)) {
+        headers.set('Authorization', `Bearer ${token}`);
+      }
+
+      if (!headers.has('Accept')) {
+        headers.set('Accept', 'application/json');
+      }
+
+      const res = await fetch(fullUrl, {
+        ...options,
+        headers,
+        signal: controller.signal,
+      });
+
+      receivedHttpResponse = true;
+
+      if (!res.ok) {
+        updateConnectionState(false, `HTTP ${res.status}`);
+
+        // An HTTP denial or missing endpoint is not an offline fallback signal.
+        return null;
+      }
+
       const contentType = res.headers.get('content-type') || '';
 
-      if (res.ok && /\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(contentType)) {
-        const data = (await res.json()) as T;
-        updateConnectionState(true);
-        return data;
+      if (!/\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(contentType)) {
+        updateConnectionState(false, 'The endpoint did not return JSON.');
+        return null;
       }
-    } catch {}
+
+      const data = (await res.json()) as T;
+
+      updateConnectionState(true);
+      return data;
+    } catch (error) {
+      lastNetworkError = error;
+
+      if (receivedHttpResponse) {
+        // A response was already received; do not turn parsing or response
+        // failures into a successful local response.
+        updateConnectionState(
+          false,
+          error instanceof Error ? error.message : 'Invalid backend response.'
+        );
+        return null;
+      }
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    }
   }
 
-  // Seamless fallback to the on-device Standalone Local Router so no feature ever breaks offline
-  const localFallback = await executeStandaloneLocalRoute(url, options);
-  if (localFallback !== null) {
-    updateConnectionState(true);
-    return localFallback as T;
+  // Offline fallback is allowed only when no HTTP response was received.
+  try {
+    const localFallback = await executeStandaloneLocalRoute(url, options);
+
+    if (localFallback !== null) {
+      updateConnectionState(true);
+      return localFallback as T;
+    }
+  } catch {
+    // Report failure below rather than fabricating a response.
   }
 
-  return fallback !== undefined ? fallback : null;
+  if (fallback !== undefined) {
+    return fallback;
+  }
+
+  updateConnectionState(
+    false,
+    lastNetworkError instanceof Error
+      ? lastNetworkError.message
+      : 'Could not reach the backend.'
+  );
+
+  return null;
 }
 
 export async function safePost<T>(
