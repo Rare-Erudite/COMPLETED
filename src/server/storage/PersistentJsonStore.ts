@@ -22,6 +22,29 @@ export class PersistentJsonStore {
 
   constructor(connectionString = process.env.DATABASE_URL) {
     this.loadFallbackDocuments();
+        const savedAuthUsers = this.memoryDocs.get('rare_auth_users');
+    if (Array.isArray(savedAuthUsers)) {
+      for (const user of savedAuthUsers as StoredAuthUser[]) {
+        if (user && typeof user.id === 'string') {
+          this.localAuthUsers.set(user.id, user);
+        }
+      }
+    }
+
+    const savedAuthSessions = this.memoryDocs.get('rare_auth_sessions');
+    if (Array.isArray(savedAuthSessions)) {
+      for (const entry of savedAuthSessions) {
+        if (
+          Array.isArray(entry) &&
+          entry.length === 2 &&
+          typeof entry[0] === 'string' &&
+          entry[1] &&
+          typeof entry[1].ownerId === 'string'
+        ) {
+          this.localAuthSessions.set(entry[0], entry[1]);
+        }
+      }
+    }
     this.databaseStatus = {
       configured: Boolean(connectionString),
       reachable: false,
