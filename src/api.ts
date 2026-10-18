@@ -12,6 +12,7 @@
 import { generateDynamicBrainReply } from './engine/standalone-brain';
 
 const BACKEND_URL_KEY = 'rare_backend_url';
+const SESSION_TOKEN_KEY = 'rare_session_token';
 export const DEFAULT_CLOUD_HTTPS_URL = '';
 
 export interface BackendConnectionState {
