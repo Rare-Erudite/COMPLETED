@@ -1033,8 +1033,9 @@ export default function App() {
 
                       {/* Sign Out */}
                       <button
-                        onClick={() => {
+                                                onClick={() => {
                           setAccountMenuOpen(false);
+                          void clearUserSession();
                           setCurrentUser(null);
                           localStorage.removeItem('rare_user_account');
                         }}
