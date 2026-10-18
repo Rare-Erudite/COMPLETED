@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 /**
  * Server-Side OAuth Identity Verification Provider
  *
