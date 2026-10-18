@@ -403,7 +403,7 @@ export function AuthModal({
     setError('');
     setLoading(true);
     try {
-      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>('/api/user/verify-email-otp', {
+      const res = await safePost<{ success: boolean; user: UserAccount; sessionToken: string; expiresAt: number; error?: string }>('/api/user/verify-email-otp', {
         email: email.trim(),
         code: verifyCode.trim(),
         name: name.trim() || email.trim().split('@')[0],
