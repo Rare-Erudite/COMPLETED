@@ -2022,71 +2022,106 @@ app.post('/api/user/send-otp', async (req, res) => {
   });
 });
 
-app.post('/api/user/verify-otp', (req, res) => {
-  const { phone, code, name } = req.body;
-  if (!phone || !code) {
-    return res.status(400).json({ success: false, error: 'Phone and verification code are required.' });
+app.post('/api/user/verify-otp', async (req, res) => {
+  const { phone, code, name } = req.body || {};
+
+  if (
+    typeof phone !== 'string' ||
+    typeof code !== 'string' ||
+    phone.trim().length < 5 ||
+    !code.trim()
+  ) {
+    return res.status(400).json({
+      success: false,
+      error: 'Phone and verification code are required.',
+    });
   }
+
   const cleanPhone = normalizePhone(phone);
-  const cleanCode = String(code).trim();
+  const cleanCode = code.trim();
   const saved = activeOtpRecords.get(cleanPhone);
 
   if (!saved) {
-    return res.status(400).json({ success: false, error: 'No active verification code found for this phone number.' });
+    return res.status(400).json({
+      success: false,
+      error: 'No active verification code found for this phone number.',
+    });
   }
 
   if (Date.now() > saved.expiresAt) {
     activeOtpRecords.delete(cleanPhone);
-    return res.status(400).json({ success: false, error: 'Verification code has expired. Please request a new one.' });
+    return res.status(400).json({
+      success: false,
+      error: 'Verification code has expired. Please request a new one.',
+    });
   }
 
   if (saved.attempts >= saved.maxAttempts) {
     activeOtpRecords.delete(cleanPhone);
-    return res.status(400).json({ success: false, error: 'Too many incorrect attempts. Please request a new code.' });
+    return res.status(400).json({
+      success: false,
+      error: 'Too many incorrect attempts. Please request a new code.',
+    });
   }
 
   saved.attempts += 1;
-  const computedHash = hashOtpCode(cleanPhone, cleanCode);
 
-  if (saved.codeHash !== computedHash) {
+  const computedHash = hashOtpCode(cleanPhone, cleanCode);
+  const submittedHash = Buffer.from(computedHash, 'hex');
+  const expectedHash = Buffer.from(saved.codeHash, 'hex');
+
+  const codeMatches =
+    submittedHash.length === expectedHash.length &&
+    crypto.timingSafeEqual(submittedHash, expectedHash);
+
+  if (!codeMatches) {
     return res.status(400).json({
       success: false,
       error: `Invalid verification code. ${saved.maxAttempts - saved.attempts} attempt(s) remaining.`,
     });
   }
 
-  // Code verified! Invalidate immediately so it cannot be reused
+  // The OTP can never be reused after successful verification.
   activeOtpRecords.delete(cleanPhone);
 
-  let existing = registeredUsers.get(cleanPhone);
-  if (!existing) {
-    existing = {
-      id: `usr_phone_${Date.now()}`,
-      name: name?.trim() || `User ${cleanPhone.slice(-4)}`,
-      phone: cleanPhone,
-      provider: 'phone',
-      role: 'user',
-      createdAt: new Date().toISOString(),
-    };
-    registeredUsers.set(cleanPhone, existing);
+  try {
+    const storage = persistentStorage;
+    if (!storage) throw new Error('Authentication storage is unavailable.');
+
+    let user = await storage.getAuthUserByPhone(cleanPhone);
+
+    if (!user) {
+      user = await storage.createAuthUser({
+        id: `usr_${crypto.randomUUID()}`,
+        name:
+          typeof name === 'string' && name.trim()
+            ? name.trim().slice(0, 120)
+            : `User ${cleanPhone.slice(-4)}`,
+        email: null,
+        phone: cleanPhone,
+        passwordHash: null,
+        provider: 'phone',
+        role: 'user',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const { sessionToken, expiresAt } = await issueUserSession(user);
+
+    return res.json({
+      success: true,
+      sessionToken,
+      expiresAt,
+      user: toPublicAuthUser(user),
+    });
+  } catch (error) {
+    console.error('[Auth] Phone OTP account/session persistence failed:', error);
+
+    return res.status(503).json({
+      success: false,
+      error: 'Authentication storage is unavailable. Please retry verification.',
+    });
   }
-
-    const { sessionToken, expiresAt } = issueUserSession(existing);
-
-  res.json({
-    success: true,
-    sessionToken,
-    expiresAt,
-    user: {
-      id: existing.id,
-      name: existing.name,
-      email: existing.email,
-      phone: existing.phone,
-      provider: existing.provider,
-      role: existing.role,
-      createdAt: existing.createdAt,
-    },
-  });
 });
 
 app.post('/api/user/send-email-otp', async (req, res) => {
