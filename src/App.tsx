@@ -428,7 +428,9 @@ export default function App() {
     }
 
     // Fallback to standalone local conversations store
-    let localList = Object.values(localStore).filter((c) => !c.userId || c.userId === userKey || userKey === 'guest');
+        let localList = Object.values(localStore).filter(
+      (c) => c.userId === userKey || (!c.userId && userKey === 'guest')
+    );
     if (q && q.trim()) {
       const lq = q.trim().toLowerCase();
       localList = localList.filter(
