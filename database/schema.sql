@@ -67,3 +67,37 @@ CREATE TABLE IF NOT EXISTS artifacts (
 
 CREATE INDEX IF NOT EXISTS artifacts_project_created_idx
   ON artifacts (project_id, created_at);
+
+-- Authoritative RARE account records.
+CREATE TABLE IF NOT EXISTS rare_users (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE,
+  phone TEXT UNIQUE,
+  password_hash TEXT,
+  provider TEXT NOT NULL CHECK (
+    provider IN ('google', 'outlook', 'email', 'phone')
+  ),
+  role TEXT NOT NULL DEFAULT 'user' CHECK (
+    role IN ('developer', 'user')
+  ),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (email IS NOT NULL OR phone IS NOT NULL)
+);
+
+-- Sessions contain only a hash of the bearer token.
+CREATE TABLE IF NOT EXISTS rare_sessions (
+  token_hash TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  account_id TEXT REFERENCES rare_users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  revoked_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS rare_sessions_owner_expiry_idx
+  ON rare_sessions (owner_id, expires_at);
+
+CREATE INDEX IF NOT EXISTS rare_sessions_expiry_idx
+  ON rare_sessions (expires_at);
