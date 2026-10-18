@@ -192,7 +192,172 @@ export function resolveApiUrl(path: string): string {
   const normalizedBase = normalizeBackendUrl(base);
   return `${normalizedBase}${path.startsWith('/') ? path : `/${path}`}`;
 }
+const SESSION_TOKEN_KEY = 'rare_session_token';
 
+export function getStoredSessionToken(): string {
+  if (typeof window === 'undefined') return '';
+
+  try {
+    return window.localStorage.getItem(SESSION_TOKEN_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function storeUserSessionToken(token: string): void {
+  if (typeof window === 'undefined') {
+    throw new Error('Session storage is unavailable in this environment.');
+  }
+
+  const cleanToken = typeof token === 'string' ? token.trim() : '';
+  if (!cleanToken) {
+    throw new Error('The server did not provide a valid session token.');
+  }
+
+  try {
+    window.localStorage.setItem(SESSION_TOKEN_KEY, cleanToken);
+  } catch {
+    throw new Error('This browser could not save the RARE session.');
+  }
+}
+
+function isTrustedBackendRequest(url: string): boolean {
+  try {
+    const configuredBackend = getBackendUrl();
+    const fallbackOrigin =
+      typeof window !== 'undefined' ? window.location.origin : '';
+
+    const baseValue = configuredBackend || fallbackOrigin;
+    if (!baseValue || baseValue === 'null') return false;
+
+    const base = new URL(baseValue);
+    const target = new URL(url, fallbackOrigin || 'http://localhost');
+    const basePath = base.pathname.replace(/\/+$/, '');
+
+    const pathMatches =
+      !basePath ||
+      basePath === '/' ||
+      target.pathname === basePath ||
+      target.pathname.startsWith(`${basePath}/`);
+
+    return target.origin === base.origin && pathMatches;
+  } catch {
+    return false;
+  }
+}
+
+function isConversationApiRequest(url: string): boolean {
+  if (
+    /^https?:\/\//i.test(url) &&
+    !isTrustedBackendRequest(url)
+  ) {
+    return false;
+  }
+
+  try {
+    const base =
+      typeof window !== 'undefined'
+        ? window.location.origin
+        : 'http://localhost';
+
+    const pathname = new URL(url, base).pathname;
+    return /^\/api\/conversations(?:\/|$)/.test(pathname);
+  } catch {
+    return /^\/api\/conversations(?:\/|$)/.test(url.split('?')[0]);
+  }
+}
+
+let guestSessionInitialization: Promise<string | null> | null = null;
+
+async function initializeGuestSessionToken(): Promise<string | null> {
+  const existing = getStoredSessionToken();
+  if (existing) return existing;
+  if (typeof window === 'undefined') return null;
+
+  if (!guestSessionInitialization) {
+    guestSessionInitialization = (async (): Promise<string | null> => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+      try {
+        const controller = new AbortController();
+        timeoutId = setTimeout(() => controller.abort(), 6500);
+
+        // Direct fetch is intentional. Never call safePost/safeFetch here.
+        const response = await fetch(resolveApiUrl('/api/user/guest-session'), {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          updateConnectionState(false, `HTTP ${response.status}`);
+          return null;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!/\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(contentType)) {
+          return null;
+        }
+
+        const payload = await response.json();
+
+        if (
+          payload?.success !== true ||
+          typeof payload.sessionToken !== 'string' ||
+          !payload.sessionToken.trim()
+        ) {
+          return null;
+        }
+
+        storeUserSessionToken(payload.sessionToken);
+        return payload.sessionToken;
+      } catch {
+        return null;
+      } finally {
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+      }
+    })().finally(() => {
+      guestSessionInitialization = null;
+    });
+  }
+
+  return guestSessionInitialization || Promise.resolve(null);
+}
+
+export async function clearUserSession(): Promise<void> {
+  // Capture the token before clearing it locally.
+  const token = getStoredSessionToken();
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem(SESSION_TOKEN_KEY);
+    } catch {
+      // Continue with best-effort server-side invalidation.
+    }
+  }
+
+  if (!token || typeof window === 'undefined') return;
+
+  try {
+    const target = resolveApiUrl('/api/user/logout');
+    if (!isTrustedBackendRequest(target)) return;
+
+    const headers = new Headers({
+      Accept: 'application/json',
+    });
+    headers.set('Authorization', `Bearer ${token}`);
+
+    await fetch(target, {
+      method: 'POST',
+      headers,
+    });
+  } catch {
+    // The local token stays cleared even if the server cannot be reached.
+    // Server-side invalidation is best-effort; the server expiry still applies.
+  }
+}
 if (typeof window !== 'undefined') {
   (window as any).__RARE_RESOLVE_API_URL__ = resolveApiUrl;
 }
