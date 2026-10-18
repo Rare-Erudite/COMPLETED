@@ -2602,204 +2602,108 @@ app.get('/api/builder/toolchains', (req, res) => {
   res.json(toolchains);
 });
 
-// Conversations
-app.get('/api/conversations', (req, res) => {
-  const { search, userId } = req.query;
-  const userHeader = req.headers['x-user-id'];
-  const userKey = (userId as string) || (userHeader as string) || 'guest';
-  const allConvs = conversationStore.getAll(userKey);
-  let result = allConvs;
-  if (search && typeof search === 'string') {
-    const q = search.toLowerCase().trim();
-    if (q) {
-      result = allConvs.filter((c) => {
-        const titleMatch = c.title.toLowerCase().includes(q);
-        const contentMatch = c.messages.some((m) => m.content.toLowerCase().includes(q));
-        return titleMatch || contentMatch;
-      });
-    }
-  }
-  res.json(
-    result.map((c) => {
-      const q = typeof search === 'string' ? search.toLowerCase().trim() : '';
-      let matchedSnippet = '';
-      if (q) {
-        const matchedMsg = c.messages.find((m) => m.content.toLowerCase().includes(q));
-        if (matchedMsg) {
-          const idx = matchedMsg.content.toLowerCase().indexOf(q);
-          const start = Math.max(0, idx - 24);
-          const end = Math.min(matchedMsg.content.length, idx + q.length + 36);
-          matchedSnippet = (start > 0 ? '...' : '') + matchedMsg.content.slice(start, end).trim() + (end < matchedMsg.content.length ? '...' : '');
-        }
-      }
-      return {
-        id: c.id,
-        title: c.title,
-        created_at: c.created_at,
-        messageCount: c.messages.length,
-        customTitle: c.customTitle,
-        userId: c.userId,
-        matchedSnippet: matchedSnippet || undefined,
-      };
-    })
-  );
-});
+app.post('/api/user/verify-email-otp', async (req, res) => {
+  const { email, code, name } = req.body || {};
 
-app.get('/api/conversations/:id', (req, res) => {
-  let conv = conversationStore.getById(req.params.id);
-  if (!conv) {
-    const userHeader = req.headers['x-user-id'];
-    conv = {
-      id: req.params.id,
-      title: 'New Chat',
-      userId: (userHeader as string) || 'guest',
-      created_at: new Date().toISOString(),
-      messages: [
-        {
-          id: `msg_${Date.now()}`,
-          role: 'assistant' as const,
-          content: `Hello! I am ${appSettings.assistantName} — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images`,
-          timestamp: new Date().toISOString(),
-        },
-      ],
-    };
-    conversationStore.save(conv as any);
-  }
-  res.json(conv);
-});
-
-app.post('/api/conversations', (req, res) => {
-  const { title, userId, id } = req.body;
-  const userHeader = req.headers['x-user-id'];
-  const userKey = (userId as string) || (userHeader as string) || 'guest';
-  const convId = (id as string) || `conv_${Date.now()}`;
-  const existing = conversationStore.getById(convId);
-  if (existing) {
-    return res.status(200).json(existing);
-  }
-  const newConv = {
-    id: convId,
-    title: title || 'New Chat',
-    userId: userKey,
-    created_at: new Date().toISOString(),
-    messages: [
-      {
-        id: `msg_${Date.now()}`,
-        role: 'assistant' as const,
-        content: `Hello! I am ${appSettings.assistantName} — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat casually about any topic — my permanent memory retains everything we discuss\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation\n• Generate or edit high-fidelity images`,
-        timestamp: new Date().toISOString(),
-      },
-    ],
-  };
-  conversationStore.save(newConv as any);
-  res.status(201).json(newConv);
-});
-
-// Rename conversation
-app.post('/api/conversations/:id/rename', (req, res) => {
-  const conv = conversationStore.getById(req.params.id);
-  if (!conv) return res.status(404).json({ error: { message: 'Conversation not found' } });
-  const { title } = req.body;
-  if (!title || !title.trim()) return res.status(400).json({ error: { message: 'Title is required' } });
-  conv.title = title.trim();
-  conv.customTitle = true;
-  conversationStore.save(conv);
-  res.json({ success: true, conversation: conv });
-});
-
-// Delete conversation
-app.delete('/api/conversations/:id', (req, res) => {
-  const ok = conversationStore.delete(req.params.id);
-  if (ok) {
-    return res.json({ success: true });
-  }
-  res.status(404).json({ error: { message: 'Conversation not found' } });
-});
-
-// Edit specific message
-app.put('/api/conversations/:id/messages/:msgId', (req, res) => {
-  const conv = conversationStore.getById(req.params.id);
-  if (!conv) return res.status(404).json({ error: { message: 'Conversation not found' } });
-
-  const { content } = req.body;
-  if (typeof content !== 'string') return res.status(400).json({ error: { message: 'Content is required' } });
-
-  const msg = conv.messages.find((m) => m.id === req.params.msgId);
-  if (!msg) return res.status(404).json({ error: { message: 'Message not found' } });
-
-  msg.content = content.trim();
-  conversationStore.save(conv);
-  res.json({ success: true, message: msg, conversation: conv });
-});
-
-// Delete specific message
-app.delete('/api/conversations/:id/messages/:msgId', (req, res) => {
-  const conv = conversationStore.getById(req.params.id);
-  if (!conv) return res.status(404).json({ error: { message: 'Conversation not found' } });
-
-  const idx = conv.messages.findIndex((m) => m.id === req.params.msgId);
-  if (idx === -1) return res.status(404).json({ error: { message: 'Message not found' } });
-
-  conv.messages.splice(idx, 1);
-  conversationStore.save(conv);
-  res.json({ success: true, conversation: conv });
-});
-
-app.post('/api/conversations/:id', async (req, res) => {
-  let conv = conversationStore.getById(req.params.id);
-  if (!conv) {
-    const userHeader = req.headers['x-user-id'];
-    conv = {
-      id: req.params.id,
-      title: 'New Chat',
-      userId: (userHeader as string) || 'guest',
-      created_at: new Date().toISOString(),
-      messages: [],
-    };
-    conversationStore.save(conv as any);
+  if (
+    typeof email !== 'string' ||
+    typeof code !== 'string' ||
+    !email.includes('@') ||
+    !code.trim()
+  ) {
+    return res.status(400).json({
+      success: false,
+      error: 'Email and verification code are required.',
+    });
   }
 
-  const { message, think_harder, persona } = req.body;
-  if (!message) return res.status(400).json({ error: { message: 'Missing message content' } });
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanCode = code.trim();
+  const saved = activeOtpRecords.get(cleanEmail);
 
-  const userMsg: ChatMessage = {
-    id: `msg_${Date.now()}_u`,
-    role: 'user',
-    content: message,
-    timestamp: new Date().toISOString(),
-  };
-  conv.messages.push(userMsg);
-
-  // Automatically derive a smart title capturing central theme if not manually renamed
-  if (!conv.customTitle && (conv.title === 'New Chat' || conv.title === 'New Conversation' || conv.title.startsWith('Session #'))) {
-    const derived = deriveConversationTitle(conv.messages);
-    if (derived && derived !== 'New Chat') {
-      conv.title = derived;
-    }
+  if (!saved) {
+    return res.status(400).json({
+      success: false,
+      error: 'No active verification code found for this email address.',
+    });
   }
+
+  if (Date.now() > saved.expiresAt) {
+    activeOtpRecords.delete(cleanEmail);
+    return res.status(400).json({
+      success: false,
+      error: 'Verification code has expired. Please request a new one.',
+    });
+  }
+
+  if (saved.attempts >= saved.maxAttempts) {
+    activeOtpRecords.delete(cleanEmail);
+    return res.status(400).json({
+      success: false,
+      error: 'Too many incorrect attempts. Please request a new code.',
+    });
+  }
+
+  saved.attempts += 1;
+
+  const computedHash = hashOtpCode(cleanEmail, cleanCode);
+  const submittedHash = Buffer.from(computedHash, 'hex');
+  const expectedHash = Buffer.from(saved.codeHash, 'hex');
+
+  const codeMatches =
+    submittedHash.length === expectedHash.length &&
+    crypto.timingSafeEqual(submittedHash, expectedHash);
+
+  if (!codeMatches) {
+    return res.status(400).json({
+      success: false,
+      error: `Invalid verification code. ${saved.maxAttempts - saved.attempts} attempt(s) remaining.`,
+    });
+  }
+
+  // The OTP can never be reused after successful verification.
+  activeOtpRecords.delete(cleanEmail);
 
   try {
-    const { reply, thought, actionDetected } = await generateAssistantReply(
-      message,
-      !!think_harder,
-      conv.id,
-      persona,
-      conv.messages
-    );
-    const botMsg: ChatMessage = {
-      id: `msg_${Date.now()}_b`,
-      role: 'assistant',
-      content: reply,
-      timestamp: new Date().toISOString(),
-      thought,
-    };
-    conv.messages.push(botMsg);
-    conversationStore.save(conv);
-    res.json({ user_message: userMsg, assistant_message: botMsg, actionDetected, conversationTitle: conv.title });
-  } catch (err: any) {
-    res.status(500).json({ error: { message: err?.message || 'Inference error' } });
+    const storage = persistentStorage;
+    if (!storage) throw new Error('Authentication storage is unavailable.');
+
+    let user = await storage.getAuthUserByEmail(cleanEmail);
+
+    if (!user) {
+      user = await storage.createAuthUser({
+        id: `usr_${crypto.randomUUID()}`,
+        name:
+          typeof name === 'string' && name.trim()
+            ? name.trim().slice(0, 120)
+            : cleanEmail.split('@')[0],
+        email: cleanEmail,
+        phone: null,
+        passwordHash: null,
+        provider: 'email',
+        role: 'user',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const { sessionToken, expiresAt } = await issueUserSession(user);
+
+    return res.json({
+      success: true,
+      sessionToken,
+      expiresAt,
+      user: toPublicAuthUser(user),
+    });
+  } catch (error) {
+    console.error('[Auth] Email OTP account/session persistence failed:', error);
+
+    return res.status(503).json({
+      success: false,
+      error: 'Authentication storage is unavailable. Please retry verification.',
+    });
   }
 });
+)
 
 // Memory
 app.get('/api/user-memory', (req, res) => {
