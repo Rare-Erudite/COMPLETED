@@ -85,41 +85,88 @@ export class OAuthVerificationService {
   /**
    * Verify a Microsoft / Azure AD token via Microsoft Graph API.
    */
-  public async verifyMicrosoftToken(token: string): Promise<VerifiedOAuthProfile> {
-    if (!token || typeof token !== 'string' || token.trim().length < 10) {
-      throw new Error('Missing or malformed Microsoft token.');
+    public async verifyGoogleToken(
+    token: string
+  ): Promise<VerifiedOAuthProfile> {
+    if (
+      !token ||
+      typeof token !== 'string' ||
+      token.trim().length < 20
+    ) {
+      throw new Error('Missing or malformed Google ID token.');
     }
 
-    const cleanToken = token.trim();
+    const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+    const isProduction =
+      process.env.NODE_ENV === 'production' ||
+      process.argv.includes('--production');
 
-    // Query Microsoft Graph /v1.0/me with the Bearer token
-    const graphUrl = 'https://graph.microsoft.com/v1.0/me';
-    const response = await fetch(graphUrl, {
-      headers: {
-        Authorization: `Bearer ${cleanToken}`,
-        Accept: 'application/json',
-      },
-    });
+    if (isProduction && !clientId) {
+      throw new Error(
+        'GOOGLE_CLIENT_ID must be configured in production.'
+      );
+    }
+
+    const response = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(token.trim())}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
 
     if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`Microsoft token verification failed (HTTP ${response.status}): ${errText.slice(0, 150)}`);
+      throw new Error('Google ID token was rejected or has expired.');
     }
 
     const data = await response.json();
-    const email = (data.mail || data.userPrincipalName || '').toLowerCase().trim();
 
-    if (!email || !email.includes('@')) {
-      throw new Error('Microsoft profile does not contain a valid email address.');
+    const issuer = String(data.iss || '');
+    const audience = String(data.aud || '');
+    const subject = String(data.sub || '');
+    const expiresAt = Number(data.exp);
+    const email = String(data.email || '').trim().toLowerCase();
+
+    if (
+      issuer !== 'https://accounts.google.com' &&
+      issuer !== 'accounts.google.com'
+    ) {
+      throw new Error('Google ID token issuer mismatch.');
     }
 
-    const name = data.displayName || data.givenName || email.split('@')[0];
+    if (!audience) {
+      throw new Error('Google ID token has no audience.');
+    }
+
+    if (clientId && audience !== clientId) {
+      throw new Error('Google ID token audience mismatch.');
+    }
+
+    if (
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= Math.floor(Date.now() / 1000)
+    ) {
+      throw new Error('Google ID token has expired or has no valid expiry.');
+    }
+
+    if (!subject) {
+      throw new Error('Google ID token has no subject.');
+    }
+
+    if (
+      data.email_verified !== true &&
+      data.email_verified !== 'true'
+    ) {
+      throw new Error('Google account email is not verified.');
+    }
+
+    if (!email || !email.includes('@')) {
+      throw new Error('Google ID token has no valid email address.');
+    }
 
     return {
-      provider: 'outlook',
+      provider: 'google',
       email,
-      name,
-      sub: data.id || email,
+      name: String(data.name || data.given_name || email.split('@')[0]),
+      sub: subject,
+      avatarUrl: data.picture,
     };
   }
 }
