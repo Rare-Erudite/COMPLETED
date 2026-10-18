@@ -12,6 +12,8 @@ export class PersistentJsonStore {
   private readonly pendingWrites = new Map<string, Promise<void>>();
   private readonly memoryDocs = new Map<string, any>();
   private readonly memoryFiles = new Map<string, StoredSnapshotFile[]>();
+    private readonly localAuthUsers = new Map<string, StoredAuthUser>();
+  private readonly localAuthSessions = new Map<string, StoredAuthSession>();
   private readonly fallbackPath = path.resolve(
     process.env.RARE_APP_ROOT || process.cwd(),
     '.rare',
