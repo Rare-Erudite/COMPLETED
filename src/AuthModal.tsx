@@ -408,7 +408,7 @@ export function AuthModal({
         code: verifyCode.trim(),
         name: name.trim() || email.trim().split('@')[0],
       });
-      if (res?.success && res.user) {
+      if (res?.success && res.user && res.sessionToken) {
         onLoginSuccess(res.user, res.sessionToken);
         onClose();
       } else {
