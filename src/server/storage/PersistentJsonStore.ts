@@ -6,7 +6,41 @@ export interface StoredSnapshotFile {
   relativePath: string;
   content: Buffer;
 }
+export type StoredAuthProvider =
+  | 'google'
+  | 'outlook'
+  | 'email'
+  | 'phone';
 
+export type StoredAuthRole = 'developer' | 'user';
+
+export interface StoredAuthUser {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  passwordHash: string | null;
+  provider: StoredAuthProvider;
+  role: StoredAuthRole;
+  createdAt: string;
+}
+
+export interface StoredAuthSession {
+  ownerId: string;
+  accountId: string | null;
+  expiresAt: number;
+}
+
+interface AuthUserRow {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  passwordHash: string | null;
+  provider: StoredAuthProvider;
+  role: StoredAuthRole;
+  createdAt: Date | string;
+}
 export class PersistentJsonStore {
   private readonly pool: Pool | null = null;
   private readonly pendingWrites = new Map<string, Promise<void>>();
