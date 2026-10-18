@@ -1852,8 +1852,12 @@ app.post('/api/user/oauth', async (req, res) => {
       details: `Verified identity for ${existing.name} (${cleanEmail}) via ${provider} token verification.`,
     });
 
+        const { sessionToken, expiresAt } = issueUserSession(existing);
+
     res.json({
       success: true,
+      sessionToken,
+      expiresAt,
       user: {
         id: existing.id,
         name: existing.name,
