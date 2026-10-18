@@ -463,13 +463,13 @@ export function AuthModal({
     setLoading(true);
     const fullPhone = `${countryCode} ${phoneRaw.trim()}`;
     try {
-      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>('/api/user/verify-otp', {
+      const res = await safePost<{ success: boolean; user: UserAccount; sessionToken: string; expiresAt: number; error?: string }>('/api/user/verify-otp', {
         phone: fullPhone,
         code: verifyCode.trim(),
         name: name.trim() || `User ${phoneRaw.slice(-4)}`,
       });
-      if (res?.success && res.user) {
-        onLoginSuccess(res.user);
+      if (res?.success && res.user && res.sessionToken) {
+        onLoginSuccess(res.user, res.sessionToken);
         onClose();
       } else {
         setError(res?.error || 'Invalid or expired verification code.');
