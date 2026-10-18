@@ -349,7 +349,7 @@ export function AuthModal({
     try {
       const endpoint = tab === 'signin' ? '/api/user/login' : '/api/user/signup';
       const cleanEmail = email.trim();
-      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>(endpoint, {
+      const res = await safePost<{ success: boolean; user: UserAccount; sessionToken: string; expiresAt: number; error?: string }>(endpoint, {
         email: cleanEmail,
         password,
         name: name.trim() || cleanEmail.split('@')[0],
