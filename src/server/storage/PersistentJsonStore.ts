@@ -66,7 +66,16 @@ export class PersistentJsonStore {
         ]],
       );
       const available = new Set(result.rows.map((row) => row.table_name));
-      const required = ['rare_persistent_documents', 'rare_checkpoint_files', 'projects', 'project_tasks', 'agent_events', 'artifacts'];
+            const required = [
+        'rare_persistent_documents',
+        'rare_checkpoint_files',
+        'projects',
+        'project_tasks',
+        'agent_events',
+        'artifacts',
+        'rare_users',
+        'rare_sessions',
+      ];
       const missing = required.filter((table) => !available.has(table));
       this.databaseStatus = {
         configured: true,
