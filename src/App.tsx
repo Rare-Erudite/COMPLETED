@@ -335,10 +335,16 @@ export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'default' | 'google' | 'outlook' | 'switch'>('default');
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     try {
       const saved = localStorage.getItem('rare_user_account');
-      return saved ? JSON.parse(saved) : null;
+
+      if (!saved || !getStoredSessionToken()) {
+        localStorage.removeItem('rare_user_account');
+        return null;
+      }
+
+      return JSON.parse(saved);
     } catch {
       return null;
     }
