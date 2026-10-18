@@ -56,13 +56,15 @@ export class PersistentJsonStore {
       const result = await this.pool.query<{ table_name: string }>(
         `SELECT table_name FROM information_schema.tables
          WHERE table_schema = current_schema() AND table_name = ANY($1::text[])`,
-        [[
+                [[
           'rare_persistent_documents',
           'rare_checkpoint_files',
           'projects',
           'project_tasks',
           'agent_events',
           'artifacts',
+          'rare_users',
+          'rare_sessions',
         ]],
       );
       const available = new Set(result.rows.map((row) => row.table_name));
