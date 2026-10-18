@@ -1936,8 +1936,12 @@ app.post('/api/user/login', (req, res) => {
     return res.status(401).json({ success: false, error: 'Invalid email or password.' });
   }
 
+    const { sessionToken, expiresAt } = issueUserSession(existing);
+
   res.json({
     success: true,
+    sessionToken,
+    expiresAt,
     user: {
       id: existing.id,
       name: existing.name,
