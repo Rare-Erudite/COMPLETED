@@ -96,7 +96,7 @@ interface AuthModalProps {
   currentUser: UserAccount | null;
   initialMode?: 'default' | 'google' | 'outlook' | 'switch';
   onClose: () => void;
-  onLoginSuccess: (user: UserAccount) => void;
+  onLoginSuccess: (user: UserAccount, sessionToken: string) => void;
   onLogout: () => void;
 }
 
@@ -256,12 +256,12 @@ export function AuthModal({
         tokenToVerify = googleEmail.trim();
       }
 
-      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>('/api/user/oauth', {
+      const res = await safePost<{ success: boolean; user: UserAccount; sessionToken: string; expiresAt: number; error?: string }>('/api/user/oauth', {
         provider: 'google',
         token: tokenToVerify,
       });
 
-      if (res?.success && res.user) {
+      if (res?.success && res.user && res.sessionToken) {
         saveDeviceAccount({
           name: res.user.name,
           email: res.user.email || 'google_user',
@@ -269,7 +269,7 @@ export function AuthModal({
           avatarColor: '#4285F4',
           lastUsed: new Date().toISOString(),
         });
-        onLoginSuccess(res.user);
+        onLoginSuccess(res.user, res.sessionToken);
         onClose();
       } else {
         setError(res?.error || 'Google identity verification failed. Please check your credentials.');
