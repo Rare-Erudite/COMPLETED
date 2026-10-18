@@ -409,7 +409,7 @@ export function AuthModal({
         name: name.trim() || email.trim().split('@')[0],
       });
       if (res?.success && res.user) {
-        onLoginSuccess(res.user);
+        onLoginSuccess(res.user, res.sessionToken);
         onClose();
       } else {
         setError(res?.error || 'Invalid or expired verification code.');
