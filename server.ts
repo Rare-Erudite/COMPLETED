@@ -166,7 +166,15 @@ userSessions = durableStateStore.trackMap('user_sessions', userSessions);
 function hashUserSessionToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
+async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto
+    .createHash('sha256')
+    .update(`${salt}:${password}`)
+    .digest('hex');
 
+  return `${salt}:${hash}`;
+}
 function issueSessionForOwner(userId: string): {
   sessionToken: string;
   expiresAt: number;
