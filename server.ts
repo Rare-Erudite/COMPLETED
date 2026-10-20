@@ -2200,72 +2200,7 @@ app.post('/api/user/send-email-otp', async (req, res) => {
   });
 });
 
-app.post('/api/user/verify-email-otp', (req, res) => {
-  const { email, code, name } = req.body;
-  if (!email || !code) {
-    return res.status(400).json({ success: false, error: 'Email and verification code are required.' });
-  }
-  const cleanEmail = email.toLowerCase().trim();
-  const cleanCode = String(code).trim();
-  const saved = activeOtpRecords.get(cleanEmail);
 
-  if (!saved) {
-    return res.status(400).json({ success: false, error: 'No active verification code found for this email address.' });
-  }
-
-  if (Date.now() > saved.expiresAt) {
-    activeOtpRecords.delete(cleanEmail);
-    return res.status(400).json({ success: false, error: 'Verification code has expired. Please request a new one.' });
-  }
-
-  if (saved.attempts >= saved.maxAttempts) {
-    activeOtpRecords.delete(cleanEmail);
-    return res.status(400).json({ success: false, error: 'Too many incorrect attempts. Please request a new code.' });
-  }
-
-  saved.attempts += 1;
-  const computedHash = hashOtpCode(cleanEmail, cleanCode);
-
-  if (saved.codeHash !== computedHash) {
-    return res.status(400).json({
-      success: false,
-      error: `Invalid verification code. ${saved.maxAttempts - saved.attempts} attempt(s) remaining.`,
-    });
-  }
-
-  // Code verified! Invalidate immediately so it cannot be reused
-  activeOtpRecords.delete(cleanEmail);
-
-  let existing = registeredUsers.get(cleanEmail);
-  if (!existing) {
-    existing = {
-      id: `usr_${Date.now()}`,
-      name: name?.trim() || cleanEmail.split('@')[0],
-      email: cleanEmail,
-      provider: 'email',
-      role: 'user',
-      createdAt: new Date().toISOString(),
-    };
-    registeredUsers.set(cleanEmail, existing);
-  }
-
-    const { sessionToken, expiresAt } = issueUserSession(existing);
-
-  res.json({
-    success: true,
-    sessionToken,
-    expiresAt,
-    user: {
-      id: existing.id,
-      name: existing.name,
-      email: existing.email,
-      phone: existing.phone,
-      provider: existing.provider,
-      role: existing.role,
-      createdAt: existing.createdAt,
-    },
-  });
-});
 
 // Privileged Developer Space Status & Diagnostics
 app.get('/api/developer/status', (req, res) => {
