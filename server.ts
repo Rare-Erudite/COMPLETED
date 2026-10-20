@@ -119,6 +119,25 @@ interface AppUser {
   role: 'developer' | 'user';
   createdAt: string;
 }
+function toPublicAuthUser(user: {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  provider: 'google' | 'outlook' | 'email' | 'phone';
+  role: 'developer' | 'user';
+  createdAt: string;
+}) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email ?? undefined,
+    phone: user.phone ?? undefined,
+    provider: user.provider,
+    role: user.role,
+    createdAt: user.createdAt,
+  };
+}
 let registeredUsers: Map<string, AppUser> = new Map([
   [
     'rarelivescore@gmail.com',
