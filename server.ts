@@ -133,6 +133,7 @@ let registeredUsers: Map<string, AppUser> = new Map([
   ],
 ]);
 registeredUsers = durableStateStore.trackMap('registered_users', registeredUsers);
+const legacyRegisteredUsers = registeredUsers;
 type UserSessionRecord = {
   userId: string;
   expiresAt: number;
