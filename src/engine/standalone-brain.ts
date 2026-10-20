@@ -677,74 +677,37 @@ export async function generateDynamicBrainReply(options: {
     };
   }
 
-  // 8. Dynamic, Contextual Reasoning & Conversational Response
-  const prevUserTurn = [...recentMessages].reverse().find((m) => m.role === 'user' && m.content !== q);
-  const isQuestion = q.endsWith('?') || /^(what|why|how|when|where|who|can|could|should|would|is|are|do|does|explain|tell)\b/i.test(lower);
+  // 8. Honest fallback. No language model is connected, so never fake an answer.
+  const plain = lower.replace(/[^a-z0-9\s']/g, ' ').replace(/\s+/g, ' ').trim();
 
-  // Concept & Definition Knowledge Synthesis
-  if (/^(what (is|are)|tell me about|explain)\s+(.+)/i.test(lower)) {
-    const topicMatch = lower.match(/^(what (is|are)|tell me about|explain)\s+(.+)/i);
-    const rawTopic = (topicMatch?.[3] || '').replace(/[?.]+$/, '').trim();
-
-    if (/\bshoes?\b/i.test(rawTopic)) {
-      return {
-        content: `**Shoes** are items of footwear designed primarily to protect and comfort the human foot across various terrains, climates, and daily activities.\n\n• **Core Structure:** They typically consist of a durable outer sole (outsole) for grip and shock absorption, an insole for cushioning and arch support, an upper that encloses the foot, and fastening mechanisms like laces, straps, or slip-on collars.\n• **Materials:** Constructed from leather, canvas, engineered mesh, rubber, polyurethane, and lightweight foams (such as EVA).\n• **Function & Varieties:** From athletic running sneakers and heavy-duty work boots to casual loafers and formal dress shoes, footwear is tailored for biomechanical stability, thermal protection, and personal style.`,
-        thought: thinkHarder ? `[Cognitive Analysis: Footwear Biomechanics & Material Design] Subject: "${rawTopic}".` : undefined,
-      };
-    }
-
-    if (/\b(computer|laptop|pc)\b/i.test(rawTopic)) {
-      return {
-        content: `A **computer** is an electronic device that manipulates information and data according to stored program instructions.\n\n• **Core Architecture:** It operates via the Von Neumann architecture, comprising a Central Processing Unit (CPU) for arithmetic and logic computation, Random Access Memory (RAM) for fast volatile working storage, non-volatile storage (SSD/HDD), and input/output interfaces.\n• **Operation:** Binary signals (1s and 0s) represent instructions and data, translated from high-level software through compilers and operating systems to hardware transistor gates.`,
-        thought: thinkHarder ? `[Cognitive Analysis: Computer Architecture & Digital Logic]` : undefined,
-      };
-    }
-
-    if (/\b(ai|artificial intelligence|machine learning|llm|chatgpt)\b/i.test(rawTopic)) {
-      return {
-        content: `**Artificial Intelligence (AI)** refers to computer systems engineered to perform cognitive tasks traditionally associated with human intellect — including natural language comprehension, pattern recognition, spatial reasoning, and decision-making.\n\n• **Neural Networks & LLMs:** Modern systems like ChatGPT and Gemini utilize deep transformer architectures trained on vast corpora of text, predicting contextual tokens through self-attention mechanisms and reinforced through alignment techniques (RLHF).\n• **Capabilities:** From synthesizing code and translating languages to analyzing complex data, AI acts as a computational reasoning amplifier.`,
-        thought: thinkHarder ? `[Cognitive Analysis: Neural Transformers & Deep Learning Foundations]` : undefined,
-      };
-    }
-
-    // Dynamic direct explanatory synthesis for other concepts
-    const cleanTopic = rawTopic.replace(/^(a|an|the)\s+/i, '');
-    const capitalizedTopic = cleanTopic.charAt(0).toUpperCase() + cleanTopic.slice(1);
+  if (/\b(have you eaten|did you eat|have you had (breakfast|lunch|dinner)|are you hungry)\b/.test(plain)) {
     return {
-      content: `### ${capitalizedTopic}\n\n**${capitalizedTopic}** can be understood through its primary function, structure, and real-world significance:\n\n1. **Definition & Purpose:** At its core, ${cleanTopic} serves as a key concept or tool designed to address a specific objective, whether in physical reality, human society, or digital systems.\n2. **How It Operates:** It functions through defined principles, interacting with its environment and dependent components to deliver predictable, reliable outcomes.\n3. **Practical Context:** In everyday use, understanding ${cleanTopic} allows you to leverage its strengths effectively while working around any natural constraints.\n\nWould you like to explore technical mechanisms, history, or practical use cases?`,
-      thought: thinkHarder ? `[Cognitive Reasoning: Concept Deconstruction of "${cleanTopic}"]` : undefined,
+      content: isVoiceCall
+        ? "I'm an AI, so I don't eat, but I hope you've had something good. Have you eaten?"
+        : "I'm an AI, so I don't eat, but I hope you've had something good today. Have you eaten?",
     };
   }
 
-  if (isVoiceCall) {
-    const spokenReplies = isQuestion
-      ? [
-          `Regarding ${q.replace(/[?]+$/, '')}, the key is understanding the core purpose and how it works in practice. Tell me what angle you'd like to explore and we can dive right in.`,
-          `That makes sense. When looking at ${q.replace(/[?]+$/, '')}, it really comes down to the fundamentals and practical execution. What part are you thinking about?`,
-        ]
-      : [
-          `I hear you on that. ${prevUserTurn ? 'It connects right into what you mentioned earlier too.' : ''} Tell me more about what you're thinking.`,
-          `That makes a lot of sense. What's the next step you're considering for it?`,
-        ];
+  if (/\b(how was your day|how is your day|how's your day|what are you doing|what's up with you)\b/.test(plain)) {
     return {
-      content: pickVaried('voice_general', spokenReplies),
+      content: isVoiceCall
+        ? "All good on my side. I'm here and ready to help. How's your day going?"
+        : "All good on my side, I'm here and ready to help. How's your day going?",
     };
   }
 
-  const chatReplies = isQuestion
-    ? [
-        `Here is a clear breakdown for **${q}**:\n\n• **Core Principle:** Looking directly at the question, the most important factor is understanding the underlying mechanics and how each piece fits together.\n• **Practical Application:** In real-world scenarios, breaking this down into straightforward, concrete steps ensures accuracy and clarity.\n\nLet me know which specific angle or application you'd like to dive into!`,
-        `Analyzing **${q}**:\n\n1. **Foundation:** Identify the fundamental principles governing the topic.\n2. **Execution:** Apply those principles to your specific goals and context.\n\nFeel free to ask for detailed examples, technical breakdowns, or step-by-step guidance!`,
-      ]
-    : [
-        `Understood — on **"${q}"**${prevUserTurn ? `, continuing from our discussion earlier` : ''}.\n\nHow would you like to proceed? We can explore further details, plan next steps, or build out an implementation.`,
-        `Noted on **"${q}"**. I've kept this in mind for our session — let me know what you'd like to tackle next!`,
-      ];
+  if (plain.split(' ').length <= 3 && /^(yes|yeah|yep|yup|ok|okay|alright|sure|fine|no|nope|nah|cool|nice|hmm)\b/.test(plain)) {
+    return {
+      content: "Alright. What would you like to talk about or work on?",
+    };
+  }
 
   return {
-    content: pickVaried('chat_general', chatReplies),
+    content: isVoiceCall
+      ? "I'm in basic offline mode right now, so I can't answer that properly yet. I can still help with the time, weather, quick math, memories, alarms and starting projects."
+      : "I'm in basic offline mode right now, so I can't answer that properly yet.\n\nI can still help with greetings, the time and weather, quick math, saving memories, alarms, and starting build projects. Once my main language model is connected, I'll be able to chat about anything.",
     thought: thinkHarder
-      ? `Standalone Cognitive Brain • Context Active • Local Time: ${env.localTimeFormatted}`
+      ? `Offline fallback: no language model available • Local Time: ${env.localTimeFormatted}`
       : undefined,
   };
 }

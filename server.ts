@@ -16,6 +16,7 @@ import { DocumentStore } from './src/server/storage/DocumentStore.js';
 import { ResearchService } from './src/server/services/ResearchService.js';
 import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
 import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
+import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
 import { BenchmarkSuite } from './src/server/evaluation/BenchmarkSuite.js';
 import { engine } from './src/engine/engine.ts';
@@ -708,9 +709,15 @@ async function generateAssistantReply(
     thinkHarder,
     persona,
     isVoiceCall: Boolean(isVoiceCall),
+    history: (recentMessages || [])
+      .slice(0, -1)
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .slice(-8)
+      .map((m) => ({ role: m.role, content: String(m.content).slice(0, 600) })),
+    memoryContext: retrievedMemories.slice(0, 3).map((m) => m.text),
     systemPrompt: isVoiceCall
       ? `You are ${appSettings.assistantName}, speaking in a live, natural human phone call. Keep your reply warm, conversational, concise (1 to 3 spoken sentences), with zero markdown formatting or bullet points. Adapt naturally if the user corrects you or changes topics.`
-      : undefined,
+      : buildRareSystemPrompt(appSettings.assistantName, persona),
   } as any);
 
   if (result.actionDetected?.type === 'project_build' && result.actionDetected.data) {
