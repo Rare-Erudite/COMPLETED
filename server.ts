@@ -2738,7 +2738,6 @@ app.post('/api/user/verify-email-otp', async (req, res) => {
     });
   }
 });
-)
 
 // Memory
 app.get('/api/user-memory', (req, res) => {
