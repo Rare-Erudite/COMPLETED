@@ -183,7 +183,11 @@ function issueSessionForOwner(userId: string): {
   return { sessionToken, expiresAt };
 }
 
-function issueUserSession(user: AppUser): {
+function issueUserSession(user: {
+  id: string;
+  email?: string | null;
+  phone?: string | null;
+}): {
   sessionToken: string;
   expiresAt: number;
 } {
