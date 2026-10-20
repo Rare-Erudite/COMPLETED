@@ -104,9 +104,7 @@ export class OAuthVerificationService {
       sub: subject,
       avatarUrl: data.picture,
     };
-  }
-    throw new Error('Google identity token verification failed or token has expired.');
-  }
+    }
 
     /**
    * Verify a Microsoft OpenID Connect ID token.
