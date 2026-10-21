@@ -379,6 +379,60 @@ export default function App() {
     });
   }, []);
 
+useEffect(() => {
+  let cancelled = false;
+
+  const validateSavedSession = async () => {
+    if (!getStoredSessionToken()) {
+      return;
+    }
+
+    const result = await validateCurrentUserSession();
+
+    // A network/server failure is not proof that the session is invalid.
+    if (cancelled || !result) {
+      return;
+    }
+
+    if (!result.authenticated) {
+      await clearUserSession();
+
+      if (cancelled) {
+        return;
+      }
+
+      setCurrentUser(null);
+      setIsDeveloperAuthed(false);
+      localStorage.removeItem('rare_user_account');
+      return;
+    }
+
+    if (result.user) {
+      const user = result.user as UserAccount;
+
+      setCurrentUser(user);
+      localStorage.setItem('rare_user_account', JSON.stringify(user));
+
+      if (user.role === 'developer') {
+        setIsDeveloperAuthed(true);
+      } else {
+        setIsDeveloperAuthed(false);
+      }
+    } else {
+      // A valid guest session is not a signed-in account.
+      setCurrentUser(null);
+      setIsDeveloperAuthed(false);
+      localStorage.removeItem('rare_user_account');
+    }
+  };
+
+  void validateSavedSession();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
   const checkForUpdates = async (forceOpenModal = false) => {
     const channel = isDeveloperAuthed ? 'developer' : 'public';
     const data = await safeFetch<any>(`/api/updates/check?clientVersion=${clientVersion}&channel=${channel}`);
