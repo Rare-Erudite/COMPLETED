@@ -2423,7 +2423,14 @@ app.post('/api/user/verify-otp', async (req, res) => {
       });
     }
 
-    const { sessionToken, expiresAt } = await issueUserSession(user);
+        const { sessionToken, expiresAt } = issueUserSession(user);
+
+    await storage.createAuthSession(
+      hashUserSessionToken(sessionToken),
+      cleanPhone,
+      user.id,
+      expiresAt
+    );
 
     return res.json({
       success: true,
