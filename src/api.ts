@@ -358,6 +358,105 @@ export async function clearUserSession(): Promise<void> {
     // Server-side invalidation is best-effort; the server expiry still applies.
   }
 }
+
+export interface CurrentUserSessionResult {
+  authenticated: boolean;
+  user: {
+    id: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    provider: 'google' | 'outlook' | 'email' | 'phone';
+    role: 'developer' | 'user';
+    createdAt: string;
+  } | null;
+  expiresAt?: number;
+}
+
+export async function validateCurrentUserSession(): Promise<CurrentUserSessionResult | null> {
+  const token = getStoredSessionToken();
+
+  if (!token || typeof window === 'undefined') {
+    return {
+      authenticated: false,
+      user: null,
+    };
+  }
+
+  const target = resolveApiUrl('/api/user/me');
+
+  if (!isTrustedBackendRequest(target)) {
+    return null;
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const controller = new AbortController();
+    timeoutId = setTimeout(() => controller.abort(), 6500);
+
+    const response = await fetch(target, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: 'include',
+      signal: controller.signal,
+    });
+
+    if (response.status === 401) {
+      return {
+        authenticated: false,
+        user: null,
+      };
+    }
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+
+    if (!/\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(contentType)) {
+      return null;
+    }
+
+    const payload = await response.json();
+
+    if (
+      payload?.authenticated !== true ||
+      !(
+        payload.user === null ||
+        (
+          typeof payload.user?.id === 'string' &&
+          typeof payload.user?.name === 'string' &&
+          typeof payload.user?.createdAt === 'string' &&
+          ['google', 'outlook', 'email', 'phone'].includes(payload.user?.provider) &&
+          ['developer', 'user'].includes(payload.user?.role)
+        )
+      )
+    ) {
+      return {
+        authenticated: false,
+        user: null,
+      };
+    }
+
+    return {
+      authenticated: true,
+      user: payload.user,
+      expiresAt: payload.expiresAt,
+    };
+  } catch {
+    return null;
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 if (typeof window !== 'undefined') {
   (window as any).__RARE_RESOLVE_API_URL__ = resolveApiUrl;
 }
