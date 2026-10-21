@@ -1837,73 +1837,124 @@ app.post('/api/user/logout', (req, res) => {
   return res.json({ success: true });
 });
 // User Accounts Authentication System (Real Verified Google, Outlook, Email, Phone)
-app.post('/api/user/oauth', async (req, res) => {
-  const { provider = 'google', token, idToken, accessToken } = req.body;
-  const rawToken = token || idToken || accessToken;
 
-  if (!rawToken || typeof rawToken !== 'string') {
+app.post('/api/user/oauth', async (req, res) => {
+  const { provider = 'google', token, idToken, accessToken } = req.body || {};
+
+  const rawToken =
+    typeof token === 'string'
+      ? token
+      : typeof idToken === 'string'
+        ? idToken
+        : typeof accessToken === 'string'
+          ? accessToken
+          : null;
+
+  if (!rawToken || !rawToken.trim()) {
     return res.status(400).json({
       success: false,
-      error: 'Identity verification token is required for OAuth authentication. Unverified emails are rejected.',
+      error: 'Identity verification token is required for OAuth authentication.',
     });
   }
 
+  let verifiedProfile: {
+    provider: 'google' | 'outlook';
+    email: string;
+    name: string;
+    sub: string;
+    avatarUrl?: string;
+  } | null = null;
+
   try {
-    let verifiedProfile;
     if (provider === 'google') {
-      verifiedProfile = await oAuthVerificationService.verifyGoogleToken(rawToken);
+      verifiedProfile =
+        await oAuthVerificationService.verifyGoogleToken(rawToken);
     } else if (provider === 'outlook') {
-      verifiedProfile = await oAuthVerificationService.verifyMicrosoftToken(rawToken);
+      verifiedProfile =
+        await oAuthVerificationService.verifyMicrosoftToken(rawToken);
     } else {
-      return res.status(400).json({ success: false, error: `Unsupported identity provider: ${provider}` });
+      return res.status(400).json({
+        success: false,
+        error: `Unsupported identity provider: ${provider}`,
+      });
     }
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Identity verification failed.';
 
-    const cleanEmail = verifiedProfile.email.toLowerCase().trim();
-    let existing = registeredUsers.get(cleanEmail);
+    return res.status(401).json({
+      success: false,
+      error: `OAuth identity verification failed: ${message}`,
+    });
+  }
 
-    if (!existing) {
-      existing = {
-        id: `usr_${Date.now()}`,
-        name: verifiedProfile.name,
-        email: cleanEmail,
-        provider: verifiedProfile.provider,
-        role: 'user', // Developer privileges require explicit passkey authorization
-        createdAt: new Date().toISOString(),
-      };
-      registeredUsers.set(cleanEmail, existing);
-    } else {
-      existing.name = verifiedProfile.name || existing.name;
-    }
+  if (!verifiedProfile) {
+    return res.status(401).json({
+      success: false,
+      error: 'OAuth identity verification failed.',
+    });
+  }
+
+  const storage = persistentStorage;
+
+  if (!storage) {
+    return res.status(503).json({
+      success: false,
+      error: 'Authentication storage is unavailable.',
+    });
+  }
+
+  const cleanEmail = verifiedProfile.email.trim().toLowerCase();
+  const cleanName =
+    verifiedProfile.name.trim().slice(0, 120) ||
+    cleanEmail.split('@')[0];
+
+  try {
+    const user = await storage.upsertVerifiedOAuthUser({
+      id: `usr_${crypto.randomUUID()}`,
+      name: cleanName,
+      email: cleanEmail,
+      provider: verifiedProfile.provider,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Keep the legacy map updated while other routes are being migrated.
+    registeredUsers.set(cleanEmail, {
+      id: user.id,
+      name: user.name,
+      email: user.email ?? undefined,
+      phone: user.phone ?? undefined,
+      passwordHash: user.passwordHash ?? undefined,
+      provider: user.provider,
+      role: user.role,
+      createdAt: user.createdAt,
+    });
 
     auditLog.unshift({
-      id: `aud_${Date.now()}`,
+      id: `aud_${crypto.randomUUID()}`,
       timestamp: new Date().toISOString(),
       actor: cleanEmail,
       action: 'oauth_login_success',
       kind: 'user',
-      details: `Verified identity for ${existing.name} (${cleanEmail}) via ${provider} token verification.`,
+      details: `Verified identity for ${user.name} (${cleanEmail}) via ${verifiedProfile.provider} token verification.`,
     });
 
-        const { sessionToken, expiresAt } = issueUserSession(existing);
+    const { sessionToken, expiresAt } = issueUserSession(user);
 
-    res.json({
+    return res.json({
       success: true,
       sessionToken,
       expiresAt,
-      user: {
-        id: existing.id,
-        name: existing.name,
-        email: existing.email,
-        phone: existing.phone,
-        provider: existing.provider,
-        role: existing.role,
-        createdAt: existing.createdAt,
-      },
+      user: toPublicAuthUser(user),
     });
-  } catch (err: any) {
-    return res.status(401).json({
+  } catch (error) {
+    console.error('[Auth] OAuth account persistence failed:', error);
+
+    return res.status(503).json({
       success: false,
-      error: `OAuth identity verification failed: ${err.message}`,
+      error: 'OAuth sign-in is temporarily unavailable. Please try again later.',
     });
   }
 });
