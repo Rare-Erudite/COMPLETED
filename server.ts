@@ -1965,9 +1965,21 @@ app.post('/api/user/login', (req, res) => {
   // Validate hashed password or plain text (migrating to hash)
   let passwordMatches = false;
   if (existing.passwordHash) {
-    const [salt, hash] = existing.passwordHash.split(':');
-    const computed = crypto.createHash('sha256').update(`${salt}:${password}`).digest('hex');
-    passwordMatches = computed === hash;
+        const [salt, storedHash] = existing.passwordHash.split(':');
+
+    if (salt && storedHash && /^[a-f0-9]{64}$/i.test(storedHash)) {
+      const computedHash = crypto
+        .createHash('sha256')
+        .update(`${salt}:${password}`)
+        .digest('hex');
+
+      const computedBuffer = Buffer.from(computedHash, 'hex');
+      const storedBuffer = Buffer.from(storedHash, 'hex');
+
+      passwordMatches =
+        computedBuffer.length === storedBuffer.length &&
+        crypto.timingSafeEqual(computedBuffer, storedBuffer);
+    }
   } else if (existing.password) {
     passwordMatches = existing.password === password;
   }
