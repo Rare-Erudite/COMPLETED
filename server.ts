@@ -1997,22 +1997,44 @@ app.post('/api/user/signup', async (req, res) => {
   }
 });
 
-app.post('/api/user/login', (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: 'Email and password are required.' });
-  }
-  const cleanEmail = email.toLowerCase().trim();
-  const existing = registeredUsers.get(cleanEmail);
 
-  if (!existing) {
-    return res.status(401).json({ success: false, error: 'Invalid email or password.' });
+app.post('/api/user/login', async (req, res) => {
+  const { email, password } = req.body || {};
+
+  if (
+    typeof email !== 'string' ||
+    !email.trim() ||
+    typeof password !== 'string' ||
+    !password
+  ) {
+    return res.status(400).json({
+      success: false,
+      error: 'Email and password are required.',
+    });
   }
 
-  // Validate hashed password or plain text (migrating to hash)
-  let passwordMatches = false;
-  if (existing.passwordHash) {
-        const [salt, storedHash] = existing.passwordHash.split(':');
+  const cleanEmail = email.trim().toLowerCase();
+  const storage = persistentStorage;
+
+  if (!storage) {
+    return res.status(503).json({
+      success: false,
+      error: 'Authentication storage is unavailable.',
+    });
+  }
+
+  try {
+    const existing = await storage.getAuthUserByEmail(cleanEmail);
+
+    if (!existing || !existing.passwordHash) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid email or password.',
+      });
+    }
+
+    let passwordMatches = false;
+    const [salt, storedHash] = existing.passwordHash.split(':');
 
     if (salt && storedHash && /^[a-f0-9]{64}$/i.test(storedHash)) {
       const computedHash = crypto
@@ -2027,31 +2049,44 @@ app.post('/api/user/login', (req, res) => {
         computedBuffer.length === storedBuffer.length &&
         crypto.timingSafeEqual(computedBuffer, storedBuffer);
     }
-  } else if (existing.password) {
-    passwordMatches = existing.password === password;
-  }
 
-  if (!passwordMatches) {
-    return res.status(401).json({ success: false, error: 'Invalid email or password.' });
-  }
+    if (!passwordMatches) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid email or password.',
+      });
+    }
 
-    const { sessionToken, expiresAt } = issueUserSession(existing);
-
-  res.json({
-    success: true,
-    sessionToken,
-    expiresAt,
-    user: {
+    // Keep the existing map updated for older code that still reads it.
+    registeredUsers.set(cleanEmail, {
       id: existing.id,
       name: existing.name,
-      email: existing.email,
-      phone: existing.phone,
+      email: existing.email ?? undefined,
+      phone: existing.phone ?? undefined,
+      passwordHash: existing.passwordHash ?? undefined,
       provider: existing.provider,
       role: existing.role,
       createdAt: existing.createdAt,
-    },
-  });
+    });
+
+    const { sessionToken, expiresAt } = issueUserSession(existing);
+
+    return res.json({
+      success: true,
+      sessionToken,
+      expiresAt,
+      user: toPublicAuthUser(existing),
+    });
+  } catch (error) {
+    console.error('[Auth] Email login failed:', error);
+
+    return res.status(503).json({
+      success: false,
+      error: 'Login is temporarily unavailable. Please try again later.',
+    });
+  }
 });
+
 
 app.post('/api/user/send-otp', async (req, res) => {
   const { phone, channel = 'sms' } = req.body;
