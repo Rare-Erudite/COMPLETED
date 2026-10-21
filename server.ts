@@ -2136,6 +2136,13 @@ app.post('/api/user/login', async (req, res) => {
 
     const { sessionToken, expiresAt } = issueUserSession(existing);
 
+await storage.createAuthSession(
+  hashUserSessionToken(sessionToken),
+  cleanEmail,
+  existing.id,
+  expiresAt
+);
+
     return res.json({
       success: true,
       sessionToken,
