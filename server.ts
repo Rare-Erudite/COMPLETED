@@ -1908,46 +1908,93 @@ app.post('/api/user/oauth', async (req, res) => {
   }
 });
 
-app.post('/api/user/signup', (req, res) => {
-  const { email, password, name } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: 'Email and password are required.' });
+app.post('/api/user/signup', async (req, res) => {
+  const { email, password, name } = req.body || {};
+
+  if (
+    typeof email !== 'string' ||
+    !email.trim() ||
+    typeof password !== 'string' ||
+    !password
+  ) {
+    return res.status(400).json({
+      success: false,
+      error: 'Email and password are required.',
+    });
   }
-  const cleanEmail = email.toLowerCase().trim();
-  if (registeredUsers.has(cleanEmail)) {
-    return res.status(400).json({ success: false, error: 'An account with this email already exists.' });
+
+  const cleanEmail = email.trim().toLowerCase();
+  const storage = persistentStorage;
+
+  if (!storage) {
+    return res.status(503).json({
+      success: false,
+      error: 'Authentication storage is unavailable.',
+    });
   }
 
-  // Securely hash password with SHA-256 + salt
-  const salt = crypto.randomBytes(16).toString('hex');
-  const passwordHash = `${salt}:${crypto.createHash('sha256').update(`${salt}:${password}`).digest('hex')}`;
+  try {
+    const existing = await storage.getAuthUserByEmail(cleanEmail);
 
-  const user: AppUser = {
-    id: `usr_${Date.now()}`,
-    name: name?.trim() || cleanEmail.split('@')[0],
-    email: cleanEmail,
-    passwordHash,
-    provider: 'email',
-    role: 'user', // Developer privileges require explicit passkey authorization
-    createdAt: new Date().toISOString(),
-  };
-  registeredUsers.set(cleanEmail, user);
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        error: 'An account with this email already exists.',
+      });
+    }
 
-    const { sessionToken, expiresAt } = issueUserSession(user);
+    const user = await storage.createAuthUser({
+      id: `usr_${crypto.randomUUID()}`,
+      name:
+        typeof name === 'string' && name.trim()
+          ? name.trim().slice(0, 120)
+          : cleanEmail.split('@')[0],
+      email: cleanEmail,
+      phone: null,
+      passwordHash: await hashPassword(password),
+      provider: 'email',
+      role: 'user',
+      createdAt: new Date().toISOString(),
+    });
 
-  res.json({
-    success: true,
-    sessionToken,
-    expiresAt,
-    user: {
+    // Preserve compatibility with the existing login route
+    // while that route is being migrated to persistent storage.
+    registeredUsers.set(cleanEmail, {
       id: user.id,
       name: user.name,
-      email: user.email,
+      email: user.email ?? undefined,
+      phone: user.phone ?? undefined,
+      passwordHash: user.passwordHash ?? undefined,
       provider: user.provider,
       role: user.role,
       createdAt: user.createdAt,
-    },
-  });
+    });
+
+    const { sessionToken, expiresAt } = issueUserSession(user);
+
+    return res.json({
+      success: true,
+      sessionToken,
+      expiresAt,
+      user: toPublicAuthUser(user),
+    });
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+
+    if (code === '23505') {
+      return res.status(400).json({
+        success: false,
+        error: 'An account with this email already exists.',
+      });
+    }
+
+    console.error('[Auth] Email signup failed:', error);
+
+    return res.status(503).json({
+      success: false,
+      error: 'Account creation is temporarily unavailable. Please try again later.',
+    });
+  }
 });
 
 app.post('/api/user/login', (req, res) => {
