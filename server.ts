@@ -1863,15 +1863,32 @@ app.post('/api/user/guest-session', async (_req, res) => {
 });
 
 
-app.post('/api/user/logout', (req, res) => {
+
+app.post('/api/user/logout', async (req, res) => {
   const token = readBearerSessionToken(req);
 
-  if (token) {
-    userSessions.delete(hashUserSessionToken(token));
+  if (!token) {
+    return res.json({ success: true });
   }
 
-  return res.json({ success: true });
+  const tokenHash = hashUserSessionToken(token);
+
+  try {
+    await persistentStorage.deleteAuthSession(tokenHash);
+    userSessions.delete(tokenHash);
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[Auth] Session revocation failed:', error);
+
+    return res.status(503).json({
+      error: {
+        message: 'Logout could not be completed. Please try again.',
+      },
+    });
+  }
 });
+
 // User Accounts Authentication System (Real Verified Google, Outlook, Email, Phone)
 
 app.post('/api/user/oauth', async (req, res) => {
