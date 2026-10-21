@@ -67,12 +67,14 @@ import {
   Camera
 } from 'lucide-react';
 import { themes, ThemeKey, ThemeConfig } from './theme';
+
 import {
   safeFetch,
   safePost,
   getStoredSessionToken,
   storeUserSessionToken,
   clearUserSession,
+  validateCurrentUserSession,
   subscribeConnectionState,
   getBackendUrl,
   getDefaultBackendUrl,
@@ -81,6 +83,7 @@ import {
   testBackendConnection,
   BackendConnectionState
 } from './api';
+
 import { ImageStudioWorkspaceView } from './ImageStudioWorkspaceView';
 import { DownloadAppModal } from './DownloadAppModal';
 import { UpdateModal, AppUpdate } from './UpdateModal';
