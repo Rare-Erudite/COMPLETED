@@ -1889,6 +1889,72 @@ app.post('/api/user/logout', async (req, res) => {
   }
 });
 
+app.get('/api/user/me', async (req, res) => {
+  const token = readBearerSessionToken(req);
+
+  if (!token) {
+    return res.status(401).json({
+      authenticated: false,
+      error: { message: 'A valid RARE session is required.' },
+    });
+  }
+
+  const tokenHash = hashUserSessionToken(token);
+
+  try {
+    const session = await persistentStorage.getAuthSession(tokenHash);
+
+    if (!session || session.expiresAt <= Date.now()) {
+      if (session) {
+        await persistentStorage.deleteAuthSession(tokenHash);
+      }
+
+      userSessions.delete(tokenHash);
+
+      return res.status(401).json({
+        authenticated: false,
+        error: { message: 'Your session is missing or expired. Please sign in again.' },
+      });
+    }
+
+    if (!session.accountId) {
+      return res.json({
+        authenticated: true,
+        user: null,
+        expiresAt: session.expiresAt,
+      });
+    }
+
+    const user = await persistentStorage.getAuthUserById(
+      session.accountId
+    );
+
+    if (!user) {
+      await persistentStorage.deleteAuthSession(tokenHash);
+      userSessions.delete(tokenHash);
+
+      return res.status(401).json({
+        authenticated: false,
+        error: { message: 'The account for this session could not be found. Please sign in again.' },
+      });
+    }
+
+    return res.json({
+      authenticated: true,
+      user: toPublicAuthUser(user),
+      expiresAt: session.expiresAt,
+    });
+  } catch (error) {
+    console.error('[Auth] Current-session validation failed:', error);
+
+    return res.status(503).json({
+      error: {
+        message: 'Session validation is temporarily unavailable. Please try again.',
+      },
+    });
+  }
+});
+
 // User Accounts Authentication System (Real Verified Google, Outlook, Email, Phone)
 
 app.post('/api/user/oauth', async (req, res) => {
