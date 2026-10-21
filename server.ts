@@ -1830,17 +1830,38 @@ function normalizePhone(raw: string): string {
   return digitsOnly.startsWith('+') ? digitsOnly : `+${digitsOnly}`;
 }
 
-app.post('/api/user/guest-session', (_req, res) => {
+
+app.post('/api/user/guest-session', async (_req, res) => {
   // A guest receives a unique owner ID, not the shared literal "guest".
   const guestId = `guest_${crypto.randomUUID()}`;
   const session = issueSessionForOwner(guestId);
+  const tokenHash = hashUserSessionToken(session.sessionToken);
 
-  return res.json({
-    success: true,
-    sessionToken: session.sessionToken,
-    expiresAt: session.expiresAt,
-  });
+  try {
+    await persistentStorage.createAuthSession(
+      tokenHash,
+      guestId,
+      null,
+      session.expiresAt
+    );
+
+    return res.json({
+      success: true,
+      sessionToken: session.sessionToken,
+      expiresAt: session.expiresAt,
+    });
+  } catch (error) {
+    userSessions.delete(tokenHash);
+    console.error('[Auth] Guest session creation failed:', error);
+
+    return res.status(503).json({
+      error: {
+        message: 'A guest session could not be created. Please try again.',
+      },
+    });
+  }
 });
+
 
 app.post('/api/user/logout', (req, res) => {
   const token = readBearerSessionToken(req);
