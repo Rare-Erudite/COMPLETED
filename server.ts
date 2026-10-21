@@ -214,7 +214,8 @@ function readBearerSessionToken(req: express.Request): string | null {
   return match?.[1] || null;
 }
 
-const requireConversationSession: express.RequestHandler = (
+
+const requireConversationSession: express.RequestHandler = async (
   req,
   res,
   next
@@ -230,24 +231,38 @@ const requireConversationSession: express.RequestHandler = (
   }
 
   const tokenHash = hashUserSessionToken(token);
-  const session = userSessions.get(tokenHash);
 
-  if (!session || session.expiresAt <= Date.now()) {
-    if (session) {
+  try {
+    const session = await persistentStorage.getAuthSession(tokenHash);
+
+    if (!session || session.expiresAt <= Date.now()) {
+      if (session) {
+        await persistentStorage.deleteAuthSession(tokenHash);
+      }
+
       userSessions.delete(tokenHash);
+
+      return res.status(401).json({
+        error: {
+          message: 'Your RARE session is missing or expired. Please sign in again.',
+        },
+      });
     }
 
-    return res.status(401).json({
+    // Use the identity recorded by the server when the session was created.
+    res.locals.rareUserId = session.ownerId;
+    return next();
+  } catch (error) {
+    console.error('[Auth] Session validation failed:', error);
+
+    return res.status(503).json({
       error: {
-        message: 'Your RARE session is missing or expired. Please sign in again.',
+        message: 'Session validation is temporarily unavailable. Please try again.',
       },
     });
   }
-
-  // This identity comes from the server's session record, never the request body.
-  res.locals.rareUserId = session.userId;
-  return next();
 };
+
 
 interface AuditEvent {
   id: string;
