@@ -27,6 +27,9 @@ export class OAuthVerificationService {
 
     const cleanToken = token.trim();
     const googleClientId = process.env.GOOGLE_CLIENT_ID?.trim();
+    if (process.env.NODE_ENV === 'production' && !googleClientId) {
+      throw new Error('Google OAuth is not configured on server (GOOGLE_CLIENT_ID missing).');
+    }
 
     // Try Google tokeninfo endpoint (validates signatures, expiration, and audience for ID tokens)
     const tokenInfoUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(cleanToken)}`;

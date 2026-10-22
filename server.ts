@@ -89,10 +89,8 @@ const appSettings = durableStateStore.trackObject('app_settings', {
   activeTheme: 'blue' as ActiveTheme,
 });
 
-// Developer authorization secret & active session
+// Developer authorization secret
 let currentDeveloperPasskey = process.env.RARE_DEV_KEY?.trim() || null;
-let developerAuthenticated = false;
-let devSessionExpiry = 0;
 
 // Access requests dispatched to owner (rarelivescore@gmail.com)
 interface DevAccessRequest {
@@ -134,6 +132,218 @@ let registeredUsers: Map<string, AppUser> = new Map([
   ],
 ]);
 registeredUsers = durableStateStore.trackMap('registered_users', registeredUsers);
+
+// -----------------------------------------------------------------------------
+// Session Store & Cookie Security
+// -----------------------------------------------------------------------------
+interface SessionData {
+  id: string;
+  userId: string;
+  user: AppUser;
+  createdAt: string;
+  expiresAt: number;
+  isDeveloper?: boolean;
+  devExpiresAt?: number;
+}
+
+const activeSessions = new Map<string, SessionData>();
+
+function parseCookies(req: express.Request): Record<string, string> {
+  const list: Record<string, string> = {};
+  const rc = req.headers.cookie;
+  if (rc) {
+    rc.split(';').forEach((cookie) => {
+      const parts = cookie.split('=');
+      if (parts.length >= 2) {
+        list[parts[0].trim()] = decodeURIComponent(parts.slice(1).join('=').trim());
+      }
+    });
+  }
+  return list;
+}
+
+function getSessionIdFromRequest(req: express.Request): string | null {
+  const cookies = parseCookies(req);
+  if (cookies['rare_session']) {
+    return cookies['rare_session'];
+  }
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+    return authHeader.slice(7).trim();
+  }
+  const xSession = req.headers['x-session-id'];
+  if (typeof xSession === 'string' && xSession.trim()) {
+    return xSession.trim();
+  }
+  return null;
+}
+
+function setSessionCookie(res: express.Response, sessionId: string) {
+  const isProd = process.env.NODE_ENV === 'production';
+  const cookieOptions = [
+    `rare_session=${encodeURIComponent(sessionId)}`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=604800',
+  ];
+  if (isProd) {
+    cookieOptions.push('Secure');
+  }
+  res.setHeader('Set-Cookie', cookieOptions.join('; '));
+}
+
+function clearSessionCookie(res: express.Response) {
+  const isProd = process.env.NODE_ENV === 'production';
+  const cookieOptions = [
+    'rare_session=',
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=0',
+  ];
+  if (isProd) {
+    cookieOptions.push('Secure');
+  }
+  res.setHeader('Set-Cookie', cookieOptions.join('; '));
+}
+
+async function createSession(user: AppUser): Promise<SessionData> {
+  const sessionId = `sess_${crypto.randomBytes(32).toString('hex')}`;
+  const now = Date.now();
+  const cleanUser: AppUser = {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    provider: user.provider,
+    role: user.role,
+    createdAt: user.createdAt,
+  };
+  const session: SessionData = {
+    id: sessionId,
+    userId: user.id,
+    user: cleanUser,
+    createdAt: new Date(now).toISOString(),
+    expiresAt: now + 7 * 24 * 3600 * 1000,
+    isDeveloper: false,
+    devExpiresAt: 0,
+  };
+  activeSessions.set(sessionId, session);
+  if (persistentStorage) {
+    await persistentStorage.saveSession(sessionId, user.id, session, new Date(session.expiresAt).toISOString());
+  }
+  return session;
+}
+
+async function getSession(req: express.Request): Promise<SessionData | null> {
+  const sessionId = getSessionIdFromRequest(req);
+  if (!sessionId) return null;
+  if (persistentStorage) {
+    const loaded = await persistentStorage.loadSession(sessionId);
+    if (!loaded) {
+      activeSessions.delete(sessionId);
+      return null;
+    }
+    activeSessions.set(sessionId, loaded);
+    return loaded;
+  }
+  const session = activeSessions.get(sessionId);
+  if (!session) return null;
+  if (Date.now() > session.expiresAt) {
+    activeSessions.delete(sessionId);
+    return null;
+  }
+  return session;
+}
+
+async function revokeSession(sessionId: string): Promise<boolean> {
+  activeSessions.delete(sessionId);
+  if (persistentStorage) {
+    await persistentStorage.removeSession(sessionId);
+  }
+  return true;
+}
+
+interface AuthenticatedRequest extends express.Request {
+  session?: SessionData;
+  user?: AppUser;
+}
+
+async function requireAuth(req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) {
+  const session = await getSession(req);
+  if (!session) {
+    return res.status(401).json({ error: { message: 'Authentication required. Invalid or expired session.' } });
+  }
+  req.session = session;
+  req.user = session.user;
+  next();
+}
+
+async function requireDeveloperAuth(req: AuthenticatedRequest, res: express.Response, next: express.NextFunction) {
+  const session = await getSession(req);
+  if (!session || !session.isDeveloper || Date.now() >= (session.devExpiresAt || 0)) {
+    return res.status(403).json({ error: { message: 'Developer authorization required.' } });
+  }
+  req.session = session;
+  req.user = session.user;
+  next();
+}
+
+// -----------------------------------------------------------------------------
+// Password KDF (scrypt) & Timing-Safe Verification
+// -----------------------------------------------------------------------------
+function hashPasswordScrypt(password: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const salt = crypto.randomBytes(16).toString('hex');
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+      if (err) return reject(err);
+      resolve(`scrypt:${salt}:${derivedKey.toString('hex')}`);
+    });
+  });
+}
+
+function verifyPasswordScrypt(password: string, hashString: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const parts = hashString.split(':');
+    if (parts.length !== 3 || parts[0] !== 'scrypt') {
+      return resolve(false);
+    }
+    const salt = parts[1];
+    const keyHex = parts[2];
+    const keyBuffer = Buffer.from(keyHex, 'hex');
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+      if (err) return resolve(false);
+      if (derivedKey.length !== keyBuffer.length) return resolve(false);
+      resolve(crypto.timingSafeEqual(derivedKey, keyBuffer));
+    });
+  });
+}
+
+async function verifyUserPassword(user: AppUser, passwordInput: string): Promise<{ matches: boolean; needsRehash: boolean }> {
+  if (user.passwordHash) {
+    if (user.passwordHash.startsWith('scrypt:')) {
+      const matches = await verifyPasswordScrypt(passwordInput, user.passwordHash);
+      return { matches, needsRehash: false };
+    }
+    const parts = user.passwordHash.split(':');
+    if (parts.length === 2) {
+      const salt = parts[0];
+      const hash = parts[1];
+      const computed = crypto.createHash('sha256').update(`${salt}:${passwordInput}`).digest('hex');
+      const bufComputed = Buffer.from(computed, 'hex');
+      const bufHash = Buffer.from(hash, 'hex');
+      const matches = bufComputed.length === bufHash.length && crypto.timingSafeEqual(bufComputed, bufHash);
+      return { matches, needsRehash: matches };
+    }
+  } else if (user.password) {
+    const bufInput = Buffer.from(passwordInput, 'utf8');
+    const bufPassword = Buffer.from(user.password, 'utf8');
+    const matches = bufInput.length === bufPassword.length && crypto.timingSafeEqual(bufInput, bufPassword);
+    return { matches, needsRehash: matches };
+  }
+  return { matches: false, needsRehash: false };
+}
 
 interface AuditEvent {
   id: string;
@@ -281,6 +491,7 @@ export interface AgentMessage {
 
 export interface MultiAgentTeamRun {
   id: string;
+  userId?: string;
   title: string;
   targetDomain: string;
   objective: string;
@@ -318,6 +529,7 @@ export interface MultiAgentTeamRun {
 let activeAgentRuns: MultiAgentTeamRun[] = [
   {
     id: 'run_sample_01',
+    userId: 'usr_system_legacy',
     title: 'PulseFlow Telemetry Engine',
     targetDomain: 'android',
     objective: 'Build offline-first Android telemetry dashboard with SQLite cache and charts',
@@ -737,7 +949,7 @@ async function generateAssistantReply(
 // API Endpoints
 // -----------------------------------------------------------------------------
 
-// Health
+// Public Health Check Endpoint (Intentionally public and unauthenticated for uptime monitors & load balancers)
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
@@ -907,12 +1119,12 @@ app.get('/api/download/exe', (req, res) => {
 // Dual-Channel Over-The-Air (OTA) & System Updates API
 // Supports Public (all users) and Developer (restricted) channels
 // -----------------------------------------------------------------------------
-app.get('/api/updates/check', (req, res) => {
+app.get('/api/updates/check', async (req, res) => {
   const clientVersion = String(req.query.clientVersion || '1.0.0').trim();
   let requestedChannel = (req.query.channel === 'developer' ? 'developer' : 'public') as UpdateChannel;
 
-  // Verify developer privilege if developer channel is requested
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
+  const session = await getSession(req);
+  const isAuth = Boolean(session?.isDeveloper && Date.now() < (session.devExpiresAt || 0));
   if (requestedChannel === 'developer' && !isAuth) {
     requestedChannel = 'public';
   }
@@ -924,9 +1136,10 @@ app.get('/api/updates/check', (req, res) => {
   });
 });
 
-app.get('/api/updates/list', (req, res) => {
+app.get('/api/updates/list', async (req, res) => {
   let requestedChannel = (req.query.channel === 'developer' ? 'developer' : 'public') as UpdateChannel;
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
+  const session = await getSession(req);
+  const isAuth = Boolean(session?.isDeveloper && Date.now() < (session.devExpiresAt || 0));
   if (requestedChannel === 'developer' && !isAuth) {
     requestedChannel = 'public';
   }
@@ -938,12 +1151,7 @@ app.get('/api/updates/list', (req, res) => {
   });
 });
 
-app.post('/api/updates/publish', (req, res) => {
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
-  if (!isAuth) {
-    return res.status(403).json({ error: { message: 'Developer authorization required to publish updates.' } });
-  }
-
+app.post('/api/updates/publish', requireDeveloperAuth, (req: AuthenticatedRequest, res) => {
   const { version, channel = 'public', title, description, changelog, mandatory } = req.body;
   if (!version || !title) {
     return res.status(400).json({ error: { message: 'Version and title are required.' } });
@@ -963,7 +1171,7 @@ app.post('/api/updates/publish', (req, res) => {
   auditLog.unshift({
     id: `aud_${Date.now()}`,
     timestamp: new Date().toISOString(),
-    actor: 'developer',
+    actor: req.user?.email || req.user?.id || 'developer',
     action: 'ota_update_published',
     kind: 'dev_privileged',
     details: `Published update ${newUpdate.version} to [${targetChannel.toUpperCase()}] channel: "${newUpdate.title}"`,
@@ -975,18 +1183,13 @@ app.post('/api/updates/publish', (req, res) => {
   });
 });
 
-app.delete('/api/updates/:id', (req, res) => {
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
-  if (!isAuth) {
-    return res.status(403).json({ error: { message: 'Developer authorization required.' } });
-  }
-
+app.delete('/api/updates/:id', requireDeveloperAuth, (req: AuthenticatedRequest, res) => {
   const ok = updateStore.delete(req.params.id);
   if (ok) {
     auditLog.unshift({
       id: `aud_${Date.now()}`,
       timestamp: new Date().toISOString(),
-      actor: 'developer',
+      actor: req.user?.email || req.user?.id || 'developer',
       action: 'ota_update_retracted',
       kind: 'dev_privileged',
       details: `Retracted update ID ${req.params.id}`,
@@ -1159,19 +1362,36 @@ app.post('/api/voice/synthesize', async (req, res) => {
 });
 
 // Settings & Themes
+const userSettingsMap = new Map<string, { assistantName: string; autonomyLevel: number; activeTheme: ActiveTheme }>();
+
+function getUserSettings(userId: string) {
+  let settings = userSettingsMap.get(userId);
+  if (!settings) {
+    settings = {
+      assistantName: appSettings.assistantName,
+      autonomyLevel: appSettings.autonomyLevel,
+      activeTheme: appSettings.activeTheme,
+    };
+    userSettingsMap.set(userId, settings);
+  }
+  return settings;
+}
+
 app.get('/api/settings', async (req, res) => {
+  const session = await getSession(req);
   const { info: activeInfo } = await providerRegistry.getActiveProvider();
   const lastEval = benchmarkSuite.getLastReport();
+  const userSettings = session?.userId ? getUserSettings(session.userId) : appSettings;
   res.json({
-    assistant_name: appSettings.assistantName,
-    autonomy_level: appSettings.autonomyLevel,
-    theme: appSettings.activeTheme,
+    assistant_name: userSettings.assistantName,
+    autonomy_level: userSettings.autonomyLevel,
+    theme: userSettings.activeTheme,
     model_provider: activeInfo.id,
     model_name: `${activeInfo.name} (${activeInfo.version})`,
     requires_api_key: activeInfo.requires_api_key,
     architecture: activeInfo.architecture,
     has_external_api_key: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 5),
-    developer_authenticated: developerAuthenticated && Date.now() < devSessionExpiry,
+    developer_authenticated: Boolean(session?.isDeveloper && Date.now() < (session.devExpiresAt || 0)),
     evaluation: lastEval ? lastEval.vectors : null,
     evaluation_status: lastEval ? 'evaluated' : 'not_yet_evaluated',
     overall_score: lastEval ? lastEval.overallScore : null,
@@ -1289,7 +1509,7 @@ app.get('/api/v1/providers/available', async (_req, res) => {
   }
 });
 
-app.post('/api/v1/providers/active', (req, res) => {
+app.post('/api/v1/providers/active', requireDeveloperAuth, (req: AuthenticatedRequest, res) => {
   try {
     const { providerId } = req.body;
     engine.providers.setActiveProvider(providerId);
@@ -1302,7 +1522,7 @@ app.post('/api/v1/providers/active', (req, res) => {
   }
 });
 
-app.post('/api/v1/providers/load-local', async (_req, res) => {
+app.post('/api/v1/providers/load-local', requireDeveloperAuth, async (_req: AuthenticatedRequest, res) => {
   try {
     const localProvider = engine.providers.getProvider('local-transformers') as any;
     const success = await localProvider.loadModel();
@@ -1350,15 +1570,15 @@ app.post('/api/intelligence/evaluate', async (req, res) => {
 });
 
 // Real Self-Diagnosis & Repair Loop using SelfDevelopmentEngine
-app.post('/api/intelligence/repair', async (req, res) => {
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
+app.post('/api/intelligence/repair', requireDeveloperAuth, async (req: AuthenticatedRequest, res) => {
+  const session = req.session!;
   const { sampleTask = 'Execute diagnosis and verify rollback on error' } = req.body;
-  const result = await selfDevEngine.executeCycle({ instruction: sampleTask }, isAuth);
+  const result = await selfDevEngine.executeCycle({ instruction: sampleTask }, true);
 
   auditLog.unshift({
     id: `aud_${Date.now()}`,
     timestamp: new Date().toISOString(),
-    actor: isAuth ? 'developer' : 'system',
+    actor: session.user.email || session.user.id,
     action: 'repair_cycle_executed',
     kind: 'dev_privileged',
     details: `Executed repair cycle: ${result.status} (checkpoint: ${result.checkpointId}).`,
@@ -1373,12 +1593,12 @@ app.post('/api/intelligence/repair', async (req, res) => {
   });
 });
 
-app.get('/api/intelligence/trajectories', (req, res) => {
+app.get('/api/intelligence/trajectories', requireAuth, (_req, res) => {
   res.json(trajectoryStore.getAll());
 });
 
 // Real Checkpoints List
-app.get('/api/checkpoints', (req, res) => {
+app.get('/api/checkpoints', requireAuth, (_req, res) => {
   res.json(checkpointStore.getAll());
 });
 
@@ -1387,72 +1607,40 @@ app.get('/api/tools', (req, res) => {
   res.json(toolExecutor.getSpecs());
 });
 
-app.post('/api/tools/execute', async (req, res) => {
+app.post('/api/tools/execute', requireAuth, async (req: AuthenticatedRequest, res) => {
   const { tool, inputs = {} } = req.body;
   if (!tool) {
     return res.status(400).json({ error: { message: 'tool name is required.' } });
   }
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
-  const result = await toolExecutor.execute(tool, inputs, { isDeveloperAuth: isAuth });
+  const session = req.session!;
+  const isDevAuth = Boolean(session.isDeveloper && Date.now() < (session.devExpiresAt || 0));
+  const privilegedTools = ['WRITE_FILE', 'READ_FILE', 'EXECUTE_COMMAND', 'RESTORE_CHECKPOINT', 'SELF_DEVELOP'];
+  if (privilegedTools.includes(tool) && !isDevAuth) {
+    return res.status(403).json({ error: { message: `Executing privileged tool '${tool}' requires developer authorization.` } });
+  }
+  const result = await toolExecutor.execute(tool, inputs, { isDeveloperAuth: isDevAuth });
   res.json(result);
 });
 
-// Real Persistent Memory CRUD Endpoints
-app.get('/api/memories', (req, res) => {
-  const { q, tag } = req.query;
-  const tags = tag ? [String(tag)] : undefined;
-  res.json(memoryStore.search(q ? String(q) : undefined, tags));
-});
 
-app.post('/api/memories', (req, res) => {
-  const { text, kind = 'fact', tags = [], importance = 3 } = req.body;
-  if (!text || !text.trim()) {
-    return res.status(400).json({ error: { message: 'Text is required' } });
-  }
-  const item = memoryStore.store({
-    text: text.trim(),
-    kind,
-    tags,
-    importance,
-    source: 'user_stated',
-    verifiedByUser: true,
-  });
-  res.status(201).json(item);
-});
-
-app.put('/api/memories/:id', (req, res) => {
-  const updated = memoryStore.update(req.params.id, req.body);
-  if (!updated) return res.status(404).json({ error: { message: 'Memory not found' } });
-  res.json(updated);
-});
-
-app.delete('/api/memories/:id', (req, res) => {
-  const ok = memoryStore.delete(req.params.id);
-  if (!ok) return res.status(404).json({ error: { message: 'Memory not found' } });
-  res.json({ success: true, deletedId: req.params.id });
-});
-
-app.get('/api/memories/export', (req, res) => {
-  res.json(memoryStore.export());
-});
-
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', requireAuth, (req: AuthenticatedRequest, res) => {
   const { assistant_name, autonomy_level: newAutonomy, theme: newTheme } = req.body;
-  if (assistant_name) appSettings.assistantName = assistant_name.trim();
-  if (typeof newAutonomy === 'number') appSettings.autonomyLevel = newAutonomy;
+  const userSettings = getUserSettings(req.user!.id);
+  if (assistant_name) userSettings.assistantName = assistant_name.trim();
+  if (typeof newAutonomy === 'number') userSettings.autonomyLevel = newAutonomy;
   if (newTheme && ['blue', 'white', 'dark', 'red', 'green', 'yellow'].includes(newTheme)) {
-    appSettings.activeTheme = newTheme;
+    userSettings.activeTheme = newTheme;
   }
   res.json({
     success: true,
-    assistant_name: appSettings.assistantName,
-    autonomy_level: appSettings.autonomyLevel,
-    theme: appSettings.activeTheme,
+    assistant_name: userSettings.assistantName,
+    autonomy_level: userSettings.autonomyLevel,
+    theme: userSettings.activeTheme,
   });
 });
 
 // Developer Authentication Gate
-app.post('/api/developer/auth', (req, res) => {
+app.post('/api/developer/auth', requireAuth, (req: AuthenticatedRequest, res) => {
   const { passkey } = req.body;
   if (!currentDeveloperPasskey) {
     return res.status(503).json({
@@ -1460,15 +1648,21 @@ app.post('/api/developer/auth', (req, res) => {
     });
   }
   if (passkey === currentDeveloperPasskey) {
-    developerAuthenticated = true;
-    devSessionExpiry = Date.now() + 4 * 3600 * 1000; // 4 hours
+    const session = req.session!;
+    session.isDeveloper = true;
+    session.devExpiresAt = Date.now() + 4 * 3600 * 1000;
+    setSessionCookie(res, session.id);
+    if (persistentStorage) {
+      void persistentStorage.saveSession(session.id, session.userId, session, new Date(session.expiresAt).toISOString());
+    }
+
     auditLog.unshift({
       id: `aud_${Date.now()}`,
       timestamp: new Date().toISOString(),
-      actor: 'developer',
+      actor: session.user.email || session.user.id,
       action: 'developer_login_success',
       kind: 'dev_privileged',
-      details: 'Developer authorization gate unlocked with valid passkey.',
+      details: 'Developer authorization gate unlocked with valid passkey for session.',
     });
     return res.json({ success: true, message: 'Developer session active.' });
   }
@@ -1484,14 +1678,20 @@ app.post('/api/developer/auth', (req, res) => {
   return res.status(401).json({ error: { message: 'Invalid developer passkey.' } });
 });
 
-app.post('/api/developer/logout', (req, res) => {
-  developerAuthenticated = false;
-  devSessionExpiry = 0;
+app.post('/api/developer/logout', async (req: AuthenticatedRequest, res) => {
+  const session = await getSession(req);
+  if (session) {
+    session.isDeveloper = false;
+    session.devExpiresAt = 0;
+    if (persistentStorage) {
+      await persistentStorage.saveSession(session.id, session.userId, session, new Date(session.expiresAt).toISOString());
+    }
+  }
   res.json({ success: true, message: 'Developer session locked.' });
 });
 
 // Guarded Passkey Change
-app.post('/api/developer/change-passkey', (req, res) => {
+app.post('/api/developer/change-passkey', requireDeveloperAuth, (req: AuthenticatedRequest, res) => {
   const { currentPasskey, newPasskey } = req.body;
   if (!currentDeveloperPasskey) {
     return res.status(503).json({
@@ -1509,7 +1709,7 @@ app.post('/api/developer/change-passkey', (req, res) => {
   auditLog.unshift({
     id: `aud_${Date.now()}`,
     timestamp: new Date().toISOString(),
-    actor: 'developer',
+    actor: req.user?.email || 'developer',
     action: 'developer_passkey_changed',
     kind: 'dev_privileged',
     details: 'Developer master passkey was securely updated.',
@@ -1585,6 +1785,28 @@ function normalizePhone(raw: string): string {
   return digitsOnly.startsWith('+') ? digitsOnly : `+${digitsOnly}`;
 }
 
+// User Session & Me / Logout Endpoints
+app.get('/api/user/me', async (req: AuthenticatedRequest, res) => {
+  const session = await getSession(req);
+  if (!session) {
+    return res.status(401).json({ success: false, error: 'Unauthenticated' });
+  }
+  res.json({
+    success: true,
+    user: session.user,
+    isDeveloper: Boolean(session.isDeveloper && Date.now() < (session.devExpiresAt || 0)),
+  });
+});
+
+app.post('/api/user/logout', async (req: AuthenticatedRequest, res) => {
+  const sessionId = getSessionIdFromRequest(req);
+  if (sessionId) {
+    await revokeSession(sessionId);
+  }
+  clearSessionCookie(res);
+  res.json({ success: true, message: 'Logged out successfully.' });
+});
+
 // User Accounts Authentication System (Real Verified Google, Outlook, Email, Phone)
 app.post('/api/user/oauth', async (req, res) => {
   const { provider = 'google', token, idToken, accessToken } = req.body;
@@ -1594,6 +1816,13 @@ app.post('/api/user/oauth', async (req, res) => {
     return res.status(400).json({
       success: false,
       error: 'Identity verification token is required for OAuth authentication. Unverified emails are rejected.',
+    });
+  }
+
+  if (process.env.NODE_ENV === 'production' && provider === 'google' && !process.env.GOOGLE_CLIENT_ID?.trim()) {
+    return res.status(503).json({
+      success: false,
+      error: 'Google OAuth authentication is unconfigured (GOOGLE_CLIENT_ID is missing).',
     });
   }
 
@@ -1608,18 +1837,21 @@ app.post('/api/user/oauth', async (req, res) => {
     }
 
     const cleanEmail = verifiedProfile.email.toLowerCase().trim();
-    let existing = registeredUsers.get(cleanEmail);
+    let existing = persistentStorage ? await persistentStorage.findUserByEmail(cleanEmail) : registeredUsers.get(cleanEmail);
 
     if (!existing) {
       existing = {
-        id: `usr_${Date.now()}`,
+        id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         name: verifiedProfile.name,
         email: cleanEmail,
         provider: verifiedProfile.provider,
-        role: 'user', // Developer privileges require explicit passkey authorization
+        role: 'user',
         createdAt: new Date().toISOString(),
       };
       registeredUsers.set(cleanEmail, existing);
+      if (persistentStorage) {
+        await persistentStorage.createUser(existing);
+      }
     } else {
       existing.name = verifiedProfile.name || existing.name;
     }
@@ -1633,17 +1865,12 @@ app.post('/api/user/oauth', async (req, res) => {
       details: `Verified identity for ${existing.name} (${cleanEmail}) via ${provider} token verification.`,
     });
 
+    const session = await createSession(existing);
+    setSessionCookie(res, session.id);
+
     res.json({
       success: true,
-      user: {
-        id: existing.id,
-        name: existing.name,
-        email: existing.email,
-        phone: existing.phone,
-        provider: existing.provider,
-        role: existing.role,
-        createdAt: existing.createdAt,
-      },
+      user: session.user,
     });
   } catch (err: any) {
     return res.status(401).json({
@@ -1653,81 +1880,76 @@ app.post('/api/user/oauth', async (req, res) => {
   }
 });
 
-app.post('/api/user/signup', (req, res) => {
+app.post('/api/user/signup', async (req, res) => {
   const { email, password, name } = req.body;
   if (!email || !password) {
     return res.status(400).json({ success: false, error: 'Email and password are required.' });
   }
   const cleanEmail = email.toLowerCase().trim();
-  if (registeredUsers.has(cleanEmail)) {
+  const existingUser = persistentStorage ? await persistentStorage.findUserByEmail(cleanEmail) : registeredUsers.get(cleanEmail);
+  if (existingUser || registeredUsers.has(cleanEmail)) {
     return res.status(400).json({ success: false, error: 'An account with this email already exists.' });
   }
 
-  // Securely hash password with SHA-256 + salt
-  const salt = crypto.randomBytes(16).toString('hex');
-  const passwordHash = `${salt}:${crypto.createHash('sha256').update(`${salt}:${password}`).digest('hex')}`;
+  // Hash password using crypto.scrypt
+  const passwordHash = await hashPasswordScrypt(password);
 
   const user: AppUser = {
-    id: `usr_${Date.now()}`,
+    id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     name: name?.trim() || cleanEmail.split('@')[0],
     email: cleanEmail,
     passwordHash,
     provider: 'email',
-    role: 'user', // Developer privileges require explicit passkey authorization
+    role: 'user',
     createdAt: new Date().toISOString(),
   };
   registeredUsers.set(cleanEmail, user);
+  if (persistentStorage) {
+    await persistentStorage.createUser(user);
+  }
+
+  const session = await createSession(user);
+  setSessionCookie(res, session.id);
 
   res.json({
     success: true,
-    user: {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      provider: user.provider,
-      role: user.role,
-      createdAt: user.createdAt,
-    },
+    user: session.user,
   });
 });
 
-app.post('/api/user/login', (req, res) => {
+app.post('/api/user/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ success: false, error: 'Email and password are required.' });
   }
   const cleanEmail = email.toLowerCase().trim();
-  const existing = registeredUsers.get(cleanEmail);
+  const existing = persistentStorage ? await persistentStorage.findUserByEmail(cleanEmail) : registeredUsers.get(cleanEmail);
 
   if (!existing) {
     return res.status(401).json({ success: false, error: 'Invalid email or password.' });
   }
 
-  // Validate hashed password or plain text (migrating to hash)
-  let passwordMatches = false;
-  if (existing.passwordHash) {
-    const [salt, hash] = existing.passwordHash.split(':');
-    const computed = crypto.createHash('sha256').update(`${salt}:${password}`).digest('hex');
-    passwordMatches = computed === hash;
-  } else if (existing.password) {
-    passwordMatches = existing.password === password;
-  }
+  const { matches, needsRehash } = await verifyUserPassword(existing, password);
 
-  if (!passwordMatches) {
+  if (!matches) {
     return res.status(401).json({ success: false, error: 'Invalid email or password.' });
   }
 
+  if (needsRehash) {
+    existing.passwordHash = await hashPasswordScrypt(password);
+    delete (existing as any).password;
+    registeredUsers.set(cleanEmail, existing as any);
+    if (persistentStorage) {
+      await persistentStorage.updateUser(existing as any);
+    }
+  }
+
+  const session = await createSession(existing);
+  setSessionCookie(res, session.id);
+
   res.json({
     success: true,
-    user: {
-      id: existing.id,
-      name: existing.name,
-      email: existing.email,
-      phone: existing.phone,
-      provider: existing.provider,
-      role: existing.role,
-      createdAt: existing.createdAt,
-    },
+    user: session.user,
   });
 });
 
@@ -1791,7 +2013,7 @@ app.post('/api/user/send-otp', async (req, res) => {
   });
 });
 
-app.post('/api/user/verify-otp', (req, res) => {
+app.post('/api/user/verify-otp', async (req, res) => {
   const { phone, code, name } = req.body;
   if (!phone || !code) {
     return res.status(400).json({ success: false, error: 'Phone and verification code are required.' });
@@ -1827,10 +2049,10 @@ app.post('/api/user/verify-otp', (req, res) => {
   // Code verified! Invalidate immediately so it cannot be reused
   activeOtpRecords.delete(cleanPhone);
 
-  let existing = registeredUsers.get(cleanPhone);
+  let existing = persistentStorage ? await persistentStorage.findUserByPhone(cleanPhone) : registeredUsers.get(cleanPhone);
   if (!existing) {
     existing = {
-      id: `usr_phone_${Date.now()}`,
+      id: `usr_phone_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: name?.trim() || `User ${cleanPhone.slice(-4)}`,
       phone: cleanPhone,
       provider: 'phone',
@@ -1838,19 +2060,17 @@ app.post('/api/user/verify-otp', (req, res) => {
       createdAt: new Date().toISOString(),
     };
     registeredUsers.set(cleanPhone, existing);
+    if (persistentStorage) {
+      await persistentStorage.createUser(existing);
+    }
   }
+
+  const session = await createSession(existing);
+  setSessionCookie(res, session.id);
 
   res.json({
     success: true,
-    user: {
-      id: existing.id,
-      name: existing.name,
-      email: existing.email,
-      phone: existing.phone,
-      provider: existing.provider,
-      role: existing.role,
-      createdAt: existing.createdAt,
-    },
+    user: session.user,
   });
 });
 
@@ -1906,7 +2126,7 @@ app.post('/api/user/send-email-otp', async (req, res) => {
   });
 });
 
-app.post('/api/user/verify-email-otp', (req, res) => {
+app.post('/api/user/verify-email-otp', async (req, res) => {
   const { email, code, name } = req.body;
   if (!email || !code) {
     return res.status(400).json({ success: false, error: 'Email and verification code are required.' });
@@ -1942,10 +2162,10 @@ app.post('/api/user/verify-email-otp', (req, res) => {
   // Code verified! Invalidate immediately so it cannot be reused
   activeOtpRecords.delete(cleanEmail);
 
-  let existing = registeredUsers.get(cleanEmail);
+  let existing = persistentStorage ? await persistentStorage.findUserByEmail(cleanEmail) : registeredUsers.get(cleanEmail);
   if (!existing) {
     existing = {
-      id: `usr_${Date.now()}`,
+      id: `usr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: name?.trim() || cleanEmail.split('@')[0],
       email: cleanEmail,
       provider: 'email',
@@ -1953,29 +2173,22 @@ app.post('/api/user/verify-email-otp', (req, res) => {
       createdAt: new Date().toISOString(),
     };
     registeredUsers.set(cleanEmail, existing);
+    if (persistentStorage) {
+      await persistentStorage.createUser(existing);
+    }
   }
+
+  const session = await createSession(existing);
+  setSessionCookie(res, session.id);
 
   res.json({
     success: true,
-    user: {
-      id: existing.id,
-      name: existing.name,
-      email: existing.email,
-      phone: existing.phone,
-      provider: existing.provider,
-      role: existing.role,
-      createdAt: existing.createdAt,
-    },
+    user: session.user,
   });
 });
 
 // Privileged Developer Space Status & Diagnostics
-app.get('/api/developer/status', (req, res) => {
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
-  if (!isAuth) {
-    return res.status(403).json({ error: { message: 'Developer authorization required.' } });
-  }
-
+app.get('/api/developer/status', requireDeveloperAuth, (req: AuthenticatedRequest, res) => {
   res.json({
     authenticated: true,
     autonomyLevel: appSettings.autonomyLevel,
@@ -1997,11 +2210,7 @@ app.get('/api/developer/status', (req, res) => {
 });
 
 // Privileged Self-Development Engine Dispatcher
-app.post('/api/developer/self-dev', async (req, res) => {
-  if (!developerAuthenticated || Date.now() >= devSessionExpiry) {
-    return res.status(403).json({ error: { message: 'Developer authorization required.' } });
-  }
-
+app.post('/api/developer/self-dev', requireDeveloperAuth, async (req: AuthenticatedRequest, res) => {
   const { instruction } = req.body;
   if (!instruction || !instruction.trim()) {
     return res.status(400).json({ error: { message: 'Instruction is required.' } });
@@ -2012,7 +2221,7 @@ app.post('/api/developer/self-dev', async (req, res) => {
   auditLog.unshift({
     id: `aud_${Date.now()}`,
     timestamp: new Date().toISOString(),
-    actor: 'developer',
+    actor: req.user?.email || req.user?.id || 'developer',
     action: 'self_dev_executed',
     kind: 'dev_privileged',
     details: `Executed self-dev cycle for: "${instruction}". Status: ${result.status}`,
@@ -2023,10 +2232,7 @@ app.post('/api/developer/self-dev', async (req, res) => {
 });
 
 // Rollback Checkpoint
-app.post('/api/developer/rollback', (req, res) => {
-  if (!developerAuthenticated || Date.now() >= devSessionExpiry) {
-    return res.status(403).json({ error: { message: 'Developer authorization required.' } });
-  }
+app.post('/api/developer/rollback', requireDeveloperAuth, (req: AuthenticatedRequest, res) => {
   const { checkpointId } = req.body;
   if (!checkpointId) {
     return res.status(400).json({ error: { message: 'checkpointId is required.' } });
@@ -2040,7 +2246,7 @@ app.post('/api/developer/rollback', (req, res) => {
   auditLog.unshift({
     id: `aud_${Date.now()}`,
     timestamp: new Date().toISOString(),
-    actor: 'developer',
+    actor: req.user?.email || req.user?.id || 'developer',
     action: 'checkpoint_restore',
     kind: 'dev_privileged',
     details: `Restored RARE core state to checkpoint: ${checkpointId}. Restored ${rb.restoredFiles.length} files.`,
@@ -2050,18 +2256,21 @@ app.post('/api/developer/rollback', (req, res) => {
 });
 
 // Multi-Agent Runs & Universal Projects API
-app.get('/api/agents/runs', (req, res) => {
-  res.json(activeAgentRuns);
+app.get('/api/agents/runs', requireAuth, (req: AuthenticatedRequest, res) => {
+  const userRuns = activeAgentRuns.filter((r) => r.userId === req.user!.id);
+  res.json(userRuns);
 });
 
-app.get('/api/agents/runs/:id', (req, res) => {
+app.get('/api/agents/runs/:id', requireAuth, (req: AuthenticatedRequest, res) => {
   const run = activeAgentRuns.find((r) => r.id === req.params.id);
-  if (!run) return res.status(404).json({ error: { message: 'Run not found' } });
+  if (!run || run.userId !== req.user!.id) {
+    return res.status(404).json({ error: { message: 'Run not found' } });
+  }
   res.json(run);
 });
 
 // Universal Build Project Creation
-app.post('/api/agents/runs', async (req, res) => {
+app.post('/api/agents/runs', requireAuth, async (req: AuthenticatedRequest, res) => {
   const { title, targetDomain, objective } = req.body;
   if (typeof title !== 'string' || !title.trim() || typeof objective !== 'string' || !objective.trim()) {
     return res.status(400).json({ error: { message: 'Title and objective are required' } });
@@ -2071,6 +2280,7 @@ app.post('/api/agents/runs', async (req, res) => {
   const runId = `run_${crypto.randomUUID()}`;
   const teamRun: MultiAgentTeamRun = {
     id: runId,
+    userId: req.user!.id,
     title: title.trim().slice(0, 160),
     targetDomain: typeof targetDomain === 'string' && targetDomain.trim() ? targetDomain.trim().slice(0, 40) : 'web',
     objective: objective.trim().slice(0, 4000),
@@ -2269,7 +2479,7 @@ app.post('/api/agents/runs', async (req, res) => {
       tools: toolResults,
     };
     const reportPath = `agent-runs/${runId}.json`;
-    const savedReport = documentStore.write(reportPath, JSON.stringify(report, null, 2));
+    const savedReport = documentStore.write(reportPath, JSON.stringify(report, null, 2), req.user!.id);
     const reportSize = savedReport.size;
     teamRun.artifacts.push({
       name: path.basename(reportPath),
@@ -2302,9 +2512,9 @@ app.post('/api/agents/runs', async (req, res) => {
 });
 
 // Trigger Targeted Diagnose and Repair Loop
-app.post('/api/agents/runs/:id/repair', async (req, res) => {
+app.post('/api/agents/runs/:id/repair', requireAuth, async (req: AuthenticatedRequest, res) => {
   const run = activeAgentRuns.find((r) => r.id === req.params.id);
-  if (!run) return res.status(404).json({ error: { message: 'Run not found' } });
+  if (!run || run.userId !== req.user!.id) return res.status(404).json({ error: { message: 'Run not found' } });
 
   run.status = 'validating';
   run.currentStage = 'Running diagnostic verification';
@@ -2364,10 +2574,9 @@ app.get('/api/builder/toolchains', (req, res) => {
 });
 
 // Conversations
-app.get('/api/conversations', (req, res) => {
-  const { search, userId } = req.query;
-  const userHeader = req.headers['x-user-id'];
-  const userKey = (userId as string) || (userHeader as string) || 'guest';
+app.get('/api/conversations', requireAuth, (req: AuthenticatedRequest, res) => {
+  const { search } = req.query;
+  const userKey = req.user!.id;
   const allConvs = conversationStore.getAll(userKey);
   let result = allConvs;
   if (search && typeof search === 'string') {
@@ -2406,14 +2615,16 @@ app.get('/api/conversations', (req, res) => {
   );
 });
 
-app.get('/api/conversations/:id', (req, res) => {
+app.get('/api/conversations/:id', requireAuth, (req: AuthenticatedRequest, res) => {
   let conv = conversationStore.getById(req.params.id);
+  if (conv && conv.userId !== req.user!.id) {
+    return res.status(403).json({ error: { message: 'Access denied.' } });
+  }
   if (!conv) {
-    const userHeader = req.headers['x-user-id'];
     conv = {
       id: req.params.id,
       title: 'New Chat',
-      userId: (userHeader as string) || 'guest',
+      userId: req.user!.id,
       created_at: new Date().toISOString(),
       messages: [
         {
@@ -2429,13 +2640,15 @@ app.get('/api/conversations/:id', (req, res) => {
   res.json(conv);
 });
 
-app.post('/api/conversations', (req, res) => {
-  const { title, userId, id } = req.body;
-  const userHeader = req.headers['x-user-id'];
-  const userKey = (userId as string) || (userHeader as string) || 'guest';
+app.post('/api/conversations', requireAuth, (req: AuthenticatedRequest, res) => {
+  const { title, id } = req.body;
+  const userKey = req.user!.id;
   const convId = (id as string) || `conv_${Date.now()}`;
   const existing = conversationStore.getById(convId);
   if (existing) {
+    if (existing.userId !== userKey) {
+      return res.status(403).json({ error: { message: 'Access denied.' } });
+    }
     return res.status(200).json(existing);
   }
   const newConv = {
@@ -2457,9 +2670,11 @@ app.post('/api/conversations', (req, res) => {
 });
 
 // Rename conversation
-app.post('/api/conversations/:id/rename', (req, res) => {
+app.post('/api/conversations/:id/rename', requireAuth, (req: AuthenticatedRequest, res) => {
   const conv = conversationStore.getById(req.params.id);
-  if (!conv) return res.status(404).json({ error: { message: 'Conversation not found' } });
+  if (!conv || conv.userId !== req.user!.id) {
+    return res.status(404).json({ error: { message: 'Conversation not found' } });
+  }
   const { title } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ error: { message: 'Title is required' } });
   conv.title = title.trim();
@@ -2469,7 +2684,11 @@ app.post('/api/conversations/:id/rename', (req, res) => {
 });
 
 // Delete conversation
-app.delete('/api/conversations/:id', (req, res) => {
+app.delete('/api/conversations/:id', requireAuth, (req: AuthenticatedRequest, res) => {
+  const conv = conversationStore.getById(req.params.id);
+  if (!conv || conv.userId !== req.user!.id) {
+    return res.status(404).json({ error: { message: 'Conversation not found' } });
+  }
   const ok = conversationStore.delete(req.params.id);
   if (ok) {
     return res.json({ success: true });
@@ -2478,9 +2697,11 @@ app.delete('/api/conversations/:id', (req, res) => {
 });
 
 // Edit specific message
-app.put('/api/conversations/:id/messages/:msgId', (req, res) => {
+app.put('/api/conversations/:id/messages/:msgId', requireAuth, (req: AuthenticatedRequest, res) => {
   const conv = conversationStore.getById(req.params.id);
-  if (!conv) return res.status(404).json({ error: { message: 'Conversation not found' } });
+  if (!conv || conv.userId !== req.user!.id) {
+    return res.status(404).json({ error: { message: 'Conversation not found' } });
+  }
 
   const { content } = req.body;
   if (typeof content !== 'string') return res.status(400).json({ error: { message: 'Content is required' } });
@@ -2494,9 +2715,11 @@ app.put('/api/conversations/:id/messages/:msgId', (req, res) => {
 });
 
 // Delete specific message
-app.delete('/api/conversations/:id/messages/:msgId', (req, res) => {
+app.delete('/api/conversations/:id/messages/:msgId', requireAuth, (req: AuthenticatedRequest, res) => {
   const conv = conversationStore.getById(req.params.id);
-  if (!conv) return res.status(404).json({ error: { message: 'Conversation not found' } });
+  if (!conv || conv.userId !== req.user!.id) {
+    return res.status(404).json({ error: { message: 'Conversation not found' } });
+  }
 
   const idx = conv.messages.findIndex((m) => m.id === req.params.msgId);
   if (idx === -1) return res.status(404).json({ error: { message: 'Message not found' } });
@@ -2506,14 +2729,16 @@ app.delete('/api/conversations/:id/messages/:msgId', (req, res) => {
   res.json({ success: true, conversation: conv });
 });
 
-app.post('/api/conversations/:id', async (req, res) => {
+app.post('/api/conversations/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   let conv = conversationStore.getById(req.params.id);
+  if (conv && conv.userId !== req.user!.id) {
+    return res.status(403).json({ error: { message: 'Access denied.' } });
+  }
   if (!conv) {
-    const userHeader = req.headers['x-user-id'];
     conv = {
       id: req.params.id,
       title: 'New Chat',
-      userId: (userHeader as string) || 'guest',
+      userId: req.user!.id,
       created_at: new Date().toISOString(),
       messages: [],
     };
@@ -2563,17 +2788,41 @@ app.post('/api/conversations/:id', async (req, res) => {
 });
 
 // Memory
-app.get('/api/user-memory', (req, res) => {
+app.get('/api/memories', requireAuth, (req: AuthenticatedRequest, res) => {
+  const { q, tag } = req.query;
+  const tags = tag ? [String(tag)] : undefined;
+  res.json(memoryStore.search(q ? String(q) : undefined, tags, req.user!.id));
+});
+
+app.get('/api/user-memory', requireAuth, (req: AuthenticatedRequest, res) => {
   const { query } = req.query;
-  const items = memoryStore.search(query ? String(query) : undefined);
+  const items = memoryStore.search(query ? String(query) : undefined, undefined, req.user!.id);
   res.json(items);
 });
 
-app.post('/api/user-memory', (req, res) => {
+app.post('/api/memories', requireAuth, (req: AuthenticatedRequest, res) => {
+  const { text, kind = 'fact', tags = [], importance = 3 } = req.body;
+  if (!text || !text.trim()) {
+    return res.status(400).json({ error: { message: 'Text is required' } });
+  }
+  const item = memoryStore.store({
+    text: text.trim(),
+    userId: req.user!.id,
+    kind,
+    tags,
+    importance,
+    source: 'user_stated',
+    verifiedByUser: true,
+  });
+  res.status(201).json(item);
+});
+
+app.post('/api/user-memory', requireAuth, (req: AuthenticatedRequest, res) => {
   const { kind, text, tags, importance } = req.body;
   if (!text) return res.status(400).json({ error: { message: 'Text is required' } });
   const item = memoryStore.store({
     text: String(text).trim(),
+    userId: req.user!.id,
     kind: kind || 'general',
     tags: Array.isArray(tags) ? tags : ['custom'],
     importance: Number(importance) || 1,
@@ -2583,8 +2832,32 @@ app.post('/api/user-memory', (req, res) => {
   res.status(201).json(item);
 });
 
-app.post('/api/user-memory/forget', (req, res) => {
+app.put('/api/memories/:id', requireAuth, (req: AuthenticatedRequest, res) => {
+  const existing = memoryStore.getById(req.params.id);
+  if (!existing || existing.userId !== req.user!.id) {
+    return res.status(404).json({ error: { message: 'Memory not found' } });
+  }
+  const updated = memoryStore.update(req.params.id, req.body, req.user!.id);
+  if (!updated) return res.status(404).json({ error: { message: 'Memory not found' } });
+  res.json(updated);
+});
+
+app.delete('/api/memories/:id', requireAuth, (req: AuthenticatedRequest, res) => {
+  const existing = memoryStore.getById(req.params.id);
+  if (!existing || existing.userId !== req.user!.id) {
+    return res.status(404).json({ error: { message: 'Memory not found' } });
+  }
+  const ok = memoryStore.delete(req.params.id);
+  if (!ok) return res.status(404).json({ error: { message: 'Memory not found' } });
+  res.json({ success: true, deletedId: req.params.id });
+});
+
+app.post('/api/user-memory/forget', requireAuth, (req: AuthenticatedRequest, res) => {
   const { id } = req.body;
+  const existing = memoryStore.getById(String(id));
+  if (!existing || existing.userId !== req.user!.id) {
+    return res.status(404).json({ error: { message: 'Memory not found' } });
+  }
   const ok = memoryStore.delete(String(id));
   if (ok) {
     return res.json({ success: true });
@@ -2592,9 +2865,18 @@ app.post('/api/user-memory/forget', (req, res) => {
   res.status(404).json({ error: { message: 'Memory not found' } });
 });
 
+app.get('/api/memories/export', requireAuth, (req: AuthenticatedRequest, res) => {
+  const items = memoryStore.getAll(req.user!.id);
+  res.json({
+    total: items.length,
+    exportedAt: new Date().toISOString(),
+    memories: items,
+  });
+});
+
 // Documents Management
-app.get('/api/documents', (req, res) => {
-  const list = documentStore.list().map((document) => ({
+app.get('/api/documents', requireAuth, (req: AuthenticatedRequest, res) => {
+  const list = documentStore.list(req.user!.id).map((document) => ({
     path: document.path,
     size: document.size,
     format: document.format,
@@ -2603,10 +2885,10 @@ app.get('/api/documents', (req, res) => {
   res.json(list);
 });
 
-app.get('/api/documents/*', (req, res) => {
+app.get('/api/documents/*', requireAuth, (req: AuthenticatedRequest, res) => {
   const docPath = (req.params as any)[0];
   try {
-    const document = documentStore.read(docPath);
+    const document = documentStore.read(docPath, req.user!.id);
     if (document) return res.json(document);
   } catch (error) {
     return res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Invalid document path.' } });
@@ -2614,17 +2896,17 @@ app.get('/api/documents/*', (req, res) => {
   res.status(404).json({ error: { message: 'Document not found' } });
 });
 
-app.post('/api/documents', async (req, res) => {
+app.post('/api/documents', requireAuth, async (req: AuthenticatedRequest, res) => {
   const { path: requestedPath, text, format, url } = req.body;
   try {
     if (url) {
       const imported = await documentStore.importUrl(String(url));
       const filename = String(requestedPath || `imports/${Date.now()}.${imported.format}`);
-      const saved = documentStore.write(filename, imported.content);
+      const saved = documentStore.write(filename, imported.content, req.user!.id);
       return res.status(201).json({ path: saved.path, size: saved.size, sourceUrl: imported.sourceUrl, format: saved.format });
     }
     if (!requestedPath) return res.status(400).json({ error: { message: 'Document path required' } });
-    const saved = documentStore.write(String(requestedPath), String(text ?? ''));
+    const saved = documentStore.write(String(requestedPath), String(text ?? ''), req.user!.id);
     res.status(201).json({ path: saved.path, size: saved.size, format: saved.format });
   } catch (error) {
     res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Document could not be saved.' } });
@@ -2632,7 +2914,7 @@ app.post('/api/documents', async (req, res) => {
 });
 
 // Universal Context-Aware Audio Transcription
-app.post('/api/documents/transcribe', async (req, res) => {
+app.post('/api/documents/transcribe', requireAuth, async (req: AuthenticatedRequest, res) => {
   const rawAudio = String(req.body?.audioBase64 || req.body?.audio || '');
   const dataUrl = rawAudio.match(/^data:([^;]+);base64,(.+)$/s);
   const audioBase64 = dataUrl ? dataUrl[2] : rawAudio;
@@ -2650,7 +2932,7 @@ app.post('/api/documents/transcribe', async (req, res) => {
       .replace(/\.[^/.]+$/, '')
       .replace(/[^a-zA-Z0-9_-]+/g, '_')
       .slice(0, 80) || 'recording';
-    const saved = documentStore.write(`transcripts/${basename}_transcript.txt`, transcription.text);
+    const saved = documentStore.write(`transcripts/${basename}_transcript.txt`, transcription.text, req.user!.id);
     res.json({
       success: true,
       path: saved.path,
@@ -2667,27 +2949,27 @@ app.post('/api/documents/transcribe', async (req, res) => {
 });
 
 // Format Conversion
-app.post('/api/documents/convert', (req, res) => {
+app.post('/api/documents/convert', requireAuth, (req: AuthenticatedRequest, res) => {
   const { path: docPath, targetFormat } = req.body;
   try {
-    const doc = documentStore.read(String(docPath || ''));
+    const doc = documentStore.read(String(docPath || ''), req.user!.id);
     if (!doc) return res.status(404).json({ error: { message: 'Document not found' } });
     const format = String(targetFormat || '').toLowerCase().replace(/^\./, '');
     const newPath = doc.path.replace(/\.[^/.]+$/, `.${format}`);
     const converted = documentStore.convert(doc.content, format);
-    documentStore.write(newPath, converted);
+    documentStore.write(newPath, converted, req.user!.id);
     res.json({ success: true, originalPath: doc.path, convertedPath: newPath, format });
   } catch (error) {
     res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Document conversion failed.' } });
   }
 });
 
-// Research Engine
+// Research Engine - Public cached research items index (Intentionally read-only and unauthenticated)
 app.get('/api/research/items', (req, res) => {
   res.json(researchCache);
 });
 
-app.post('/api/research/search', async (req, res) => {
+app.post('/api/research/search', requireAuth, async (req: AuthenticatedRequest, res) => {
   const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
   if (!query) return res.status(400).json({ error: { message: 'A research query is required.' } });
   try {
@@ -2721,7 +3003,7 @@ app.post('/api/research/search', async (req, res) => {
 });
 
 // Updates Apply Endpoint
-app.post('/api/updates/apply', (req, res) => {
+app.post('/api/updates/apply', requireAuth, (req: AuthenticatedRequest, res) => {
   const { version } = req.body;
   auditLog.unshift({
     id: `aud_${Date.now()}`,
@@ -2738,7 +3020,7 @@ app.post('/api/updates/apply', (req, res) => {
   });
 });
 
-// Diagnostics Selftest Matrix
+// Diagnostics Selftest Matrix - Public read-only system diagnostic status (Intentionally unauthenticated)
 app.get('/api/tools/selftest', (req, res) => {
   res.json({
     allPassed: true,
@@ -2762,6 +3044,7 @@ app.get('/api/tools/selftest', (req, res) => {
 // -----------------------------------------------------------------------------
 interface ScheduledTask {
   id: string;
+  userId?: string;
   title: string;
   time: string; // e.g. "10:00", "Every day at 09:00", "Tomorrow at 13:00"
   type: 'alarm' | 'recurring' | 'reminder' | 'automation';
@@ -2774,6 +3057,7 @@ interface ScheduledTask {
 const scheduledTasks: ScheduledTask[] = [
   {
     id: 'sch_01',
+    userId: 'usr_system_legacy',
     title: 'Daily Standup Summary & System Health',
     time: '09:00',
     type: 'recurring',
@@ -2784,6 +3068,7 @@ const scheduledTasks: ScheduledTask[] = [
   },
   {
     id: 'sch_02',
+    userId: 'usr_system_legacy',
     title: 'Code Build Alarm & Test Verification',
     time: '13:00',
     type: 'alarm',
@@ -2794,6 +3079,7 @@ const scheduledTasks: ScheduledTask[] = [
   },
   {
     id: 'sch_03',
+    userId: 'usr_system_legacy',
     title: 'Nightly Memory Index & Archive Consolidation',
     time: '23:30',
     type: 'automation',
@@ -2804,15 +3090,17 @@ const scheduledTasks: ScheduledTask[] = [
   },
 ];
 
-app.get('/api/schedules', (req, res) => {
-  res.json(scheduledTasks);
+app.get('/api/schedules', requireAuth, (req: AuthenticatedRequest, res) => {
+  const userSchedules = scheduledTasks.filter((t) => t.userId === req.user!.id);
+  res.json(userSchedules);
 });
 
-app.post('/api/schedules', (req, res) => {
+app.post('/api/schedules', requireAuth, (req: AuthenticatedRequest, res) => {
   const { title, time, type, action, repeat } = req.body;
   if (!title) return res.status(400).json({ error: { message: 'Title is required' } });
   const newTask: ScheduledTask = {
     id: `sch_${Date.now()}`,
+    userId: req.user!.id,
     title: String(title).trim(),
     time: time || '12:00',
     type: type || 'reminder',
@@ -2825,16 +3113,16 @@ app.post('/api/schedules', (req, res) => {
   res.status(201).json(newTask);
 });
 
-app.post('/api/schedules/:id/toggle', (req, res) => {
+app.post('/api/schedules/:id/toggle', requireAuth, (req: AuthenticatedRequest, res) => {
   const task = scheduledTasks.find((t) => t.id === req.params.id);
-  if (!task) return res.status(404).json({ error: { message: 'Schedule not found' } });
+  if (!task || task.userId !== req.user!.id) return res.status(404).json({ error: { message: 'Schedule not found' } });
   task.enabled = !task.enabled;
   res.json({ success: true, task });
 });
 
-app.delete('/api/schedules/:id', (req, res) => {
+app.delete('/api/schedules/:id', requireAuth, (req: AuthenticatedRequest, res) => {
   const idx = scheduledTasks.findIndex((t) => t.id === req.params.id);
-  if (idx !== -1) {
+  if (idx !== -1 && scheduledTasks[idx].userId === req.user!.id) {
     scheduledTasks.splice(idx, 1);
     return res.json({ success: true });
   }
@@ -2951,7 +3239,7 @@ app.get('/api/plugins', (req, res) => {
   res.json(pluginsDirectory);
 });
 
-app.post('/api/plugins/:id/toggle', (req, res) => {
+app.post('/api/plugins/:id/toggle', requireDeveloperAuth, (req: AuthenticatedRequest, res) => {
   const plugin = pluginsDirectory.find((p) => p.id === req.params.id);
   if (!plugin) return res.status(404).json({ error: { message: 'Plugin not found' } });
   plugin.installed = !plugin.installed;
@@ -3118,16 +3406,17 @@ app.get('/api/images/status', (req, res) => {
 });
 
 // Image Gallery List
-app.get('/api/images/gallery', (req, res) => {
+app.get('/api/images/gallery', requireAuth, (req: AuthenticatedRequest, res) => {
+  const userImages = imageGallery.filter((img: any) => img.userId === req.user!.id);
   res.json({
-    images: imageGallery,
-    total: imageGallery.length,
+    images: userImages,
+    total: userImages.length,
   });
 });
 
 // Delete Image from Gallery
-app.delete('/api/images/gallery/:id', (req, res) => {
-  const idx = imageGallery.findIndex((img) => img.id === req.params.id);
+app.delete('/api/images/gallery/:id', requireAuth, (req: AuthenticatedRequest, res) => {
+  const idx = imageGallery.findIndex((img: any) => img.id === req.params.id && img.userId === req.user!.id);
   if (idx !== -1) {
     imageGallery.splice(idx, 1);
     return res.json({ success: true });
@@ -3136,7 +3425,7 @@ app.delete('/api/images/gallery/:id', (req, res) => {
 });
 
 // Generate Image Endpoint (Gemini 3 Pro Image & Nano Banana 2.1)
-app.post('/api/images/generate', async (req, res) => {
+app.post('/api/images/generate', requireAuth, async (req: AuthenticatedRequest, res) => {
   const {
     prompt,
     model = 'gemini-3-pro-image-preview',
@@ -3205,8 +3494,9 @@ app.post('/api/images/generate', async (req, res) => {
     source = 'procedural_renderer';
   }
 
-  const newRecord: ImageRecord = {
+  const newRecord: ImageRecord & { userId: string } = {
     id: `img_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    userId: req.user!.id,
     url: generatedUrl,
     prompt: cleanPrompt,
     model: validModel,
@@ -3241,7 +3531,7 @@ app.post('/api/images/generate', async (req, res) => {
 });
 
 // Edit Image Endpoint (Gemini Nano Banana 2.1)
-app.post('/api/images/edit', async (req, res) => {
+app.post('/api/images/edit', requireAuth, async (req: AuthenticatedRequest, res) => {
   const {
     image,
     prompt,
@@ -3325,8 +3615,9 @@ app.post('/api/images/edit', async (req, res) => {
     source = 'procedural_renderer';
   }
 
-  const newRecord: ImageRecord = {
+  const newRecord: ImageRecord & { userId: string } = {
     id: `img_edit_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    userId: req.user!.id,
     url: editedUrl,
     originalUrl: typeof image === 'string' && image.length > 10 ? image : undefined,
     prompt: cleanPrompt,
@@ -3384,6 +3675,15 @@ async function startServer() {
     trajectoryStore.initializePersistence(persistentStorage),
     updateStore.initializePersistence(persistentStorage),
   ]);
+
+  if (persistentStorage) {
+    const dbSessions = await persistentStorage.loadSessions();
+    for (const row of dbSessions) {
+      if (row.payload && row.payload.id) {
+        activeSessions.set(row.payload.id, row.payload);
+      }
+    }
+  }
 
   const httpServer = http.createServer(app);
   let vite: import('vite').ViteDevServer | undefined;

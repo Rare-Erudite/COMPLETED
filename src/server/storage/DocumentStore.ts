@@ -21,7 +21,16 @@ export class DocumentStore {
     this.root = path.resolve(projectRoot, 'documents');
   }
 
-  list(): Array<Omit<StoredDocument, 'content'>> {
+  private getUserRoot(userId?: string): string {
+    if (!userId || !userId.trim()) {
+      throw new Error('Authenticated user ID is required for document storage.');
+    }
+    const cleanId = userId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    return path.join(this.root, 'users', cleanId);
+  }
+
+  list(userId?: string): Array<Omit<StoredDocument, 'content'>> {
+    const userRoot = this.getUserRoot(userId);
     const result: Array<Omit<StoredDocument, 'content'>> = [];
     const visit = (directory: string, depth: number) => {
       if (depth > 8 || !fs.existsSync(directory)) return;
@@ -33,7 +42,7 @@ export class DocumentStore {
         } else if (entry.isFile() && TEXT_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
           const stat = fs.statSync(absolutePath);
           result.push({
-            path: path.relative(this.root, absolutePath).split(path.sep).join('/'),
+            path: path.relative(userRoot, absolutePath).split(path.sep).join('/'),
             format: path.extname(entry.name).slice(1).toLowerCase() || 'text',
             updatedAt: stat.mtime.toISOString(),
             size: stat.size,
@@ -41,20 +50,21 @@ export class DocumentStore {
         }
       }
     };
-    visit(this.root, 0);
+    visit(userRoot, 0);
     return result.sort((left, right) => left.path.localeCompare(right.path));
   }
 
-  read(relativePath: string): StoredDocument | null {
-    const absolutePath = this.resolvePath(relativePath);
+  read(relativePath: string, userId?: string): StoredDocument | null {
+    const userRoot = this.getUserRoot(userId);
+    const absolutePath = this.resolvePath(relativePath, userRoot);
     if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) return null;
     const realPath = fs.realpathSync(absolutePath);
-    this.assertInsideRoot(realPath);
+    this.assertInsideRoot(realPath, userRoot);
     const stat = fs.statSync(realPath);
     if (stat.size > MAX_DOCUMENT_BYTES) throw new Error('Document exceeds the 2 MB size limit.');
     const content = fs.readFileSync(realPath, 'utf8');
     return {
-      path: path.relative(this.root, realPath).split(path.sep).join('/'),
+      path: path.relative(userRoot, realPath).split(path.sep).join('/'),
       content,
       format: path.extname(realPath).slice(1).toLowerCase() || 'text',
       updatedAt: stat.mtime.toISOString(),
@@ -62,19 +72,20 @@ export class DocumentStore {
     };
   }
 
-  write(relativePath: string, content: string): StoredDocument {
+  write(relativePath: string, content: string, userId?: string): StoredDocument {
     if (typeof content !== 'string') throw new Error('Document content must be text.');
     if (Buffer.byteLength(content, 'utf8') > MAX_DOCUMENT_BYTES) throw new Error('Document exceeds the 2 MB size limit.');
-    const absolutePath = this.resolvePath(relativePath);
+    const userRoot = this.getUserRoot(userId);
+    const absolutePath = this.resolvePath(relativePath, userRoot);
     if (!TEXT_EXTENSIONS.has(path.extname(absolutePath).toLowerCase())) {
       throw new Error('Only text-based document formats are supported.');
     }
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
-    this.assertInsideRoot(fs.realpathSync(path.dirname(absolutePath)));
+    this.assertInsideRoot(fs.realpathSync(path.dirname(absolutePath)), userRoot);
     const temporaryPath = `${absolutePath}.${process.pid}.tmp`;
     fs.writeFileSync(temporaryPath, content, 'utf8');
     fs.renameSync(temporaryPath, absolutePath);
-    return this.read(relativePath)!;
+    return this.read(relativePath, userId)!;
   }
 
   async importUrl(rawUrl: string): Promise<{ sourceUrl: string; content: string; format: string }> {
@@ -128,18 +139,18 @@ export class DocumentStore {
     throw new Error(`Conversion to .${format} is not supported for text documents.`);
   }
 
-  private resolvePath(relativePath: string): string {
+  private resolvePath(relativePath: string, baseRoot = this.root): string {
     if (!relativePath || path.isAbsolute(relativePath) || /^[A-Za-z]:/.test(relativePath)) {
       throw new Error('Document path must be relative to the documents folder.');
     }
     const normalized = relativePath.replace(/\\/g, '/');
-    const absolutePath = path.resolve(this.root, normalized);
-    this.assertInsideRoot(absolutePath);
+    const absolutePath = path.resolve(baseRoot, normalized);
+    this.assertInsideRoot(absolutePath, baseRoot);
     return absolutePath;
   }
 
-  private assertInsideRoot(candidate: string): void {
-    const relative = path.relative(this.root, candidate);
+  private assertInsideRoot(candidate: string, baseRoot = this.root): void {
+    const relative = path.relative(baseRoot, candidate);
     if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
       throw new Error('Document path must stay inside the documents folder.');
     }

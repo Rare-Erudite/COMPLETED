@@ -626,7 +626,11 @@ export async function safeFetch<T>(
       const fullUrl = resolveApiUrl(url);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 6500);
-      const res = await fetch(fullUrl, { ...options, signal: controller.signal });
+      const res = await fetch(fullUrl, {
+        credentials: 'include',
+        ...options,
+        signal: controller.signal,
+      });
       clearTimeout(timeout);
       const contentType = res.headers.get('content-type') || '';
 
@@ -658,6 +662,7 @@ export async function safePost<T>(
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: body ? JSON.stringify(body) : undefined,
     },
     fallback,
