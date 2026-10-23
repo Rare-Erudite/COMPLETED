@@ -13,7 +13,12 @@ import {
   Share2
 } from 'lucide-react';
 import { ThemeConfig } from './theme';
-import { resolveApiUrl, safePost } from './api';
+import {
+  getStoredSessionToken,
+  resolveApiUrl,
+  safePost,
+  storeUserSessionToken,
+} from './api';
 
 interface DeveloperAuthModalProps {
   t: ThemeConfig;
