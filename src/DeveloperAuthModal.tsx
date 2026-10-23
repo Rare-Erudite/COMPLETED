@@ -15,7 +15,6 @@ import {
 import { ThemeConfig } from './theme';
 import {
   getStoredSessionToken,
-  resolveApiUrl,
   safePost,
   storeUserSessionToken,
 } from './api';
