@@ -1842,9 +1842,17 @@ app.post('/api/developer/auth', async (req, res) => {
 });
 
 app.post('/api/developer/logout', (req, res) => {
-  developerAuthenticated = false;
-  devSessionExpiry = 0;
-  res.json({ success: true, message: 'Developer session locked.' });
+  const token = readBearerSessionToken(req);
+
+  if (token) {
+    const tokenHash = hashUserSessionToken(token);
+    developerSessions.delete(tokenHash);
+  }
+
+  return res.json({
+    success: true,
+    message: 'Developer session locked.',
+  });
 });
 
 // Guarded Passkey Change
