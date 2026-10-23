@@ -1743,36 +1743,102 @@ app.post('/api/settings', (req, res) => {
 });
 
 // Developer Authentication Gate
-app.post('/api/developer/auth', (req, res) => {
+app.post('/api/developer/auth', async (req, res) => {
   const { passkey } = req.body;
+
   if (!currentDeveloperPasskey) {
     return res.status(503).json({
-      error: { message: 'Developer access is disabled because RARE_DEV_KEY is not configured on the server.' },
+      error: {
+        message:
+          'Developer access is disabled because RARE_DEV_KEY is not configured on the server.',
+      },
     });
   }
-  if (passkey === currentDeveloperPasskey) {
-    developerAuthenticated = true;
-    devSessionExpiry = Date.now() + 4 * 3600 * 1000; // 4 hours
+
+  const token = readBearerSessionToken(req);
+
+  if (!token) {
+    return res.status(401).json({
+      error: {
+        message: 'A valid RARE session is required before developer sign-in.',
+      },
+    });
+  }
+
+  if (!persistentStorage) {
+    return res.status(503).json({
+      error: {
+        message: 'Authentication storage is unavailable. Please try again.',
+      },
+    });
+  }
+
+  const tokenHash = hashUserSessionToken(token);
+
+  try {
+    const session = await persistentStorage.getAuthSession(tokenHash);
+
+    if (!session || session.expiresAt <= Date.now()) {
+      developerSessions.delete(tokenHash);
+
+      return res.status(401).json({
+        error: {
+          message:
+            'Your RARE session is missing or expired. Please sign in again.',
+        },
+      });
+    }
+
+    if (passkey !== currentDeveloperPasskey) {
+      auditLog.unshift({
+        id: `aud_${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        actor: session.ownerId,
+        action: 'developer_auth_rejected',
+        kind: 'dev_privileged',
+        details: 'Failed developer passkey attempt.',
+      });
+
+      return res.status(401).json({
+        error: { message: 'Invalid developer passkey.' },
+      });
+    }
+
+    const developerExpiresAt = Math.min(
+      Date.now() + 4 * 60 * 60 * 1000,
+      session.expiresAt
+    );
+
+    developerSessions.set(tokenHash, developerExpiresAt);
+
     auditLog.unshift({
       id: `aud_${Date.now()}`,
       timestamp: new Date().toISOString(),
-      actor: 'developer',
+      actor: session.ownerId,
       action: 'developer_login_success',
       kind: 'dev_privileged',
-      details: 'Developer authorization gate unlocked with valid passkey.',
+      details:
+        'Developer authorization granted to a validated RARE session.',
     });
-    return res.json({ success: true, message: 'Developer session active.' });
-  }
 
-  auditLog.unshift({
-    id: `aud_${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    actor: 'unknown',
-    action: 'developer_auth_rejected',
-    kind: 'dev_privileged',
-    details: 'Failed developer passkey attempt.',
-  });
-  return res.status(401).json({ error: { message: 'Invalid developer passkey.' } });
+    return res.json({
+      success: true,
+      message: 'Developer session active.',
+      expiresAt: developerExpiresAt,
+    });
+  } catch (error) {
+    console.error(
+      '[Auth] Developer login session validation failed:',
+      error
+    );
+
+    return res.status(503).json({
+      error: {
+        message:
+          'Developer sign-in could not validate your RARE session. Please try again.',
+      },
+    });
+  }
 });
 
 app.post('/api/developer/logout', (req, res) => {
