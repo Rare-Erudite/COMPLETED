@@ -2766,16 +2766,26 @@ app.get('/api/developer/status', async (req, res) => {
 
 // Privileged Self-Development Engine Dispatcher
 app.post('/api/developer/self-dev', async (req, res) => {
-  if (!developerAuthenticated || Date.now() >= devSessionExpiry) {
-    return res.status(403).json({ error: { message: 'Developer authorization required.' } });
+  const isAuth = await isDeveloperSessionAuthorized(req);
+
+  if (!isAuth) {
+    return res.status(403).json({
+      error: { message: 'Developer authorization required.' },
+    });
   }
 
   const { instruction } = req.body;
-  if (!instruction || !instruction.trim()) {
-    return res.status(400).json({ error: { message: 'Instruction is required.' } });
+
+  if (typeof instruction !== 'string' || !instruction.trim()) {
+    return res.status(400).json({
+      error: { message: 'Instruction is required.' },
+    });
   }
 
-  const result = await selfDevEngine.executeCycle({ instruction }, true);
+  const result = await selfDevEngine.executeCycle(
+    { instruction },
+    true
+  );
 
   auditLog.unshift({
     id: `aud_${Date.now()}`,
@@ -2787,7 +2797,7 @@ app.post('/api/developer/self-dev', async (req, res) => {
     checkpointId: result.checkpointId,
   });
 
-  res.status(201).json(result);
+  return res.status(201).json(result);
 });
 
 // Rollback Checkpoint
