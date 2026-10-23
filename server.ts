@@ -1683,7 +1683,7 @@ app.post('/api/intelligence/evaluate', async (req, res) => {
 
 // Real Self-Diagnosis & Repair Loop using SelfDevelopmentEngine
 app.post('/api/intelligence/repair', async (req, res) => {
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
+  const isAuth = await isDeveloperSessionAuthorized(req);
   const { sampleTask = 'Execute diagnosis and verify rollback on error' } = req.body;
   const result = await selfDevEngine.executeCycle({ instruction: sampleTask }, isAuth);
 
