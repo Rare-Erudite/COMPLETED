@@ -2735,13 +2735,16 @@ app.post('/api/user/send-email-otp', async (req, res) => {
 
 
 // Privileged Developer Space Status & Diagnostics
-app.get('/api/developer/status', (req, res) => {
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
+app.get('/api/developer/status', async (req, res) => {
+  const isAuth = await isDeveloperSessionAuthorized(req);
+
   if (!isAuth) {
-    return res.status(403).json({ error: { message: 'Developer authorization required.' } });
+    return res.status(403).json({
+      error: { message: 'Developer authorization required.' },
+    });
   }
 
-  res.json({
+  return res.json({
     authenticated: true,
     autonomyLevel: appSettings.autonomyLevel,
     singleWriterLock: 'Active (Mutex Acquired)',
