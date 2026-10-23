@@ -2289,7 +2289,26 @@ app.post('/api/user/login', async (req, res) => {
         error: 'Invalid email or password.',
       });
     }
+    // Upgrade legacy SHA-256 password hashes after successful verification.
+    if (!existing.passwordHash.startsWith('scrypt:')) {
+      try {
+        const upgradedPasswordHash = await hashPassword(password);
 
+        await storage.updateAuthUserPasswordHash(
+          existing.id,
+          upgradedPasswordHash
+        );
+
+        existing.passwordHash = upgradedPasswordHash;
+      } catch (migrationError) {
+        // A migration failure must not lock out a user whose password
+        // was already verified successfully. Retry on their next login.
+        console.error(
+          '[Auth] Legacy password hash upgrade failed:',
+          migrationError
+        );
+      }
+    }
     // Keep the existing map updated for older code that still reads it.
     registeredUsers.set(cleanEmail, {
       id: existing.id,
