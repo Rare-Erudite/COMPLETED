@@ -90,6 +90,45 @@ const appSettings = durableStateStore.trackObject('app_settings', {
 
 // Developer authorization secret & active session
 let currentDeveloperPasskey = process.env.RARE_DEV_KEY?.trim() || null;
+// Track developer authorization separately for each RARE session.
+// Store only the hash of the bearer token, never the raw token.
+const developerSessions = new Map<string, number>();
+
+async function isDeveloperSessionAuthorized(
+  req: express.Request
+): Promise<boolean> {
+  const token = readBearerSessionToken(req);
+
+  if (!token || !persistentStorage) {
+    return false;
+  }
+
+  const tokenHash = hashUserSessionToken(token);
+  const developerExpiresAt = developerSessions.get(tokenHash);
+
+  if (!developerExpiresAt || developerExpiresAt <= Date.now()) {
+    developerSessions.delete(tokenHash);
+    return false;
+  }
+
+  try {
+    const session = await persistentStorage.getAuthSession(tokenHash);
+
+    if (!session || session.expiresAt <= Date.now()) {
+      developerSessions.delete(tokenHash);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    developerSessions.delete(tokenHash);
+    console.error(
+      '[Auth] Developer session validation failed:',
+      error
+    );
+    return false;
+  }
+}
 let developerAuthenticated = false;
 let devSessionExpiry = 0;
 
