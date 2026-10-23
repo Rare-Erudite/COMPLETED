@@ -1091,55 +1091,88 @@ app.get('/api/download/exe', (req, res) => {
 // Dual-Channel Over-The-Air (OTA) & System Updates API
 // Supports Public (all users) and Developer (restricted) channels
 // -----------------------------------------------------------------------------
-app.get('/api/updates/check', (req, res) => {
+app.get('/api/updates/check', async (req, res) => {
   const clientVersion = String(req.query.clientVersion || '1.0.0').trim();
-  let requestedChannel = (req.query.channel === 'developer' ? 'developer' : 'public') as UpdateChannel;
+  let requestedChannel = (
+    req.query.channel === 'developer' ? 'developer' : 'public'
+  ) as UpdateChannel;
 
-  // Verify developer privilege if developer channel is requested
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
+  const isAuth = await isDeveloperSessionAuthorized(req);
+
   if (requestedChannel === 'developer' && !isAuth) {
     requestedChannel = 'public';
   }
 
-  const result = updateStore.checkForUpdate(clientVersion, requestedChannel);
-  res.json({
+  const result = updateStore.checkForUpdate(
+    clientVersion,
+    requestedChannel
+  );
+
+  return res.json({
     ...result,
     isDeveloperAuthed: isAuth,
   });
 });
 
-app.get('/api/updates/list', (req, res) => {
-  let requestedChannel = (req.query.channel === 'developer' ? 'developer' : 'public') as UpdateChannel;
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
+app.get('/api/updates/list', async (req, res) => {
+  let requestedChannel = (
+    req.query.channel === 'developer' ? 'developer' : 'public'
+  ) as UpdateChannel;
+
+  const isAuth = await isDeveloperSessionAuthorized(req);
+
   if (requestedChannel === 'developer' && !isAuth) {
     requestedChannel = 'public';
   }
 
   const list = updateStore.getAll(requestedChannel);
-  res.json({
+
+  return res.json({
     channel: requestedChannel,
     updates: list,
   });
 });
 
-app.post('/api/updates/publish', (req, res) => {
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
+app.post('/api/updates/publish', async (req, res) => {
+  const isAuth = await isDeveloperSessionAuthorized(req);
+
   if (!isAuth) {
-    return res.status(403).json({ error: { message: 'Developer authorization required to publish updates.' } });
+    return res.status(403).json({
+      error: {
+        message: 'Developer authorization required to publish updates.',
+      },
+    });
   }
 
-  const { version, channel = 'public', title, description, changelog, mandatory } = req.body;
+  const {
+    version,
+    channel = 'public',
+    title,
+    description,
+    changelog,
+    mandatory,
+  } = req.body;
+
   if (!version || !title) {
-    return res.status(400).json({ error: { message: 'Version and title are required.' } });
+    return res.status(400).json({
+      error: { message: 'Version and title are required.' },
+    });
   }
 
-  const targetChannel: UpdateChannel = channel === 'developer' ? 'developer' : 'public';
+  const targetChannel: UpdateChannel =
+    channel === 'developer' ? 'developer' : 'public';
+
   const newUpdate = updateStore.publish({
     version,
     channel: targetChannel,
     title,
     description: description || 'New software update released.',
-    changelog: Array.isArray(changelog) ? changelog : [changelog || 'System optimizations and performance updates.'],
+    changelog: Array.isArray(changelog)
+      ? changelog
+      : [
+          changelog ||
+            'System optimizations and performance updates.',
+        ],
     mandatory: Boolean(mandatory),
     publishedBy: 'Developer Space (OTA)',
   });
@@ -1153,19 +1186,23 @@ app.post('/api/updates/publish', (req, res) => {
     details: `Published update ${newUpdate.version} to [${targetChannel.toUpperCase()}] channel: "${newUpdate.title}"`,
   });
 
-  res.status(201).json({
+  return res.status(201).json({
     success: true,
     update: newUpdate,
   });
 });
 
-app.delete('/api/updates/:id', (req, res) => {
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
+app.delete('/api/updates/:id', async (req, res) => {
+  const isAuth = await isDeveloperSessionAuthorized(req);
+
   if (!isAuth) {
-    return res.status(403).json({ error: { message: 'Developer authorization required.' } });
+    return res.status(403).json({
+      error: { message: 'Developer authorization required.' },
+    });
   }
 
   const ok = updateStore.delete(req.params.id);
+
   if (ok) {
     auditLog.unshift({
       id: `aud_${Date.now()}`,
@@ -1175,9 +1212,13 @@ app.delete('/api/updates/:id', (req, res) => {
       kind: 'dev_privileged',
       details: `Retracted update ID ${req.params.id}`,
     });
+
     return res.json({ success: true });
   }
-  res.status(404).json({ error: { message: 'Update not found.' } });
+
+  return res.status(404).json({
+    error: { message: 'Update not found.' },
+  });
 });
 
 // Live Voice Inference Endpoint
