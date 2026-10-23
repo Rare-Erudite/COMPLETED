@@ -1721,12 +1721,22 @@ app.get('/api/tools', (req, res) => {
 
 app.post('/api/tools/execute', async (req, res) => {
   const { tool, inputs = {} } = req.body;
+
   if (!tool) {
-    return res.status(400).json({ error: { message: 'tool name is required.' } });
+    return res.status(400).json({
+      error: { message: 'tool name is required.' },
+    });
   }
-  const isAuth = developerAuthenticated && Date.now() < devSessionExpiry;
-  const result = await toolExecutor.execute(tool, inputs, { isDeveloperAuth: isAuth });
-  res.json(result);
+
+  const isAuth = await isDeveloperSessionAuthorized(req);
+
+  const result = await toolExecutor.execute(
+    tool,
+    inputs,
+    { isDeveloperAuth: isAuth }
+  );
+
+  return res.json(result);
 });
 
 // Real Persistent Memory CRUD Endpoints
