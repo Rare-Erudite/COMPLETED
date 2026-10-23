@@ -168,12 +168,19 @@ function hashUserSessionToken(token: string): string {
 }
 async function hashPassword(password: string): Promise<string> {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto
-    .createHash('sha256')
-    .update(`${salt}:${password}`)
-    .digest('hex');
 
-  return `${salt}:${hash}`;
+  const derivedKey = await new Promise<Buffer>((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (error, key) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve(key);
+    });
+  });
+
+  return `scrypt:${salt}:${derivedKey.toString('hex')}`;
 }
 function issueSessionForOwner(userId: string): {
   sessionToken: string;
