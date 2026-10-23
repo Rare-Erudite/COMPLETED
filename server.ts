@@ -2217,22 +2217,64 @@ app.post('/api/user/login', async (req, res) => {
       });
     }
 
+    
     let passwordMatches = false;
-    const [salt, storedHash] = existing.passwordHash.split(':');
 
-    if (salt && storedHash && /^[a-f0-9]{64}$/i.test(storedHash)) {
-      const computedHash = crypto
-        .createHash('sha256')
-        .update(`${salt}:${password}`)
-        .digest('hex');
+    if (existing.passwordHash.startsWith('scrypt:')) {
+      const [scheme, salt, storedHash, extra] =
+        existing.passwordHash.split(':');
 
-      const computedBuffer = Buffer.from(computedHash, 'hex');
-      const storedBuffer = Buffer.from(storedHash, 'hex');
+      if (
+        scheme === 'scrypt' &&
+        salt &&
+        storedHash &&
+        !extra &&
+        /^[a-f0-9]{128}$/i.test(storedHash)
+      ) {
+        const storedBuffer = Buffer.from(storedHash, 'hex');
 
-      passwordMatches =
-        computedBuffer.length === storedBuffer.length &&
-        crypto.timingSafeEqual(computedBuffer, storedBuffer);
+        const computedBuffer = await new Promise<Buffer>(
+          (resolve, reject) => {
+            crypto.scrypt(password, salt, 64, (error, derivedKey) => {
+              if (error) {
+                reject(error);
+                return;
+              }
+
+              resolve(derivedKey);
+            });
+          }
+        );
+
+        passwordMatches =
+          computedBuffer.length === storedBuffer.length &&
+          crypto.timingSafeEqual(computedBuffer, storedBuffer);
+      }
+    } else {
+      // Continue supporting existing SHA-256 password hashes during migration.
+      const [salt, storedHash, extra] =
+        existing.passwordHash.split(':');
+
+      if (
+        salt &&
+        storedHash &&
+        !extra &&
+        /^[a-f0-9]{64}$/i.test(storedHash)
+      ) {
+        const computedHash = crypto
+          .createHash('sha256')
+          .update(`${salt}:${password}`)
+          .digest('hex');
+
+        const computedBuffer = Buffer.from(computedHash, 'hex');
+        const storedBuffer = Buffer.from(storedHash, 'hex');
+
+        passwordMatches =
+          computedBuffer.length === storedBuffer.length &&
+          crypto.timingSafeEqual(computedBuffer, storedBuffer);
+      }
     }
+
 
     if (!passwordMatches) {
       return res.status(401).json({
