@@ -3,7 +3,8 @@
  */
 
 import React, { useState } from 'react';
-import { ShieldCheck, Play, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { apiFetch } from '../api.js';
+import { ShieldCheck, Play } from 'lucide-react';
 
 export function TestRunnerView() {
   const [running, setRunning] = useState(false);
@@ -13,9 +14,9 @@ export function TestRunnerView() {
     setRunning(true);
     setResults(null);
     try {
-      const res = await fetch('/api/v1/tests/run', { method: 'POST' });
+      const res = await apiFetch('/api/tools/selftest');
       const data = await res.json();
-      setResults(data);
+      setResults({ ...data, httpStatus: res.status, verified: res.ok && data?.allPassed === true });
     } catch (err: any) {
       setResults({ error: err.message });
     } finally {
@@ -33,7 +34,7 @@ export function TestRunnerView() {
           <div>
             <h2 className="text-lg font-bold text-white">Quality Gates & Verification Test Suite</h2>
             <p className="text-xs text-slate-400">
-              Runs automated quality gates verifying storage durability, security containment, math parser, and provider abstraction.
+              This screen checks whether the server verification endpoint is available. It does not execute the repository test suite.
             </p>
           </div>
         </div>
@@ -44,7 +45,7 @@ export function TestRunnerView() {
           className="flex items-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-medium text-xs px-4 py-2.5 rounded-lg transition disabled:opacity-50 cursor-pointer shadow-lg shadow-cyan-950/50"
         >
           <Play className={`w-3.5 h-3.5 ${running ? 'animate-spin' : ''}`} />
-          <span>{running ? 'Executing Gates...' : 'Run Automated Quality Gates'}</span>
+          <span>{running ? 'Checking...' : 'Check Verification Availability'}</span>
         </button>
       </div>
 
@@ -52,8 +53,8 @@ export function TestRunnerView() {
         <div className="border border-slate-800 rounded-xl bg-slate-900/30 p-6 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h3 className="text-sm font-bold text-white">Test Execution Summary</h3>
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
-              ALL TESTS PASSED
+            <span className={`text-xs font-mono px-2 py-0.5 rounded border ${results.verified ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-amber-950 text-amber-300 border-amber-800'}`}>
+              {results.verified ? 'VERIFIED' : `NOT VERIFIED${results.httpStatus ? ` · HTTP ${results.httpStatus}` : ''}`}
             </span>
           </div>
           <pre className="text-xs font-mono bg-slate-950 p-4 rounded-lg border border-slate-800 overflow-x-auto max-h-64 text-slate-200">

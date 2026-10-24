@@ -3,7 +3,8 @@
  */
 
 import React, { useState } from 'react';
-import { MessageSquare, Send, Bot, User, Clock, ShieldCheck, AlertCircle } from 'lucide-react';
+import { apiFetch } from '../api.js';
+import { MessageSquare, Send, Bot, User, Clock, AlertCircle } from 'lucide-react';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -28,42 +29,49 @@ export function ChatView() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!input.trim() || sending) return;
 
     const userMsg: ChatMessage = { role: 'user', content: input.trim() };
-    const newHistory = [...messages, userMsg];
-    setMessages(newHistory);
+    setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setSending(true);
     setError(null);
 
     try {
-      const res = await fetch('/api/v1/chat', {
+      let activeConversationId = conversationId;
+      if (!activeConversationId) {
+        const created = await apiFetch('/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: userMsg.content.slice(0, 80) }),
+        });
+        const createdData = await created.json();
+        if (!created.ok || typeof createdData.id !== 'string') throw new Error(createdData.error?.message || 'Could not create a private conversation.');
+        activeConversationId = createdData.id;
+        setConversationId(activeConversationId);
+      }
+
+      const res = await apiFetch(`/api/conversations/${encodeURIComponent(activeConversationId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: newHistory.map((m) => ({ role: m.role, content: m.content })),
-        }),
+        body: JSON.stringify({ message: userMsg.content }),
       });
-
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Inference error');
-
-      const botReply: ChatMessage = {
+      if (!res.ok || typeof data.reply?.content !== 'string') throw new Error(data.error?.message || 'The online AI response could not be generated.');
+      setMessages((prev) => [...prev, {
         role: 'assistant',
-        content: data.result?.text || data.text || '(No reply generated)',
-        provider: data.result?.provider || data.provider,
-        model: data.result?.model || data.model,
-        latencyMs: data.result?.latencyMs ?? data.latencyMs,
-        isSimulated: data.result?.isSimulated ?? false,
-      };
-
-      setMessages((prev) => [...prev, botReply]);
+        content: data.reply.content,
+        provider: data.reply.provider,
+        model: data.reply.model,
+        isSimulated: false,
+      }]);
     } catch (err: any) {
       setError(err.message);
+      setMessages((prev) => prev[prev.length - 1]?.role === 'user' ? prev.slice(0, -1) : prev);
     } finally {
       setSending(false);
     }

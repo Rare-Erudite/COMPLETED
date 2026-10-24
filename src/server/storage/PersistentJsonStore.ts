@@ -46,8 +46,11 @@ export class PersistentJsonStore {
   private readonly pendingWrites = new Map<string, Promise<void>>();
   private readonly memoryDocs = new Map<string, any>();
   private readonly memoryFiles = new Map<string, StoredSnapshotFile[]>();
-    private readonly localAuthUsers = new Map<string, StoredAuthUser>();
+  private readonly localAuthUsers = new Map<string, StoredAuthUser>();
   private readonly localAuthSessions = new Map<string, StoredAuthSession>();
+  private readonly localOAuthIdentities = new Map<string, string>();
+  private readonly localDeveloperCredentials = new Map<string, string>();
+  private readonly localDeveloperGrants = new Map<string, number>();
   private readonly fallbackPath = path.resolve(
     process.env.RARE_APP_ROOT || process.cwd(),
     '.rare',
@@ -56,7 +59,7 @@ export class PersistentJsonStore {
   );
   private databaseStatus: { configured: boolean; reachable: boolean; schemaReady: boolean; error?: string };
 
-  constructor(connectionString = process.env.DATABASE_URL) {
+  constructor(connectionString: string | null | undefined = process.env.DATABASE_URL) {
     this.loadFallbackDocuments();
         const savedAuthUsers = this.memoryDocs.get('rare_auth_users');
     if (Array.isArray(savedAuthUsers)) {
@@ -78,6 +81,30 @@ export class PersistentJsonStore {
           typeof entry[1].ownerId === 'string'
         ) {
           this.localAuthSessions.set(entry[0], entry[1]);
+        }
+      }
+    }
+    const savedOAuthIdentities = this.memoryDocs.get('rare_auth_oauth_identities');
+    if (Array.isArray(savedOAuthIdentities)) {
+      for (const entry of savedOAuthIdentities) {
+        if (Array.isArray(entry) && typeof entry[0] === 'string' && typeof entry[1] === 'string') {
+          this.localOAuthIdentities.set(entry[0], entry[1]);
+        }
+      }
+    }
+    const savedDeveloperCredentials = this.memoryDocs.get('rare_developer_credentials');
+    if (Array.isArray(savedDeveloperCredentials)) {
+      for (const entry of savedDeveloperCredentials) {
+        if (Array.isArray(entry) && typeof entry[0] === 'string' && typeof entry[1] === 'string') {
+          this.localDeveloperCredentials.set(entry[0], entry[1]);
+        }
+      }
+    }
+    const savedDeveloperGrants = this.memoryDocs.get('rare_developer_grants');
+    if (Array.isArray(savedDeveloperGrants)) {
+      for (const entry of savedDeveloperGrants) {
+        if (Array.isArray(entry) && typeof entry[0] === 'string' && Number.isFinite(entry[1])) {
+          this.localDeveloperGrants.set(entry[0], entry[1]);
         }
       }
     }
@@ -124,6 +151,10 @@ export class PersistentJsonStore {
           'artifacts',
           'rare_users',
           'rare_sessions',
+          'rare_oauth_identities',
+          'rare_developer_credentials',
+          'rare_developer_grants',
+          'rare_user_state',
         ]],
       );
       const available = new Set(result.rows.map((row) => row.table_name));
@@ -136,8 +167,25 @@ export class PersistentJsonStore {
         'artifacts',
         'rare_users',
         'rare_sessions',
+        'rare_oauth_identities',
+        'rare_developer_credentials',
+        'rare_developer_grants',
+        'rare_user_state',
       ];
       const missing = required.filter((table) => !available.has(table));
+      if (available.has('projects')) {
+        const ownerColumn = await this.pool.query(
+          "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'projects' AND column_name = 'owner_id'",
+        );
+        if (ownerColumn.rowCount !== 1) missing.push('projects.owner_id');
+      }
+      const rlsTables = ['rare_user_state', 'projects', 'project_tasks', 'agent_events', 'artifacts'];
+      const rlsResult = await this.pool.query<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean }>(
+        'SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class WHERE relnamespace = current_schema()::regnamespace AND relname = ANY($1::text[])',
+        [rlsTables],
+      );
+      const rlsReady = new Map(rlsResult.rows.map((row) => [row.relname, row.relrowsecurity && row.relforcerowsecurity]));
+      for (const table of rlsTables) if (available.has(table) && !rlsReady.get(table)) missing.push(table + '.row_level_security');
       this.databaseStatus = {
         configured: true,
         reachable: true,
@@ -163,6 +211,116 @@ export class PersistentJsonStore {
         ? 'postgresql'
         : 'local-json',
     };
+  }
+
+  /** Read private state under the authenticated owner recorded in the session. */
+  public async getOwnedState<T>(ownerId: string, stateKey: string, initialValue: T): Promise<T> {
+    this.assertOwnerStateArguments(ownerId, stateKey);
+    const pool = this.requireReadyPostgres();
+    if (!pool) {
+      const key = this.localOwnerStateKey(ownerId, stateKey);
+      if (!this.memoryDocs.has(key)) {
+        this.memoryDocs.set(key, initialValue);
+        this.saveFallbackDocuments();
+      }
+      return this.memoryDocs.get(key) as T;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query("SELECT set_config('rare.user_id', $1, true)", [ownerId]);
+      const result = await client.query<{ payload: T }>(
+        'SELECT payload FROM rare_user_state WHERE owner_id = $1 AND state_key = $2',
+        [ownerId, stateKey],
+      );
+      if (result.rows.length > 0) {
+        await client.query('COMMIT');
+        return result.rows[0].payload;
+      }
+      const inserted = await client.query<{ payload: T }>(
+        `INSERT INTO rare_user_state (owner_id, state_key, payload)
+         VALUES ($1, $2, $3::jsonb)
+         ON CONFLICT (owner_id, state_key) DO NOTHING
+         RETURNING payload`,
+        [ownerId, stateKey, JSON.stringify(initialValue)],
+      );
+      if (inserted.rows.length > 0) {
+        await client.query('COMMIT');
+        return inserted.rows[0].payload;
+      }
+      const raced = await client.query<{ payload: T }>(
+        'SELECT payload FROM rare_user_state WHERE owner_id = $1 AND state_key = $2',
+        [ownerId, stateKey],
+      );
+      await client.query('COMMIT');
+      if (!raced.rows.length) throw new Error('Could not initialize private user state.');
+      return raced.rows[0].payload;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Atomically update private state; the owner is never accepted from payload data. */
+  public async updateOwnedState<T>(
+    ownerId: string,
+    stateKey: string,
+    initialValue: T,
+    update: (current: T) => T,
+  ): Promise<T> {
+    this.assertOwnerStateArguments(ownerId, stateKey);
+    const pool = this.requireReadyPostgres();
+    if (!pool) {
+      const key = this.localOwnerStateKey(ownerId, stateKey);
+      const current = this.memoryDocs.has(key) ? this.memoryDocs.get(key) as T : initialValue;
+      const next = update(current);
+      this.memoryDocs.set(key, next);
+      this.saveFallbackDocuments();
+      return next;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query("SELECT set_config('rare.user_id', $1, true)", [ownerId]);
+      await client.query(
+        `INSERT INTO rare_user_state (owner_id, state_key, payload)
+         VALUES ($1, $2, $3::jsonb)
+         ON CONFLICT (owner_id, state_key) DO NOTHING`,
+        [ownerId, stateKey, JSON.stringify(initialValue)],
+      );
+      const currentResult = await client.query<{ payload: T }>(
+        'SELECT payload FROM rare_user_state WHERE owner_id = $1 AND state_key = $2 FOR UPDATE',
+        [ownerId, stateKey],
+      );
+      if (!currentResult.rows.length) throw new Error('Private user state is unavailable.');
+      const next = update(currentResult.rows[0].payload);
+      await client.query(
+        `UPDATE rare_user_state SET payload = $3::jsonb, updated_at = now()
+         WHERE owner_id = $1 AND state_key = $2`,
+        [ownerId, stateKey, JSON.stringify(next)],
+      );
+      await client.query('COMMIT');
+      return next;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  private assertOwnerStateArguments(ownerId: string, stateKey: string): void {
+    if (!ownerId || ownerId.length > 200 || !stateKey || stateKey.length > 120) {
+      throw new Error('A valid authenticated owner and private state key are required.');
+    }
+  }
+
+  private localOwnerStateKey(ownerId: string, stateKey: string): string {
+    return `rare_user_state:${ownerId}:${stateKey}`;
   }
 
   async getOrSeed<T>(key: string, initialValue: T): Promise<T> {
@@ -276,7 +434,78 @@ export class PersistentJsonStore {
       'rare_auth_sessions',
       Array.from(this.localAuthSessions.entries())
     );
+    this.memoryDocs.set('rare_auth_oauth_identities', Array.from(this.localOAuthIdentities.entries()));
+    this.memoryDocs.set('rare_developer_credentials', Array.from(this.localDeveloperCredentials.entries()));
+    this.memoryDocs.set('rare_developer_grants', Array.from(this.localDeveloperGrants.entries()));
     this.saveFallbackDocuments();
+  }
+
+  public async getDeveloperCredential(userId: string): Promise<string | null> {
+    if (!userId || userId.length > 200) throw new Error('Developer account ID is required.');
+    const pool = this.requireReadyPostgres();
+    if (!pool) return this.localDeveloperCredentials.get(userId) ?? null;
+    const result = await pool.query<{ secret_hash: string }>(
+      'SELECT secret_hash FROM rare_developer_credentials WHERE user_id = $1', [userId],
+    );
+    return result.rows[0]?.secret_hash ?? null;
+  }
+
+  public async setDeveloperCredential(userId: string, secretHash: string): Promise<void> {
+    if (!userId || userId.length > 200) throw new Error('Developer account ID is required.');
+    if (!secretHash || secretHash.length > 512) throw new Error('Developer credential hash is invalid.');
+    const pool = this.requireReadyPostgres();
+    if (!pool) {
+      this.localDeveloperCredentials.set(userId, secretHash);
+      this.saveLocalAuthState();
+      return;
+    }
+    await pool.query(
+      `INSERT INTO rare_developer_credentials (user_id, secret_hash, updated_at) VALUES ($1, $2, now())
+       ON CONFLICT (user_id) DO UPDATE SET secret_hash = EXCLUDED.secret_hash, updated_at = now()`, [userId, secretHash],
+    );
+  }
+
+  public async grantDeveloperSession(sessionHash: string, expiresAt: number): Promise<void> {
+    const pool = this.requireReadyPostgres();
+    if (!pool) {
+      this.localDeveloperGrants.set(sessionHash, expiresAt);
+      this.saveLocalAuthState();
+      return;
+    }
+    await pool.query(
+      `INSERT INTO rare_developer_grants (session_hash, expires_at) VALUES ($1, to_timestamp($2 / 1000.0))
+       ON CONFLICT (session_hash) DO UPDATE SET expires_at = EXCLUDED.expires_at`, [sessionHash, expiresAt],
+    );
+  }
+
+  public async getDeveloperGrant(sessionHash: string): Promise<number | null> {
+    const pool = this.requireReadyPostgres();
+    if (!pool) return this.localDeveloperGrants.get(sessionHash) ?? null;
+    const result = await pool.query<{ expires_at: Date | string }>(
+      'SELECT expires_at FROM rare_developer_grants WHERE session_hash = $1', [sessionHash],
+    );
+    const value = result.rows[0]?.expires_at;
+    return value ? new Date(value).getTime() : null;
+  }
+
+  public async revokeDeveloperGrant(sessionHash: string): Promise<void> {
+    const pool = this.requireReadyPostgres();
+    if (!pool) {
+      this.localDeveloperGrants.delete(sessionHash);
+      this.saveLocalAuthState();
+      return;
+    }
+    await pool.query('DELETE FROM rare_developer_grants WHERE session_hash = $1', [sessionHash]);
+  }
+
+  public async revokeAllDeveloperGrants(): Promise<void> {
+    const pool = this.requireReadyPostgres();
+    if (!pool) {
+      this.localDeveloperGrants.clear();
+      this.saveLocalAuthState();
+      return;
+    }
+    await pool.query('DELETE FROM rare_developer_grants');
   }
 
   private toStoredAuthUser(row: AuthUserRow): StoredAuthUser {
@@ -464,69 +693,83 @@ export class PersistentJsonStore {
     id: string;
     name: string;
     email: string;
+    emailVerified: boolean;
     provider: 'google' | 'outlook';
+    subject: string;
     createdAt: string;
   }): Promise<StoredAuthUser> {
-    const normalizedEmail = input.email.trim().toLowerCase();
+    const normalizedEmail = input.emailVerified && input.email.trim() ? input.email.trim().toLowerCase() : null;
+    if (!input.subject || input.subject.length > 512) throw new Error('Verified OAuth subject is invalid.');
+    const identityKey = `${input.provider}:${input.subject}`;
     const pool = this.requireReadyPostgres();
 
     if (!pool) {
-      const existing = await this.getAuthUserByEmail(normalizedEmail);
-      if (existing) {
-        existing.name = input.name || existing.name;
-        this.localAuthUsers.set(existing.id, existing);
-        this.saveLocalAuthState();
-        return { ...existing };
-      }
-
-      return this.createAuthUser({
-        id: input.id,
-        name: input.name,
-        email: normalizedEmail,
-        phone: null,
-        passwordHash: null,
-        provider: input.provider,
-        role: 'user',
-        createdAt: input.createdAt,
-      });
+      const linkedId = this.localOAuthIdentities.get(identityKey);
+      let user = linkedId ? this.localAuthUsers.get(linkedId) || null : normalizedEmail ? await this.getAuthUserByEmail(normalizedEmail) : null;
+      if (!user) user = await this.createAuthUser({
+          id: input.id, name: input.name, email: normalizedEmail, phone: null,
+          passwordHash: null, provider: input.provider, role: 'user', createdAt: input.createdAt,
+        });
+      if (linkedId && linkedId !== user.id) throw new Error('OAuth identity is already linked to another account.');
+      const existingLink = this.localOAuthIdentities.get(identityKey);
+      if (existingLink && existingLink !== user.id) throw new Error('OAuth identity is already linked to another account.');
+      user.name = input.name || user.name;
+      this.localAuthUsers.set(user.id, user);
+      this.localOAuthIdentities.set(identityKey, user.id);
+      this.saveLocalAuthState();
+      return { ...user };
     }
 
-    const result = await pool.query<AuthUserRow>(
-      `INSERT INTO rare_users (
-         id,
-         name,
-         email,
-         phone,
-         password_hash,
-         provider,
-         role,
-         created_at,
-         updated_at
-       )
-       VALUES ($1, $2, $3, NULL, NULL, $4, 'user', $5, now())
-       ON CONFLICT (email)
-       DO UPDATE SET
-         name = EXCLUDED.name,
-         updated_at = now()
-       RETURNING
-         id,
-         name,
-         email,
-         phone,
-         password_hash AS "passwordHash",
-         provider,
-         role,
-         created_at AS "createdAt"`,
-      [
-        input.id,
-        input.name,
-        normalizedEmail,
-        input.provider,
-        input.createdAt,
-      ]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const existingIdentity = await client.query<AuthUserRow>(
+        `SELECT u.id, u.name, u.email, u.phone, u.password_hash AS "passwordHash", u.provider, u.role, u.created_at AS "createdAt"
+           FROM rare_oauth_identities i JOIN rare_users u ON u.id = i.user_id
+          WHERE i.provider = $1 AND i.subject = $2 FOR UPDATE OF u`,
+        [input.provider, input.subject],
+      );
+      if (existingIdentity.rows[0]) {
+        const row = existingIdentity.rows[0];
+        const name = input.name || row.name;
+        await client.query('UPDATE rare_users SET name = $2, updated_at = now() WHERE id = $1', [row.id, name]);
+        await client.query('COMMIT');
+        return this.toStoredAuthUser({ ...row, name });
+      }
 
-    return this.toStoredAuthUser(result.rows[0]);
+      let account = await client.query<AuthUserRow>(
+        `SELECT id, name, email, phone, password_hash AS "passwordHash", provider, role, created_at AS "createdAt"
+           FROM rare_users WHERE lower(email) = $1 FOR UPDATE`, [normalizedEmail],
+      );
+      if (!account.rows[0]) {
+        account = await client.query<AuthUserRow>(
+          `INSERT INTO rare_users (id, name, email, phone, password_hash, provider, role, created_at, updated_at)
+           VALUES ($1, $2, $3, NULL, NULL, $4, 'user', $5, now())
+           ON CONFLICT (email) DO UPDATE SET updated_at = rare_users.updated_at
+           RETURNING id, name, email, phone, password_hash AS "passwordHash", provider, role, created_at AS "createdAt"`,
+          [input.id, input.name, normalizedEmail, input.provider, input.createdAt],
+        );
+      }
+      const row = account.rows[0];
+      const insert = await client.query<{ user_id: string }>(
+        `INSERT INTO rare_oauth_identities (provider, subject, user_id) VALUES ($1, $2, $3)
+         ON CONFLICT (provider, subject) DO NOTHING RETURNING user_id`,
+        [input.provider, input.subject, row.id],
+      );
+      const identityOwner = insert.rows[0]?.user_id ?? (await client.query<{ user_id: string }>(
+        'SELECT user_id FROM rare_oauth_identities WHERE provider = $1 AND subject = $2', [input.provider, input.subject],
+      )).rows[0]?.user_id;
+      if (identityOwner !== row.id) throw new Error('OAuth identity is already linked to another account.');
+      const name = input.name || row.name;
+      if (name !== row.name) await client.query('UPDATE rare_users SET name = $2, updated_at = now() WHERE id = $1', [row.id, name]);
+      await client.query('COMMIT');
+      return this.toStoredAuthUser({ ...row, name });
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   /**
@@ -694,19 +937,32 @@ export class PersistentJsonStore {
     );
   }
   async persistProjectRun(run: Record<string, any>): Promise<void> {
-    if (!this.pool || !this.databaseStatus.schemaReady) return;
+    if (!run.ownerId || typeof run.id !== 'string' || !run.id) throw new Error('Project owner and ID are required for persistence.');
+    const pool = this.requireReadyPostgres();
+    if (!pool) {
+      await this.updateOwnedState<Record<string, any>[]>(run.ownerId, 'projects', [], (projects) => {
+        const index = projects.findIndex((project) => project.id === run.id);
+        if (index < 0) return [run, ...projects];
+        const next = [...projects];
+        next[index] = run;
+        return next;
+      });
+      return;
+    }
     let client;
     try {
-      client = await this.pool.connect();
+      client = await pool.connect();
       await client.query('BEGIN');
-      await client.query(
-        `INSERT INTO projects (id, title, target_domain, objective, status, created_at, updated_at, payload)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+      await client.query("SELECT set_config('rare.user_id', $1, true)", [run.ownerId]);
+      const projectWrite = await client.query(
+        `INSERT INTO projects (id, owner_id, title, target_domain, objective, status, created_at, updated_at, payload)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
          ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, target_domain = EXCLUDED.target_domain,
            objective = EXCLUDED.objective, status = EXCLUDED.status, updated_at = EXCLUDED.updated_at,
-           payload = EXCLUDED.payload`,
-        [run.id, run.title, run.targetDomain, run.objective, run.status, run.createdAt, run.updatedAt, JSON.stringify(run)],
+           payload = EXCLUDED.payload WHERE projects.owner_id = EXCLUDED.owner_id`,
+        [run.id, run.ownerId || null, run.title, run.targetDomain, run.objective, run.status, run.createdAt, run.updatedAt, JSON.stringify(run)],
       );
+      if (projectWrite.rowCount !== 1) throw new Error('Project is already owned by another account.');
       for (const agent of run.agents || []) {
         await client.query(
           `INSERT INTO project_tasks (id, project_id, title, assigned_role, status, details, created_at, updated_at)
@@ -741,12 +997,58 @@ export class PersistentJsonStore {
       if (client) await client.query('ROLLBACK').catch(() => {});
       this.databaseStatus = {
         ...this.databaseStatus,
-        schemaReady: false,
         error: error instanceof Error ? error.message : 'Relational project persistence failed',
       };
-      console.warn(`[AI Studio] Could not persist project run "${run.id}" relationally:`, error);
+      console.error(`[AI Studio] Could not persist project run "${run.id}" relationally.`);
+      throw error;
     } finally {
       client?.release();
+    }
+  }
+
+  public async listProjectRuns(ownerId: string): Promise<Record<string, any>[]> {
+    this.assertOwnerStateArguments(ownerId, 'projects');
+    const pool = this.requireReadyPostgres();
+    if (!pool) return this.getOwnedState<Record<string, any>[]>(ownerId, 'projects', []);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query("SELECT set_config('rare.user_id', $1, true)", [ownerId]);
+      const result = await client.query<{ payload: Record<string, any> }>(
+        'SELECT payload FROM projects WHERE owner_id = $1 ORDER BY updated_at DESC', [ownerId],
+      );
+      await client.query('COMMIT');
+      return result.rows.map((row) => row.payload);
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  public async getProjectRun(ownerId: string, projectId: string): Promise<Record<string, any> | null> {
+    this.assertOwnerStateArguments(ownerId, 'projects');
+    if (!projectId || projectId.length > 200) return null;
+    const pool = this.requireReadyPostgres();
+    if (!pool) {
+      const projects = await this.getOwnedState<Record<string, any>[]>(ownerId, 'projects', []);
+      return projects.find((project) => project.id === projectId) ?? null;
+    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query("SELECT set_config('rare.user_id', $1, true)", [ownerId]);
+      const result = await client.query<{ payload: Record<string, any> }>(
+        'SELECT payload FROM projects WHERE id = $1 AND owner_id = $2 LIMIT 1', [projectId, ownerId],
+      );
+      await client.query('COMMIT');
+      return result.rows[0]?.payload ?? null;
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
     }
   }
 

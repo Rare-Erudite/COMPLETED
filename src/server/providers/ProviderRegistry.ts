@@ -127,15 +127,34 @@ export class ProviderRegistry {
     try {
       return await provider.generate(prompt, context, options);
     } catch (err: any) {
-      console.warn('[ProviderRegistry] Primary provider failed, falling back to Offline Cognitive Engine:', err?.message || err);
+      // Keep the fallback available for explicitly offline callers, but never
+      // log provider exception details that may contain URLs or credentials.
+      console.warn('[ProviderRegistry] Configured provider failed; using the offline engine fallback.');
       const fallbackResult = await this.offlineEngine.generate(prompt, context, options);
       return {
         ...fallbackResult,
-        thought: `[Primary provider failed (${err?.message || 'Error'}); fell back to OfflineCognitiveEngine] ${fallbackResult.thought || ''}`.trim(),
+        thought: `[Online provider failed; fell back to OfflineCognitiveEngine] ${fallbackResult.thought || ''}`.trim(),
         modelUsed: 'offline-cognitive-engine / RARE Native Cognitive Engine',
         providerType: 'offline_cognitive',
       };
     }
+  }
+
+  /** Generate only from a real, reachable model provider. HTTP callers use this
+   * to ensure a deterministic offline heuristic can never masquerade as AI. */
+  public async generateOnline(
+    prompt: string,
+    context?: string,
+    options?: GenerationOptions
+  ): Promise<GenerationResult> {
+    const { provider } = await this.getActiveProvider();
+    if (provider === this.offlineEngine) {
+      throw Object.assign(new Error('No online AI provider is available.'), {
+        statusCode: 503,
+        code: 'ONLINE_PROVIDER_UNAVAILABLE',
+      });
+    }
+    return provider.generate(prompt, context, options);
   }
 
   public getOfflineEngine(): OfflineCognitiveEngine {

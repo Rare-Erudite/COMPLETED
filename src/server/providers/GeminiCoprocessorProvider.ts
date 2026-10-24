@@ -172,7 +172,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
         };
       } catch (err: any) {
         lastError = err;
-        console.warn(`[GeminiCoprocessorProvider] Model ${modelId} failed:`, err?.message || err);
+        console.warn(`[GeminiCoprocessorProvider] Model ${modelId} request failed.`);
       }
     }
 

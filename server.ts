@@ -31,8 +31,35 @@ const PORT = process.argv.includes('--port')
 process.env.RARE_INTELLIGENCE_URL = process.env.RARE_INTELLIGENCE_URL || `http://127.0.0.1:${PORT}`;
 const durableStateStore = new DurableStateStore();
 let persistentStorage: PersistentJsonStore | undefined;
+let serverInitialization: Promise<void> | undefined;
 
-app.use(cors());
+const developmentOrigins = [
+  'http://localhost:3000', 'http://localhost:5173',
+  'http://127.0.0.1:3000', 'http://127.0.0.1:5173',
+];
+const configuredOrigins = (process.env.RARE_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
+  .map((origin) => {
+    let parsed: URL;
+    try { parsed = new URL(origin); } catch { throw new Error('RARE_ALLOWED_ORIGINS must contain exact HTTP(S) origins.'); }
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.origin !== origin.replace(/\/$/, '')) {
+      throw new Error('RARE_ALLOWED_ORIGINS must contain origins only, without paths, credentials, wildcards, or query strings.');
+    }
+    return parsed.origin;
+  });
+const allowedOrigins = new Set([
+  ...(process.env.NODE_ENV === 'production' ? [] : developmentOrigins),
+  ...configuredOrigins,
+]);
+app.use(cors({
+  origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)),
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+  exposedHeaders: ['X-CSRF-Token'],
+  credentials: true,
+}));
 app.use(express.json({ limit: '15mb' }));
 app.use((req, res, next) => {
   const originalEnd = res.end.bind(res);
@@ -88,11 +115,8 @@ const appSettings = durableStateStore.trackObject('app_settings', {
   activeTheme: 'blue' as ActiveTheme,
 });
 
-// Developer authorization secret & active session
-let currentDeveloperPasskey = process.env.RARE_DEV_KEY?.trim() || null;
-// Track developer authorization separately for each RARE session.
-// Store only the hash of the bearer token, never the raw token.
-const developerSessions = new Map<string, number>();
+// Developer grants and the passkey verifier are stored durably by the auth store.
+const developerAuthFailures = new Map<string, { count: number; resetAt: number }>();
 
 async function isDeveloperSessionAuthorized(
   req: express.Request
@@ -104,24 +128,32 @@ async function isDeveloperSessionAuthorized(
   }
 
   const tokenHash = hashUserSessionToken(token);
-  const developerExpiresAt = developerSessions.get(tokenHash);
-
-  if (!developerExpiresAt || developerExpiresAt <= Date.now()) {
-    developerSessions.delete(tokenHash);
-    return false;
-  }
 
   try {
     const session = await persistentStorage.getAuthSession(tokenHash);
+    const developerExpiresAt = await persistentStorage.getDeveloperGrant(tokenHash);
 
     if (!session || session.expiresAt <= Date.now()) {
-      developerSessions.delete(tokenHash);
+      await persistentStorage.revokeDeveloperGrant(tokenHash);
+      return false;
+    }
+    if (!developerExpiresAt || developerExpiresAt <= Date.now()) {
+      await persistentStorage.revokeDeveloperGrant(tokenHash);
+      return false;
+    }
+
+    if (!session.accountId) {
+      await persistentStorage.revokeDeveloperGrant(tokenHash);
+      return false;
+    }
+    const account = await persistentStorage.getAuthUserById(session.accountId);
+    if (!account || account.role !== 'developer') {
+      await persistentStorage.revokeDeveloperGrant(tokenHash);
       return false;
     }
 
     return true;
   } catch (error) {
-    developerSessions.delete(tokenHash);
     console.error(
       '[Auth] Developer session validation failed:',
       error
@@ -129,8 +161,18 @@ async function isDeveloperSessionAuthorized(
     return false;
   }
 }
-let developerAuthenticated = false;
-let devSessionExpiry = 0;
+
+async function consumeGuestQuota(ownerId: string, action: string, limit: number): Promise<boolean> {
+  if (!persistentStorage) return false;
+  let allowed = false;
+  await persistentStorage.updateOwnedState<Record<string, number>>(ownerId, 'guest_usage', {}, (usage) => {
+    const current = Number(usage[action]) || 0;
+    if (current >= limit) return usage;
+    allowed = true;
+    return { ...usage, [action]: current + 1 };
+  });
+  return allowed;
+}
 
 // Access requests dispatched to owner (rarelivescore@gmail.com)
 interface DevAccessRequest {
@@ -205,6 +247,39 @@ userSessions = durableStateStore.trackMap('user_sessions', userSessions);
 function hashUserSessionToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
+
+const SESSION_COOKIE_NAME = 'rare_session';
+const CSRF_COOKIE_NAME = 'rare_csrf';
+function readCookie(req: express.Request, name: string): string | null {
+  const cookieHeader = req.headers.cookie || '';
+  for (const part of cookieHeader.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0 || part.slice(0, separator).trim() !== name) continue;
+    try { return decodeURIComponent(part.slice(separator + 1).trim()); } catch { return null; }
+  }
+  return null;
+}
+
+function setSessionCookies(res: express.Response, token: string): string {
+  // Signing the double-submit token with the HttpOnly session secret prevents
+  // a sibling subdomain from planting an arbitrary CSRF cookie.
+  const csrfToken = crypto.createHmac('sha256', token).update('rare-csrf-v1').digest('base64url');
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  // SameSite=None is required when a separately hosted frontend calls the API.
+  const sameSite = process.env.NODE_ENV === 'production' ? 'None' : 'Lax';
+  const common = `Path=/; SameSite=${sameSite}; Max-Age=${Math.floor(USER_SESSION_TTL_MS / 1000)}${secure}`;
+  res.append('Set-Cookie', `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; ${common}; HttpOnly`);
+  res.append('Set-Cookie', `${CSRF_COOKIE_NAME}=${encodeURIComponent(csrfToken)}; ${common}`);
+  res.setHeader('X-CSRF-Token', csrfToken);
+  return csrfToken;
+}
+
+function clearSessionCookies(res: express.Response): void {
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  const sameSite = process.env.NODE_ENV === 'production' ? 'None' : 'Lax';
+  res.append('Set-Cookie', `${SESSION_COOKIE_NAME}=; Path=/; SameSite=${sameSite}; Max-Age=0${secure}; HttpOnly`);
+  res.append('Set-Cookie', `${CSRF_COOKIE_NAME}=; Path=/; SameSite=${sameSite}; Max-Age=0${secure}`);
+}
 async function hashPassword(password: string): Promise<string> {
   const salt = crypto.randomBytes(16).toString('hex');
 
@@ -220,6 +295,29 @@ async function hashPassword(password: string): Promise<string> {
   });
 
   return `scrypt:${salt}:${derivedKey.toString('hex')}`;
+}
+
+async function verifySecretHash(encodedHash: string, candidate: string): Promise<boolean> {
+  const [scheme, salt, expectedHex, extra] = encodedHash.split(':');
+  if (scheme !== 'scrypt' || !salt || !expectedHex || extra || !/^[a-f0-9]{128}$/i.test(expectedHex)) return false;
+  const expected = Buffer.from(expectedHex, 'hex');
+  const actual = await new Promise<Buffer>((resolve, reject) => {
+    crypto.scrypt(candidate, salt, 64, (error, key) => error ? reject(error) : resolve(key));
+  });
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+}
+
+async function verifyDeveloperPasskey(candidate: unknown, accountId: string): Promise<{ valid: boolean; configured: boolean }> {
+  if (typeof candidate !== 'string' || !candidate || candidate.length > 256 || !persistentStorage || !accountId) return { valid: false, configured: false };
+  let stored = await persistentStorage.getDeveloperCredential(accountId);
+  const configured = process.env.RARE_DEV_KEY?.trim() || null;
+  if (!stored && !configured) return { valid: false, configured: false };
+  if (!stored && configured) {
+    if (candidate !== configured) return { valid: false, configured: true };
+    stored = await hashPassword(configured);
+    await persistentStorage.setDeveloperCredential(accountId, stored);
+  }
+  return { valid: await verifySecretHash(stored!, candidate), configured: true };
 }
 function issueSessionForOwner(userId: string): {
   sessionToken: string;
@@ -245,15 +343,12 @@ function issueUserSession(user: {
   sessionToken: string;
   expiresAt: number;
 } {
-  // Preserve the existing email/phone ownership key used by RARE's UI.
-  const ownerId = String(user.email || user.phone || user.id)
-    .trim()
-    .toLowerCase();
-
-  return issueSessionForOwner(ownerId);
+  return issueSessionForOwner(user.id);
 }
 
 function readBearerSessionToken(req: express.Request): string | null {
+  const cookieToken = readCookie(req, SESSION_COOKIE_NAME);
+  if (cookieToken) return cookieToken;
   const authorization = String(req.headers.authorization || '');
   const match = /^Bearer\s+(\S+)$/i.exec(authorization);
 
@@ -261,7 +356,7 @@ function readBearerSessionToken(req: express.Request): string | null {
 }
 
 
-const requireConversationSession: express.RequestHandler = async (
+const requireAuthenticatedSession: express.RequestHandler = async (
   req,
   res,
   next
@@ -277,6 +372,24 @@ const requireConversationSession: express.RequestHandler = async (
   }
 
   const tokenHash = hashUserSessionToken(token);
+
+  const cookieSessionToken = readCookie(req, SESSION_COOKIE_NAME);
+  if (cookieSessionToken) {
+    const csrfCookie = readCookie(req, CSRF_COOKIE_NAME) || '';
+    const csrfHeader = String(req.headers['x-csrf-token'] || '');
+    if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+      const origin = req.headers.origin;
+      const expectedCsrf = crypto.createHmac('sha256', cookieSessionToken).update('rare-csrf-v1').digest('base64url');
+      if (!origin || !allowedOrigins.has(origin) || !csrfCookie || !csrfHeader ||
+          csrfCookie.length !== csrfHeader.length ||
+          csrfCookie.length !== expectedCsrf.length ||
+          !crypto.timingSafeEqual(Buffer.from(csrfCookie), Buffer.from(csrfHeader)) ||
+          !crypto.timingSafeEqual(Buffer.from(csrfCookie), Buffer.from(expectedCsrf))) {
+        return res.status(403).json({ error: { message: 'The request could not be verified. Refresh and try again.' } });
+      }
+    }
+    if (csrfCookie) res.setHeader('X-CSRF-Token', csrfCookie);
+  }
 
   try {
     const session = await persistentStorage.getAuthSession(tokenHash);
@@ -296,7 +409,19 @@ const requireConversationSession: express.RequestHandler = async (
     }
 
     // Use the identity recorded by the server when the session was created.
-    res.locals.rareUserId = session.ownerId;
+    // Account sessions use the immutable account ID; guests keep their unique
+    // session owner ID. Email and request-supplied IDs are not principals.
+    res.locals.rareUserId = session.accountId || session.ownerId;
+    res.locals.rareIsGuest = !session.accountId;
+    if (!session.accountId && req.method !== 'GET' && [
+      '/api/agents/runs', '/api/intelligence/repair', '/api/intelligence/evaluate',
+      '/api/updates/apply', '/api/updates/publish', '/api/research/search',
+      '/api/images/generate', '/api/images/edit', '/api/documents/transcribe',
+      '/api/v1/tasks/execute', '/api/voice/chat', '/api/voice/transcribe',
+      '/api/voice/tts', '/api/voice/synthesize',
+    ].includes(req.originalUrl.split('?')[0])) {
+      return res.status(403).json({ error: { message: 'Create an account to use this operation.' } });
+    }
     return next();
   } catch (error) {
     console.error('[Auth] Session validation failed:', error);
@@ -309,6 +434,36 @@ const requireConversationSession: express.RequestHandler = async (
   }
 };
 
+
+const PUBLIC_API_PATHS = new Set([
+  '/api/health', '/api/status',
+  '/api/download/source', '/api/download/bundle', '/api/download/apk/info',
+  '/api/download/apk/chunk', '/api/download/apk', '/api/download/exe',
+  '/api/updates/check', '/api/updates/list',
+  '/api/intelligence/status', '/api/integration/rare-intelligence',
+  '/api/v1/engine/health', '/api/v1/engine/status', '/api/v1/providers/available',
+  // Keep the existing explicit 403 response for this privileged status endpoint.
+  '/api/developer/status',
+  '/api/user/guest-session', '/api/user/signup', '/api/user/login',
+  '/api/user/oauth', '/api/user/send-otp', '/api/user/verify-otp',
+  '/api/user/send-email-otp', '/api/user/verify-email-otp',
+]);
+
+app.use('/api', async (req, res, next) => {
+  if (process.env.VERCEL === '1' && serverInitialization) {
+    try {
+      await serverInitialization;
+    } catch {
+      return res.status(503).json({ error: { message: 'RARE server initialization failed.' } });
+    }
+  }
+  const origin = req.headers.origin;
+  if (origin && !allowedOrigins.has(origin)) {
+    return res.status(403).json({ error: { message: 'This origin is not allowed.' } });
+  }
+  if (PUBLIC_API_PATHS.has(req.originalUrl.split('?')[0])) return next();
+  return requireAuthenticatedSession(req, res, next);
+});
 
 interface AuditEvent {
   id: string;
@@ -456,6 +611,7 @@ export interface AgentMessage {
 
 export interface MultiAgentTeamRun {
   id: string;
+  ownerId?: string;
   title: string;
   targetDomain: string;
   objective: string;
@@ -848,7 +1004,8 @@ async function generateAssistantReply(
   activeConvId?: string,
   persona?: string,
   recentMessages?: ChatMessage[],
-  isVoiceCall?: boolean
+  isVoiceCall?: boolean,
+  ownerId?: string
 ): Promise<{
   reply: string;
   thought?: string;
@@ -859,8 +1016,17 @@ async function generateAssistantReply(
   };
 }> {
   // Retrieve persistent memory context to feed into reasoning
-  const retrievedMemories = memoryStore.search(prompt).slice(0, 5);
-  const recentDurable = memoryStore.getAll().slice(0, 6);
+  let userMemories: any[] = [];
+  if (ownerId && persistentStorage) {
+    try {
+      userMemories = await persistentStorage.getOwnedState<any[]>(ownerId, 'memories', []);
+    } catch (error) {
+      console.error('[Memory] Could not load authenticated user memory context:', error);
+    }
+  }
+  const matching = userMemories.filter((memory) => `${memory.text} ${(memory.tags || []).join(' ')} ${memory.kind}`.toLowerCase().includes(prompt.toLowerCase()));
+  const retrievedMemories = matching.slice(0, 5);
+  const recentDurable = userMemories.slice(0, 6);
   const memoryLines = Array.from(new Set([...retrievedMemories, ...recentDurable]))
     .map((m) => `• [${m.kind}] ${m.text}`)
     .join('\n');
@@ -893,7 +1059,7 @@ const historyLines = previousMessages
     .join('\n\n');
 
   // Use ProviderRegistry (prioritizes local neural -> Coprocessor -> Standalone Offline Cognitive Core)
-  const result = await providerRegistry.generate(prompt, combinedContext, {
+  const result = await providerRegistry.generateOnline(prompt, combinedContext, {
     temperature: thinkHarder ? 0.2 : 0.7,
     activeConversationId: activeConvId,
     thinkHarder,
@@ -904,10 +1070,17 @@ const historyLines = previousMessages
       : undefined,
   } as any);
 
+  // ProviderRegistry retains an offline engine for intentional local workflows,
+  // but its heuristic output must never be presented as an online AI response.
+  if (result.providerType === 'offline_cognitive' || !result.reply?.trim()) {
+    throw Object.assign(new Error('No online AI provider returned a response.'), { statusCode: 503, code: 'ONLINE_PROVIDER_UNAVAILABLE' });
+  }
+
   if (result.actionDetected?.type === 'project_build' && result.actionDetected.data) {
     activeAgentRuns.unshift(result.actionDetected.data);
-  } else if (result.actionDetected?.type === 'schedule_create' && result.actionDetected.data) {
-    scheduledTasks.unshift(result.actionDetected.data);
+  } else if (result.actionDetected?.type === 'schedule_create' && result.actionDetected.data && ownerId && persistentStorage) {
+    const task = { ...result.actionDetected.data, id: `sch_${crypto.randomUUID()}` };
+    await persistentStorage.updateOwnedState<ScheduledTask[]>(ownerId, 'schedules', [], (items) => [task, ...items].slice(0, 100));
   }
 
   return {
@@ -920,6 +1093,159 @@ const historyLines = previousMessages
 // -----------------------------------------------------------------------------
 // API Endpoints
 // -----------------------------------------------------------------------------
+
+// Server backed conversation history. Ownership comes exclusively from the
+// validated session, and userId query/body properties are deliberately ignored.
+app.get('/api/conversations', async (req, res) => {
+  try {
+    const conversations = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'conversations', []);
+    const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
+    const filtered = conversations.filter((conversation) => !search || conversation.title.toLowerCase().includes(search) || conversation.messages.some((message: any) => message.content.toLowerCase().includes(search)));
+    return res.json(filtered.sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)));
+  } catch (error) {
+    console.error('[Conversations] Private conversation list failed:', error);
+    return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
+  }
+});
+
+app.post('/api/conversations', async (req, res) => {
+  const ownerId = res.locals.rareUserId as string;
+  try {
+    const id = `conv_${crypto.randomUUID()}`;
+    const now = new Date().toISOString();
+    const conversation = {
+      id,
+      title: typeof req.body?.title === 'string' ? req.body.title.trim().slice(0, 120) || 'New Chat' : 'New Chat',
+      created_at: now,
+      userId: ownerId,
+      messages: [{ id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: `Hello! I am ${appSettings.assistantName} — your personal AI companion and software builder. What would you like to work on today?`, timestamp: now }],
+    };
+    await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => {
+      if (res.locals.rareIsGuest && current.length >= 20) throw new Error('RARE_GUEST_LIMIT');
+      return [conversation, ...current];
+    });
+    return res.status(201).json(conversation);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'RARE_GUEST_LIMIT') return res.status(429).json({ error: { message: 'Guest conversation limit reached. Create an account to continue.' } });
+    console.error('[Conversations] Private conversation creation failed:', error);
+    return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
+  }
+});
+
+app.get('/api/conversations/:id', async (req, res) => {
+  try {
+    const conversations = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'conversations', []);
+    const conversation = conversations.find((item) => item.id === req.params.id);
+    return conversation ? res.json(conversation) : res.status(404).json({ error: { message: 'Conversation not found' } });
+  } catch (error) {
+    console.error('[Conversations] Private conversation read failed:', error);
+    return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
+  }
+});
+
+app.delete('/api/conversations/:id', async (req, res) => {
+  try {
+    let removed = false;
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'conversations', [], (current) => current.filter((item) => { if (item.id === req.params.id) { removed = true; return false; } return true; }));
+    return removed ? res.json({ success: true }) : res.status(404).json({ error: { message: 'Conversation not found' } });
+  } catch (error) {
+    console.error('[Conversations] Private conversation deletion failed:', error);
+    return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
+  }
+});
+
+app.post('/api/conversations/:id/rename', async (req, res) => {
+  if (typeof req.body?.title !== 'string' || !req.body.title.trim()) return res.status(400).json({ error: { message: 'A conversation title is required.' } });
+  try {
+    let changed: any = null;
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'conversations', [], (current) => current.map((item) => {
+      if (item.id !== req.params.id) return item;
+      changed = { ...item, title: req.body.title.trim().slice(0, 120), customTitle: true };
+      return changed;
+    }));
+    return changed ? res.json({ success: true, conversation: changed }) : res.status(404).json({ error: { message: 'Conversation not found' } });
+  } catch (error) {
+    console.error('[Conversations] Private conversation rename failed:', error);
+    return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
+  }
+});
+
+app.put('/api/conversations/:id/messages/:messageId', async (req, res) => {
+  const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+  if (!content || content.length > 20000) return res.status(400).json({ error: { message: 'Message content must be between 1 and 20,000 characters.' } });
+  try {
+    let updated: any = null;
+    let conversationFound = false;
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'conversations', [], (items) => items.map((conversation) => {
+      if (conversation.id !== req.params.id) return conversation;
+      conversationFound = true;
+      const messages = conversation.messages.map((message: any) => {
+        if (message.id !== req.params.messageId || !['user', 'assistant'].includes(message.role)) return message;
+        updated = { ...message, content };
+        return updated;
+      });
+      return updated ? { ...conversation, messages } : conversation;
+    }));
+    if (!conversationFound || !updated) return res.status(404).json({ error: { message: 'Message not found.' } });
+    return res.json({ success: true, message: updated });
+  } catch (error) {
+    console.error('[Conversations] Private message update failed:', error);
+    return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
+  }
+});
+
+app.delete('/api/conversations/:id/messages/:messageId', async (req, res) => {
+  try {
+    let removed = false;
+    let conversationFound = false;
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'conversations', [], (items) => items.map((conversation) => {
+      if (conversation.id !== req.params.id) return conversation;
+      conversationFound = true;
+      const messages = conversation.messages.filter((message: any) => {
+        if (message.id === req.params.messageId && ['user', 'assistant'].includes(message.role)) { removed = true; return false; }
+        return true;
+      });
+      return removed ? { ...conversation, messages, messageCount: messages.length } : conversation;
+    }));
+    if (!conversationFound || !removed) return res.status(404).json({ error: { message: 'Message not found.' } });
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('[Conversations] Private message deletion failed:', error);
+    return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
+  }
+});
+
+app.post('/api/conversations/:id', async (req, res) => {
+  const text = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  if (!text || text.length > 20000) return res.status(400).json({ error: { message: 'A message of at most 20,000 characters is required.' } });
+  try {
+    if (res.locals.rareIsGuest && !(await consumeGuestQuota(res.locals.rareUserId, 'online_chat_messages', 30))) {
+      return res.status(429).json({ error: { message: 'Guest online chat limit reached. Create an account to continue.' } });
+    }
+    const conversations = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'conversations', []);
+    const conversation = conversations.find((item) => item.id === req.params.id);
+    if (!conversation) return res.status(404).json({ error: { message: 'Conversation not found' } });
+    const timestamp = new Date().toISOString();
+    const userMessage = { id: `msg_${crypto.randomUUID()}`, role: 'user', content: text, timestamp };
+    const contextMessages = [...conversation.messages, userMessage].slice(-20);
+    const generated = await generateAssistantReply(text, Boolean(req.body?.think_harder), conversation.id, typeof req.body?.persona === 'string' ? req.body.persona.slice(0, 40) : undefined, contextMessages as any, false, res.locals.rareUserId);
+    if (typeof generated.reply !== 'string' || !generated.reply.trim()) return res.status(502).json({ error: { message: 'The AI provider returned an empty response.' } });
+    const assistantMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: generated.reply.trim(), timestamp: new Date().toISOString(), ...(generated.thought ? { thought: generated.thought } : {}) };
+    let updated: any = null;
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'conversations', [], (current) => current.map((item) => {
+      if (item.id !== conversation.id) return item;
+      const title = !item.customTitle && (!item.title || item.title === 'New Chat') ? text.replace(/[^\w\s]/g, '').trim().slice(0, 34) || 'Chat' : item.title;
+      updated = { ...item, title, messages: [...item.messages, userMessage, assistantMessage], messageCount: item.messages.length + 2 };
+      return updated;
+    }));
+    if (!updated) return res.status(404).json({ error: { message: 'Conversation not found' } });
+    return res.json({ user_message: userMessage, assistant_message: assistantMessage, reply: assistantMessage, conversationTitle: updated.title, conversation: updated });
+  } catch (error) {
+    console.error('[Conversations] AI reply generation or persistence failed.');
+    const unavailable = (error as any)?.statusCode === 503;
+    return res.status(unavailable ? 503 : 502).json({ error: { message: unavailable ? 'No online AI provider is available. Configure or restore a provider and retry.' : 'The AI response could not be generated. Please retry.' } });
+  }
+});
 
 // Health
 app.get('/api/health', (_req, res) => {
@@ -1034,12 +1360,22 @@ app.get('/api/download/apk/chunk', (req, res) => {
     return res.status(404).json({ error: 'APK deliverable not found' });
   }
   const stats = fs.statSync(targetFile);
-  const start = Math.max(0, parseInt(String(req.query.start || '0'), 10) || 0);
-  const end = Math.min(stats.size - 1, parseInt(String(req.query.end || String(stats.size - 1)), 10) || (stats.size - 1));
-  if (start >= stats.size || end < start) {
+  const parseOffset = (value: unknown): number | null => {
+    const raw = Array.isArray(value) ? value[0] : value;
+    if (raw === undefined) return null;
+    if (typeof raw !== 'string' || !/^\d{1,15}$/.test(raw)) return Number.NaN;
+    const parsed = Number(raw);
+    return Number.isSafeInteger(parsed) ? parsed : Number.NaN;
+  };
+  const startOffset = parseOffset(req.query.start);
+  const endOffset = parseOffset(req.query.end);
+  const start = startOffset ?? 0;
+  const end = endOffset ?? Math.min(stats.size - 1, start + 2 * 1024 * 1024 - 1);
+  const length = end - start + 1;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= stats.size || end < start || length > 2 * 1024 * 1024) {
+    res.setHeader('Content-Range', `bytes */${stats.size}`);
     return res.status(416).end();
   }
-  const length = end - start + 1;
   const buffer = Buffer.allocUnsafe(length);
   const fd = fs.openSync(targetFile, 'r');
   try {
@@ -1234,6 +1570,7 @@ app.post('/api/voice/chat', async (req, res) => {
       error: { message: 'Speech query is required.' },
     });
   }
+  if (speech.length > 20000) return res.status(413).json({ error: { message: 'Voice input exceeds the 20,000 character limit.' } });
 
   // Accept only short, ordinary conversation context. Do not accept
   // arbitrary roles, non-text content, or an unlimited transcript.
@@ -1266,7 +1603,8 @@ app.post('/api/voice/chat', async (req, res) => {
       undefined,
       'casual',
       recentMessages,
-      true
+      true,
+      res.locals.rareUserId
     );
 
     if (typeof reply !== 'string' || !reply.trim()) {
@@ -1280,15 +1618,12 @@ app.post('/api/voice/chat', async (req, res) => {
       thought,
     });
   } catch (err: any) {
-    console.error(
-      '[Voice Chat] Inference failed:',
-      err instanceof Error ? err.message : err
-    );
+    console.error('[Voice Chat] Online inference failed.');
 
     // Do not send a fabricated response with HTTP 200.
-    return res.status(502).json({
+    return res.status(err?.statusCode === 503 ? 503 : 502).json({
       error: {
-        message: 'Voice inference failed. No assistant reply was generated.',
+        message: err?.statusCode === 503 ? 'No online AI provider is available. No voice reply was generated.' : 'Voice inference failed. No assistant reply was generated.',
         retryable: true,
       },
     });
@@ -1413,7 +1748,7 @@ app.post('/api/voice/tts', async (req, res) => {
         });
       }
     } catch (err: any) {
-      console.warn('[TTS] Gemini speech synthesis error:', err?.message || err);
+      console.warn('[TTS] Gemini speech synthesis request failed.');
     }
   }
 
@@ -1437,7 +1772,7 @@ app.post('/api/voice/synthesize', async (req, res) => {
     const status = Number(err?.statusCode) || 500;
     res.status(status).json({
       error: {
-        message: err?.message || 'Speech synthesis failed.',
+        message: status === 503 ? 'Speech synthesis is temporarily unavailable.' : 'Speech synthesis failed.',
       },
     });
   }
@@ -1445,23 +1780,30 @@ app.post('/api/voice/synthesize', async (req, res) => {
 
 // Settings & Themes
 app.get('/api/settings', async (req, res) => {
-  const { info: activeInfo } = await providerRegistry.getActiveProvider();
-  const lastEval = benchmarkSuite.getLastReport();
-  res.json({
-    assistant_name: appSettings.assistantName,
-    autonomy_level: appSettings.autonomyLevel,
-    theme: appSettings.activeTheme,
-    model_provider: activeInfo.id,
-    model_name: `${activeInfo.name} (${activeInfo.version})`,
-    requires_api_key: activeInfo.requires_api_key,
-    architecture: activeInfo.architecture,
-    has_external_api_key: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 5),
-    developer_authenticated: developerAuthenticated && Date.now() < devSessionExpiry,
-    evaluation: lastEval ? lastEval.vectors : null,
-    evaluation_status: lastEval ? 'evaluated' : 'not_yet_evaluated',
-    overall_score: lastEval ? lastEval.overallScore : null,
-    tools_count: toolExecutor.getSpecs().length,
-  });
+  try {
+    const userSettings = await persistentStorage!.getOwnedState<any>(res.locals.rareUserId, 'settings', {});
+    const { info: activeInfo } = await providerRegistry.getActiveProvider();
+    const isDeveloper = await isDeveloperSessionAuthorized(req);
+    const lastEval = isDeveloper ? benchmarkSuite.getLastReport() : null;
+    res.json({
+      assistant_name: userSettings.assistant_name || appSettings.assistantName,
+      autonomy_level: userSettings.autonomy_level ?? appSettings.autonomyLevel,
+      theme: userSettings.theme || appSettings.activeTheme,
+      model_provider: activeInfo.id,
+      model_name: `${activeInfo.name} (${activeInfo.version})`,
+      requires_api_key: activeInfo.requires_api_key,
+      architecture: activeInfo.architecture,
+      has_external_api_key: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 5),
+      developer_authenticated: isDeveloper,
+      evaluation: lastEval ? lastEval.vectors : null,
+      evaluation_status: lastEval ? 'evaluated' : 'not_yet_evaluated',
+      overall_score: lastEval ? lastEval.overallScore : null,
+      tools_count: toolExecutor.getSpecs().length,
+    });
+  } catch (error) {
+    console.error('[Settings] Private settings read failed:', error);
+    res.status(503).json({ error: { message: 'Private settings are unavailable.' } });
+  }
 });
 
 // RARE Intelligence Module Endpoints
@@ -1522,24 +1864,53 @@ app.get('/api/v1/engine/status', async (_req, res) => {
 
 app.post('/api/v1/chat', async (req, res) => {
   try {
-    const { messages, options } = req.body;
-    if (!Array.isArray(messages) || messages.length === 0) {
+    const ownerId = res.locals.rareUserId as string;
+    if (res.locals.rareIsGuest && !(await consumeGuestQuota(ownerId, 'online_chat_messages', 30))) {
+      return res.status(429).json({ success: false, error: { message: 'Guest online chat limit reached. Create an account to continue.' } });
+    }
+    const { messages, options } = req.body ?? {};
+    if (!Array.isArray(messages) || messages.length === 0 || messages.length > 40) {
       return res.status(400).json({ success: false, error: { message: 'messages array is required' } });
     }
-    const result = await engine.chat(messages, {
-      ...options,
-      allowDiagnosticFallback: true,
+    const safeMessages = messages.map((item: any) => {
+      if (!item || !['user', 'assistant'].includes(item.role) || typeof item.content !== 'string' || !item.content.trim() || item.content.length > 20_000) {
+        throw Object.assign(new Error('Each message must have a valid role and content of at most 20,000 characters.'), { statusCode: 400 });
+      }
+      return { role: item.role, content: item.content.trim() };
     });
+    if (safeMessages[safeMessages.length - 1]?.role !== 'user') {
+      return res.status(400).json({ success: false, error: { code: 'INVALID_MESSAGES', message: 'The final chat message must be from the user.' } });
+    }
+    const memories = await persistentStorage!.getOwnedState<any[]>(ownerId, 'memories', []);
+    const memoryContext = memories.slice(0, 10).map((memory) => `• [${String(memory.kind || 'note').slice(0, 40)}] ${String(memory.text || '').slice(0, 500)}`).join('\n');
+    const historyContext = safeMessages.slice(0, -1).slice(-12).map((message: any) => `${message.role === 'user' ? 'User' : 'Assistant'}: ${message.content.slice(0, 2000)}`).join('\n');
+    const context = [memoryContext ? `User memory:\n${memoryContext}` : '', historyContext ? `Recent chat:\n${historyContext}` : ''].filter(Boolean).join('\n\n');
+    const lastPrompt = safeMessages[safeMessages.length - 1].content;
+    const requestedTemperature = options && typeof options === 'object' && Number.isFinite(options.temperature)
+      ? Math.max(0, Math.min(1, options.temperature))
+      : 0.7;
+    const result = await providerRegistry.generateOnline(lastPrompt, context, {
+      temperature: requestedTemperature,
+      thinkHarder: options?.thinkHarder === true,
+      persona: typeof options?.persona === 'string' ? options.persona.slice(0, 40) : undefined,
+    } as any);
+    if (result.providerType === 'offline_cognitive' || !result.reply?.trim()) {
+      return res.status(503).json({ success: false, error: { code: 'ONLINE_PROVIDER_UNAVAILABLE', message: 'No online AI provider returned a response. Configure or restore an online provider and retry.' } });
+    }
+    result.reply = result.reply.trim();
     res.json({ success: true, result });
   } catch (err: any) {
+    if (err?.statusCode === 400) return res.status(400).json({ success: false, error: { code: 'INVALID_MESSAGES', message: err.message } });
+    console.error('[Chat] Online generation failed.');
     res.status((err as any).statusCode || 500).json({
       success: false,
-      error: { code: (err as any).code || 'INFERENCE_ERROR', message: err.message },
+      error: { code: (err as any).code || 'INFERENCE_ERROR', message: err.statusCode === 503 ? err.message : 'The AI response could not be generated. Please retry.' },
     });
   }
 });
 
 app.post('/api/v1/tasks/execute', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required for workspace task execution.' } });
   try {
     const { objective, context, constraints } = req.body;
     if (!objective) {
@@ -1552,7 +1923,31 @@ app.post('/api/v1/tasks/execute', async (req, res) => {
   }
 });
 
+app.post('/api/v1/workflows/code-repair', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required for source-code repair.' } });
+  const filePath = typeof req.body?.filePath === 'string' ? req.body.filePath.trim() : '';
+  const instruction = typeof req.body?.instruction === 'string' ? req.body.instruction.trim() : '';
+  if (!filePath || !instruction || instruction.length > 4000 || path.isAbsolute(filePath) || filePath.includes('\0')) {
+    return res.status(400).json({ error: { message: 'A relative source path and instruction of at most 4,000 characters are required.' } });
+  }
+  const resolved = path.resolve(PROJECT_ROOT, filePath);
+  const relative = path.relative(PROJECT_ROOT, resolved);
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative) || /(^|[\\/])(?:\.git|node_modules|\.env)(?:[\\/]|$)/i.test(relative)) {
+    return res.status(400).json({ error: { message: 'The requested source path is outside the permitted workspace.' } });
+  }
+  try {
+    const result = await selfDevEngine.executeCycle({
+      instruction: `Review the workspace file "${relative}" for this repair request: ${instruction}. Restrict edits to that file, create a checkpoint, and report the verification actually performed.`,
+    }, true);
+    return res.json({ success: result.status === 'VERIFIED_SUCCESS', filePath: relative, result });
+  } catch (error) {
+    console.error('[Developer] Guarded code repair failed:', error);
+    return res.status(502).json({ error: { message: 'The guarded code repair did not complete.' } });
+  }
+});
+
 app.get('/api/v1/diagnostics/run', async (_req, res) => {
+  if (!(await isDeveloperSessionAuthorized(_req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   try {
     const report = await engine.runDiagnostics();
     res.json({ success: true, report });
@@ -1574,7 +1969,8 @@ app.get('/api/v1/providers/available', async (_req, res) => {
   }
 });
 
-app.post('/api/v1/providers/active', (req, res) => {
+app.post('/api/v1/providers/active', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   try {
     const providerId =
       typeof req.body?.providerId === 'string'
@@ -1635,6 +2031,7 @@ app.post('/api/v1/providers/active', (req, res) => {
 });
 
 app.post('/api/v1/providers/load-local', async (_req, res) => {
+  if (!(await isDeveloperSessionAuthorized(_req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   try {
     const localProvider = engine.providers.getProvider('local-transformers') as any;
     const success = await localProvider.loadModel();
@@ -1653,6 +2050,7 @@ app.post('/api/v1/providers/load-local', async (_req, res) => {
 
 // Run reproducible empirical evaluation benchmark suite
 app.post('/api/intelligence/evaluate', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   const { info: activeInfo } = await providerRegistry.getActiveProvider();
   const report = await benchmarkSuite.runSuite(activeInfo.name);
 
@@ -1684,6 +2082,7 @@ app.post('/api/intelligence/evaluate', async (req, res) => {
 // Real Self-Diagnosis & Repair Loop using SelfDevelopmentEngine
 app.post('/api/intelligence/repair', async (req, res) => {
   const isAuth = await isDeveloperSessionAuthorized(req);
+  if (!isAuth) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   const { sampleTask = 'Execute diagnosis and verify rollback on error' } = req.body;
   const result = await selfDevEngine.executeCycle({ instruction: sampleTask }, isAuth);
 
@@ -1705,21 +2104,25 @@ app.post('/api/intelligence/repair', async (req, res) => {
   });
 });
 
-app.get('/api/intelligence/trajectories', (req, res) => {
+app.get('/api/intelligence/trajectories', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   res.json(trajectoryStore.getAll());
 });
 
 // Real Checkpoints List
-app.get('/api/checkpoints', (req, res) => {
+app.get('/api/checkpoints', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   res.json(checkpointStore.getAll());
 });
 
 // Real Tool Primitives Registry & Execution Gateway
-app.get('/api/tools', (req, res) => {
+app.get('/api/tools', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   res.json(toolExecutor.getSpecs());
 });
 
 app.post('/api/tools/execute', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   const { tool, inputs = {} } = req.body;
 
   if (!tool) {
@@ -1740,71 +2143,95 @@ app.post('/api/tools/execute', async (req, res) => {
 });
 
 // Real Persistent Memory CRUD Endpoints
-app.get('/api/memories', (req, res) => {
-  const { q, tag } = req.query;
-  const tags = tag ? [String(tag)] : undefined;
-  res.json(memoryStore.search(q ? String(q) : undefined, tags));
-});
-
-app.post('/api/memories', (req, res) => {
-  const { text, kind = 'fact', tags = [], importance = 3 } = req.body;
-  if (!text || !text.trim()) {
-    return res.status(400).json({ error: { message: 'Text is required' } });
+app.get('/api/memories', async (req, res) => {
+  try {
+    const rows = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'memories', []);
+    const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+    const tag = typeof req.query.tag === 'string' ? req.query.tag.trim().toLowerCase() : '';
+    res.json(rows.filter((m) => (!q || `${m.text} ${m.kind} ${(m.tags || []).join(' ')}`.toLowerCase().includes(q)) && (!tag || (m.tags || []).some((item: string) => item.toLowerCase() === tag))));
+  } catch (error) {
+    console.error('[Memory] Private memory read failed:', error);
+    res.status(503).json({ error: { message: 'Private memory storage is unavailable.' } });
   }
-  const item = memoryStore.store({
-    text: text.trim(),
-    kind,
-    tags,
-    importance,
-    source: 'user_stated',
-    verifiedByUser: true,
-  });
-  res.status(201).json(item);
 });
 
-app.put('/api/memories/:id', (req, res) => {
-  const updated = memoryStore.update(req.params.id, req.body);
-  if (!updated) return res.status(404).json({ error: { message: 'Memory not found' } });
-  res.json(updated);
-});
-
-app.delete('/api/memories/:id', (req, res) => {
-  const ok = memoryStore.delete(req.params.id);
-  if (!ok) return res.status(404).json({ error: { message: 'Memory not found' } });
-  res.json({ success: true, deletedId: req.params.id });
-});
-
-app.get('/api/memories/export', (req, res) => {
-  res.json(memoryStore.export());
-});
-
-app.post('/api/settings', (req, res) => {
-  const { assistant_name, autonomy_level: newAutonomy, theme: newTheme } = req.body;
-  if (assistant_name) appSettings.assistantName = assistant_name.trim();
-  if (typeof newAutonomy === 'number') appSettings.autonomyLevel = newAutonomy;
-  if (newTheme && ['blue', 'white', 'dark', 'red', 'green', 'yellow'].includes(newTheme)) {
-    appSettings.activeTheme = newTheme;
+app.post('/api/memories', async (req, res) => {
+  const { text, kind = 'fact', tags = [], importance = 3 } = req.body || {};
+  if (typeof text !== 'string' || !text.trim() || text.length > 20000 || !Array.isArray(tags) || tags.length > 30 || !tags.every((tag: unknown) => typeof tag === 'string' && tag.length <= 100)) {
+    return res.status(400).json({ error: { message: 'Valid text and tags are required.' } });
   }
-  res.json({
-    success: true,
-    assistant_name: appSettings.assistantName,
-    autonomy_level: appSettings.autonomyLevel,
-    theme: appSettings.activeTheme,
-  });
+  try {
+    const item = { id: `mem_${crypto.randomUUID()}`, timestamp: new Date().toISOString(), kind: typeof kind === 'string' ? kind.slice(0, 40) : 'fact', text: text.trim(), tags, importance: Math.max(1, Math.min(5, Number(importance) || 3)), source: 'user_stated', verifiedByUser: true };
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'memories', [], (rows) => {
+      if (res.locals.rareIsGuest && rows.length >= 25) throw new Error('RARE_GUEST_LIMIT');
+      return [item, ...rows];
+    });
+    res.status(201).json(item);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'RARE_GUEST_LIMIT') return res.status(429).json({ error: { message: 'Guest memory limit reached. Create an account to continue.' } });
+    console.error('[Memory] Private memory write failed:', error);
+    res.status(503).json({ error: { message: 'Private memory storage is unavailable.' } });
+  }
+});
+
+app.put('/api/memories/:id', async (req, res) => {
+  try {
+    let updated: any = null;
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'memories', [], (rows) => rows.map((row) => {
+      if (row.id !== req.params.id) return row;
+      const patch = req.body || {};
+      updated = { ...row, ...(typeof patch.text === 'string' && patch.text.trim() ? { text: patch.text.trim().slice(0, 20000) } : {}), ...(Array.isArray(patch.tags) && patch.tags.length <= 30 && patch.tags.every((tag: unknown) => typeof tag === 'string' && tag.length <= 100) ? { tags: patch.tags } : {}), ...(Number.isFinite(Number(patch.importance)) ? { importance: Math.max(1, Math.min(5, Number(patch.importance))) } : {}) };
+      return updated;
+    }));
+    if (!updated) return res.status(404).json({ error: { message: 'Memory not found' } });
+    res.json(updated);
+  } catch (error) {
+    console.error('[Memory] Private memory update failed:', error);
+    res.status(503).json({ error: { message: 'Private memory storage is unavailable.' } });
+  }
+});
+
+app.delete('/api/memories/:id', async (req, res) => {
+  try {
+    let removed = false;
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'memories', [], (rows) => rows.filter((row) => { if (row.id === req.params.id) { removed = true; return false; } return true; }));
+    if (!removed) return res.status(404).json({ error: { message: 'Memory not found' } });
+    res.json({ success: true, deletedId: req.params.id });
+  } catch (error) {
+    console.error('[Memory] Private memory deletion failed:', error);
+    res.status(503).json({ error: { message: 'Private memory storage is unavailable.' } });
+  }
+});
+
+app.get('/api/memories/export', async (_req, res) => {
+  try {
+    const memories = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'memories', []);
+    res.json({ total: memories.length, exportedAt: new Date().toISOString(), memories });
+  } catch (error) {
+    console.error('[Memory] Private memory export failed:', error);
+    res.status(503).json({ error: { message: 'Private memory storage is unavailable.' } });
+  }
+});
+
+app.post('/api/settings', async (req, res) => {
+  const body = req.body || {};
+  try {
+    const settings = await persistentStorage!.updateOwnedState<any>(res.locals.rareUserId, 'settings', {}, (current) => ({
+      ...current,
+      ...(typeof body.assistant_name === 'string' && body.assistant_name.trim() ? { assistant_name: body.assistant_name.trim().slice(0, 80) } : {}),
+      ...(typeof body.autonomy_level === 'number' && Number.isFinite(body.autonomy_level) ? { autonomy_level: Math.max(1, Math.min(5, body.autonomy_level)) } : {}),
+      ...(typeof body.theme === 'string' && ['blue', 'white', 'dark', 'red', 'green', 'yellow'].includes(body.theme) ? { theme: body.theme } : {}),
+    }));
+    return res.json({ success: true, assistant_name: settings.assistant_name || appSettings.assistantName, autonomy_level: settings.autonomy_level ?? appSettings.autonomyLevel, theme: settings.theme || appSettings.activeTheme });
+  } catch (error) {
+    console.error('[Settings] Private settings update failed:', error);
+    return res.status(503).json({ error: { message: 'Private settings storage is unavailable.' } });
+  }
 });
 
 // Developer Authentication Gate
 app.post('/api/developer/auth', async (req, res) => {
   const { passkey } = req.body;
-
-  if (!currentDeveloperPasskey) {
-    return res.status(503).json({
-      error: {
-        message:
-          'Developer access is disabled because RARE_DEV_KEY is not configured on the server.',
-      },
-    });
-  }
 
   const token = readBearerSessionToken(req);
 
@@ -1830,8 +2257,6 @@ app.post('/api/developer/auth', async (req, res) => {
     const session = await persistentStorage.getAuthSession(tokenHash);
 
     if (!session || session.expiresAt <= Date.now()) {
-      developerSessions.delete(tokenHash);
-
       return res.status(401).json({
         error: {
           message:
@@ -1840,7 +2265,22 @@ app.post('/api/developer/auth', async (req, res) => {
       });
     }
 
-    if (passkey !== currentDeveloperPasskey) {
+    if (!session.accountId || (await persistentStorage.getAuthUserById(session.accountId))?.role !== 'developer') {
+      return res.status(403).json({ error: { message: 'This account is not authorized for developer access.' } });
+    }
+
+    const now = Date.now();
+    const failures = developerAuthFailures.get(session.accountId);
+    if (failures && failures.resetAt > now && failures.count >= 5) {
+      return res.status(429).json({ error: { message: 'Too many developer sign-in attempts. Try again later.' } });
+    }
+    const attempt = await verifyDeveloperPasskey(passkey, session.accountId);
+    if (!attempt.configured) {
+      return res.status(503).json({ error: { message: 'Developer access has not been configured on the server.' } });
+    }
+    if (!attempt.valid) {
+      const state = failures && failures.resetAt > now ? failures : { count: 0, resetAt: now + 15 * 60 * 1000 };
+      developerAuthFailures.set(session.accountId, { count: state.count + 1, resetAt: state.resetAt });
       auditLog.unshift({
         id: `aud_${Date.now()}`,
         timestamp: new Date().toISOString(),
@@ -1860,7 +2300,8 @@ app.post('/api/developer/auth', async (req, res) => {
       session.expiresAt
     );
 
-    developerSessions.set(tokenHash, developerExpiresAt);
+    developerAuthFailures.delete(session.accountId);
+    await persistentStorage.grantDeveloperSession(tokenHash, developerExpiresAt);
 
     auditLog.unshift({
       id: `aud_${Date.now()}`,
@@ -1892,12 +2333,17 @@ app.post('/api/developer/auth', async (req, res) => {
   }
 });
 
-app.post('/api/developer/logout', (req, res) => {
+app.post('/api/developer/logout', async (req, res) => {
   const token = readBearerSessionToken(req);
 
   if (token) {
     const tokenHash = hashUserSessionToken(token);
-    developerSessions.delete(tokenHash);
+    try {
+      await persistentStorage?.revokeDeveloperGrant(tokenHash);
+    } catch (error) {
+      console.error('[Auth] Developer grant revocation failed:', error);
+      return res.status(503).json({ error: { message: 'Developer access could not be locked. Try again.' } });
+    }
   }
 
   return res.json({
@@ -1907,21 +2353,43 @@ app.post('/api/developer/logout', (req, res) => {
 });
 
 // Guarded Passkey Change
-app.post('/api/developer/change-passkey', (req, res) => {
-  const { currentPasskey, newPasskey } = req.body;
-  if (!currentDeveloperPasskey) {
-    return res.status(503).json({
-      error: { message: 'Developer access is disabled because RARE_DEV_KEY is not configured on the server.' },
-    });
+app.post('/api/developer/change-passkey', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) {
+    return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   }
-  if (!currentPasskey || currentPasskey !== currentDeveloperPasskey) {
+  const { currentPasskey, newPasskey } = req.body;
+  const token = readBearerSessionToken(req);
+  const tokenHash = token ? hashUserSessionToken(token) : '';
+  const now = Date.now();
+  const authSession = token ? await persistentStorage!.getAuthSession(tokenHash) : null;
+  if (!authSession?.accountId) return res.status(401).json({ error: { message: 'A valid developer account session is required.' } });
+  const accountId = authSession.accountId;
+  const priorFailures = developerAuthFailures.get(accountId);
+  if (priorFailures && priorFailures.resetAt > now && priorFailures.count >= 5) {
+    return res.status(429).json({ error: { message: 'Too many developer credential attempts. Try again later.' } });
+  }
+  const currentAttempt = await verifyDeveloperPasskey(currentPasskey, accountId);
+  if (!currentAttempt.configured) {
+    return res.status(503).json({ error: { message: 'Developer access has not been configured on the server.' } });
+  }
+  if (!currentAttempt.valid) {
+    const state = priorFailures && priorFailures.resetAt > now ? priorFailures : { count: 0, resetAt: now + 15 * 60 * 1000 };
+    developerAuthFailures.set(accountId, { count: state.count + 1, resetAt: state.resetAt });
     return res.status(401).json({ error: { message: 'Current master passkey does not match.' } });
   }
-  if (!newPasskey || newPasskey.trim().length < 6) {
-    return res.status(400).json({ error: { message: 'New passkey must be at least 6 characters long.' } });
+  if (typeof newPasskey !== 'string' || newPasskey.trim().length < 12 || newPasskey.length > 256) {
+    return res.status(400).json({ error: { message: 'New passkey must be between 12 and 256 characters.' } });
   }
 
-  currentDeveloperPasskey = newPasskey.trim();
+  try {
+    developerAuthFailures.delete(accountId);
+    await persistentStorage!.setDeveloperCredential(accountId, await hashPassword(newPasskey.trim()));
+    await persistentStorage!.revokeAllDeveloperGrants();
+    developerAuthFailures.clear();
+  } catch (error) {
+    console.error('[Auth] Developer credential update failed:', error);
+    return res.status(503).json({ error: { message: 'Developer credential could not be updated.' } });
+  }
   auditLog.unshift({
     id: `aud_${Date.now()}`,
     timestamp: new Date().toISOString(),
@@ -2015,10 +2483,10 @@ app.post('/api/user/guest-session', async (_req, res) => {
       null,
       session.expiresAt
     );
+    setSessionCookies(res, session.sessionToken);
 
     return res.json({
       success: true,
-      sessionToken: session.sessionToken,
       expiresAt: session.expiresAt,
     });
   } catch (error) {
@@ -2039,6 +2507,7 @@ app.post('/api/user/logout', async (req, res) => {
   const token = readBearerSessionToken(req);
 
   if (!token) {
+    clearSessionCookies(res);
     return res.json({ success: true });
   }
 
@@ -2047,6 +2516,7 @@ app.post('/api/user/logout', async (req, res) => {
   try {
     await persistentStorage.deleteAuthSession(tokenHash);
     userSessions.delete(tokenHash);
+    clearSessionCookies(res);
 
     return res.json({ success: true });
   } catch (error) {
@@ -2129,27 +2599,17 @@ app.get('/api/user/me', async (req, res) => {
 // User Accounts Authentication System (Real Verified Google, Outlook, Email, Phone)
 
 app.post('/api/user/oauth', async (req, res) => {
-  const { provider = 'google', token, idToken, accessToken } = req.body || {};
-
-  const rawToken =
-    typeof token === 'string'
-      ? token
-      : typeof idToken === 'string'
-        ? idToken
-        : typeof accessToken === 'string'
-          ? accessToken
-          : null;
-
-  if (!rawToken || !rawToken.trim()) {
-    return res.status(400).json({
-      success: false,
-      error: 'Identity verification token is required for OAuth authentication.',
-    });
+  const { provider = 'google', token, idToken, nonce, code, codeVerifier, redirectUri } = req.body || {};
+  const rawToken = typeof token === 'string' ? token : typeof idToken === 'string' ? idToken : null;
+  if (provider === 'google' && (!rawToken || !rawToken.trim())) {
+    return res.status(400).json({ success: false, error: 'A Google Identity Services ID token is required.' });
   }
+  if (rawToken && rawToken.length > 16_384) return res.status(400).json({ success: false, error: 'Identity token exceeds the supported size limit.' });
 
   let verifiedProfile: {
     provider: 'google' | 'outlook';
     email: string;
+    emailVerified: boolean;
     name: string;
     sub: string;
     avatarUrl?: string;
@@ -2158,10 +2618,17 @@ app.post('/api/user/oauth', async (req, res) => {
   try {
     if (provider === 'google') {
       verifiedProfile =
-        await oAuthVerificationService.verifyGoogleToken(rawToken);
+        await oAuthVerificationService.verifyGoogleToken(rawToken as string, typeof nonce === 'string' ? nonce : '');
     } else if (provider === 'outlook') {
-      verifiedProfile =
-        await oAuthVerificationService.verifyMicrosoftToken(rawToken);
+      if (typeof code !== 'string' || typeof codeVerifier !== 'string' || typeof redirectUri !== 'string') {
+        return res.status(400).json({ success: false, error: 'Microsoft sign-in requires an authorization code and PKCE transaction.' });
+      }
+      verifiedProfile = await oAuthVerificationService.exchangeMicrosoftAuthorizationCode(
+        code,
+        codeVerifier,
+        typeof nonce === 'string' ? nonce : '',
+        redirectUri,
+      );
     } else {
       return res.status(400).json({
         success: false,
@@ -2196,53 +2663,50 @@ app.post('/api/user/oauth', async (req, res) => {
     });
   }
 
-  const cleanEmail = verifiedProfile.email.trim().toLowerCase();
+  const cleanEmail = verifiedProfile.emailVerified ? verifiedProfile.email.trim().toLowerCase() : '';
   const cleanName =
     verifiedProfile.name.trim().slice(0, 120) ||
-    cleanEmail.split('@')[0];
+    cleanEmail.split('@')[0] || 'RARE User';
 
   try {
     const user = await storage.upsertVerifiedOAuthUser({
       id: `usr_${crypto.randomUUID()}`,
       name: cleanName,
       email: cleanEmail,
+      emailVerified: verifiedProfile.emailVerified,
       provider: verifiedProfile.provider,
+      subject: verifiedProfile.sub,
       createdAt: new Date().toISOString(),
     });
 
     // Keep the legacy map updated while other routes are being migrated.
-    registeredUsers.set(cleanEmail, {
-      id: user.id,
-      name: user.name,
-      email: user.email ?? undefined,
-      phone: user.phone ?? undefined,
-      passwordHash: user.passwordHash ?? undefined,
-      provider: user.provider,
-      role: user.role,
-      createdAt: user.createdAt,
+    if (user.email) registeredUsers.set(user.email, {
+      id: user.id, name: user.name, email: user.email,
+      phone: user.phone ?? undefined, passwordHash: user.passwordHash ?? undefined,
+      provider: user.provider, role: user.role, createdAt: user.createdAt,
     });
 
     auditLog.unshift({
       id: `aud_${crypto.randomUUID()}`,
       timestamp: new Date().toISOString(),
-      actor: cleanEmail,
+      actor: user.id,
       action: 'oauth_login_success',
       kind: 'user',
-      details: `Verified identity for ${user.name} (${cleanEmail}) via ${verifiedProfile.provider} token verification.`,
+      details: `Verified identity for ${user.name} via ${verifiedProfile.provider} token verification.`,
     });
 
     const { sessionToken, expiresAt } = issueUserSession(user);
 
 await storage.createAuthSession(
   hashUserSessionToken(sessionToken),
-  cleanEmail,
+  user.id,
   user.id,
   expiresAt
 );
+    setSessionCookies(res, sessionToken);
 
     return res.json({
       success: true,
-      sessionToken,
       expiresAt,
       user: toPublicAuthUser(user),
     });
@@ -2272,6 +2736,15 @@ app.post('/api/user/signup', async (req, res) => {
   }
 
   const cleanEmail = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || cleanEmail.length > 254) {
+    return res.status(400).json({ success: false, error: 'Enter a valid email address.' });
+  }
+  if (password.length < 12 || password.length > 256) {
+    return res.status(400).json({ success: false, error: 'Password must be between 12 and 256 characters.' });
+  }
+  if (name !== undefined && (typeof name !== 'string' || name.trim().length > 120)) {
+    return res.status(400).json({ success: false, error: 'Name must be at most 120 characters.' });
+  }
   const storage = persistentStorage;
 
   if (!storage) {
@@ -2322,14 +2795,14 @@ app.post('/api/user/signup', async (req, res) => {
 
 await storage.createAuthSession(
   hashUserSessionToken(sessionToken),
-  cleanEmail,
+  user.id,
   user.id,
   expiresAt
 );
+    setSessionCookies(res, sessionToken);
 
     return res.json({
       success: true,
-      sessionToken,
       expiresAt,
       user: toPublicAuthUser(user),
     });
@@ -2367,6 +2840,7 @@ app.post('/api/user/login', async (req, res) => {
       error: 'Email and password are required.',
     });
   }
+  if (password.length > 256) return res.status(400).json({ success: false, error: 'Password exceeds the supported size limit.' });
 
   const cleanEmail = email.trim().toLowerCase();
   const storage = persistentStorage;
@@ -2489,14 +2963,14 @@ app.post('/api/user/login', async (req, res) => {
 
 await storage.createAuthSession(
   hashUserSessionToken(sessionToken),
-  cleanEmail,
+  existing.id,
   existing.id,
   expiresAt
 );
+    setSessionCookies(res, sessionToken);
 
     return res.json({
       success: true,
-      sessionToken,
       expiresAt,
       user: toPublicAuthUser(existing),
     });
@@ -2659,14 +3133,14 @@ app.post('/api/user/verify-otp', async (req, res) => {
 
     await storage.createAuthSession(
       hashUserSessionToken(sessionToken),
-      cleanPhone,
+      user.id,
       user.id,
       expiresAt
     );
+    setSessionCookies(res, sessionToken);
 
     return res.json({
       success: true,
-      sessionToken,
       expiresAt,
       user: toPublicAuthUser(user),
     });
@@ -2801,8 +3275,8 @@ app.post('/api/developer/self-dev', async (req, res) => {
 });
 
 // Rollback Checkpoint
-app.post('/api/developer/rollback', (req, res) => {
-  if (!developerAuthenticated || Date.now() >= devSessionExpiry) {
+app.post('/api/developer/rollback', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) {
     return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   }
   const { checkpointId } = req.body;
@@ -2828,14 +3302,24 @@ app.post('/api/developer/rollback', (req, res) => {
 });
 
 // Multi-Agent Runs & Universal Projects API
-app.get('/api/agents/runs', (req, res) => {
-  res.json(activeAgentRuns);
+app.get('/api/agents/runs', async (req, res) => {
+  try {
+    res.json(await persistentStorage!.listProjectRuns(res.locals.rareUserId));
+  } catch (error) {
+    console.error('[Projects] Private project list failed:', error);
+    res.status(503).json({ error: { message: 'Project storage is unavailable.' } });
+  }
 });
 
-app.get('/api/agents/runs/:id', (req, res) => {
-  const run = activeAgentRuns.find((r) => r.id === req.params.id);
-  if (!run) return res.status(404).json({ error: { message: 'Run not found' } });
-  res.json(run);
+app.get('/api/agents/runs/:id', async (req, res) => {
+  try {
+    const run = await persistentStorage!.getProjectRun(res.locals.rareUserId, req.params.id);
+    if (!run) return res.status(404).json({ error: { message: 'Run not found' } });
+    res.json(run);
+  } catch (error) {
+    console.error('[Projects] Private project read failed:', error);
+    res.status(503).json({ error: { message: 'Project storage is unavailable.' } });
+  }
 });
 
 // Universal Build Project Creation
@@ -2849,6 +3333,7 @@ app.post('/api/agents/runs', async (req, res) => {
   const runId = `run_${crypto.randomUUID()}`;
   const teamRun: MultiAgentTeamRun = {
     id: runId,
+    ownerId: res.locals.rareUserId,
     title: title.trim().slice(0, 160),
     targetDomain: typeof targetDomain === 'string' && targetDomain.trim() ? targetDomain.trim().slice(0, 40) : 'web',
     objective: objective.trim().slice(0, 4000),
@@ -2974,7 +3459,7 @@ app.post('/api/agents/runs', async (req, res) => {
     teamRun.status = 'executing';
     teamRun.currentStage = 'Planning with active model';
     teamRun.coordinator.currentTask = 'Generate a concrete inspection plan';
-    const plan = await providerRegistry.generate(
+    const plan = await providerRegistry.generateOnline(
       `Create a concise, factual inspection plan for this project objective. Do not claim to build or modify files. Objective: ${teamRun.objective}`,
       undefined,
       { temperature: 0.2 },
@@ -3047,8 +3532,12 @@ app.post('/api/agents/runs', async (req, res) => {
       tools: toolResults,
     };
     const reportPath = `agent-runs/${runId}.json`;
-    const savedReport = documentStore.write(reportPath, JSON.stringify(report, null, 2));
-    const reportSize = savedReport.size;
+    const reportContent = JSON.stringify(report, null, 2);
+    const reportSize = Buffer.byteLength(reportContent, 'utf8');
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'documents', [], (documents) => [
+      { path: reportPath, content: reportContent, format: 'json', updatedAt: finishedAt },
+      ...documents.filter((document) => document.path !== reportPath),
+    ]);
     teamRun.artifacts.push({
       name: path.basename(reportPath),
       type: 'application/json',
@@ -3064,24 +3553,32 @@ app.post('/api/agents/runs', async (req, res) => {
       ? 'Workspace inspection, research, tests, and build verification completed. See the run report for evidence.'
       : 'Verification finished with one or more tool failures. See the run report for actual outputs.';
     teamRun.coordinator.status = teamRun.status === 'completed' ? 'completed' : 'failed';
-    teamRun.coordinator.lastAction = `Run report saved to ${savedReport.path}`;
-    await recordEvent('ag_coord', 'Project Coordinator', `Saved evidence report to ${savedReport.path}. No platform package was generated.`, 'info');
+    teamRun.coordinator.lastAction = `Run report saved to ${reportPath}`;
+    await recordEvent('ag_coord', 'Project Coordinator', `Saved evidence report to ${reportPath}. No platform package was generated.`, 'info');
     await persistRun();
     return res.status(201).json(teamRun);
   } catch (error) {
     teamRun.status = 'failed';
     teamRun.currentStage = 'Run failed';
-    teamRun.userProgressMessage = error instanceof Error ? error.message : 'Agent run failed unexpectedly.';
+    teamRun.userProgressMessage = (error as any)?.statusCode === 503
+      ? 'No online AI provider was available; the project run was stopped.'
+      : 'The project run failed. Review server logs for the request identifier.';
     teamRun.coordinator.status = 'failed';
     await recordEvent('ag_coord', 'Project Coordinator', teamRun.userProgressMessage, 'error').catch(() => {});
     await persistRun().catch(() => {});
-    return res.status(502).json({ error: { message: teamRun.userProgressMessage }, run: teamRun });
+    return res.status((error as any)?.statusCode === 503 ? 503 : 502).json({ error: { message: teamRun.userProgressMessage }, run: teamRun });
   }
 });
 
 // Trigger Targeted Diagnose and Repair Loop
 app.post('/api/agents/runs/:id/repair', async (req, res) => {
-  const run = activeAgentRuns.find((r) => r.id === req.params.id);
+  let run: MultiAgentTeamRun | undefined;
+  try {
+    run = await persistentStorage!.getProjectRun(res.locals.rareUserId, req.params.id) as MultiAgentTeamRun | null || undefined;
+  } catch (error) {
+    console.error('[Projects] Private project read failed before repair:', error);
+    return res.status(503).json({ error: { message: 'Project storage is unavailable.' } });
+  }
   if (!run) return res.status(404).json({ error: { message: 'Run not found' } });
 
   run.status = 'validating';
@@ -3132,7 +3629,8 @@ app.post('/api/agents/runs/:id/repair', async (req, res) => {
 });
 
 // Checkpoints
-app.get('/api/checkpoints', (req, res) => {
+app.get('/api/checkpoints', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   res.json(checkpoints);
 });
 
@@ -3226,10 +3724,12 @@ app.post('/api/user/verify-email-otp', async (req, res) => {
     }
 
     const { sessionToken, expiresAt } = await issueUserSession(user);
+    const sessionTokenHash = hashUserSessionToken(sessionToken);
+    await persistentStorage.createAuthSession(sessionTokenHash, user.id, user.id, expiresAt);
+    setSessionCookies(res, sessionToken);
 
     return res.json({
       success: true,
-      sessionToken,
       expiresAt,
       user: toPublicAuthUser(user),
     });
@@ -3244,71 +3744,162 @@ app.post('/api/user/verify-email-otp', async (req, res) => {
 });
 
 // Memory
-app.get('/api/user-memory', (req, res) => {
+app.get('/api/user-memory', async (req, res) => {
   const { query } = req.query;
-  const items = memoryStore.search(query ? String(query) : undefined);
-  res.json(items);
-});
-
-app.post('/api/user-memory', (req, res) => {
-  const { kind, text, tags, importance } = req.body;
-  if (!text) return res.status(400).json({ error: { message: 'Text is required' } });
-  const item = memoryStore.store({
-    text: String(text).trim(),
-    kind: kind || 'general',
-    tags: Array.isArray(tags) ? tags : ['custom'],
-    importance: Number(importance) || 1,
-    source: 'user_stated',
-    verifiedByUser: true,
-  });
-  res.status(201).json(item);
-});
-
-app.post('/api/user-memory/forget', (req, res) => {
-  const { id } = req.body;
-  const ok = memoryStore.delete(String(id));
-  if (ok) {
-    return res.json({ success: true });
+  try {
+    const items = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'memories', []);
+    const q = typeof query === 'string' ? query.trim().toLowerCase() : '';
+    res.json(items.filter((item) => !q || `${item.text} ${item.kind} ${(item.tags || []).join(' ')}`.toLowerCase().includes(q)));
+  } catch (error) {
+    console.error('[Memory] Private memory read failed:', error);
+    res.status(503).json({ error: { message: 'Private memory storage is unavailable.' } });
   }
-  res.status(404).json({ error: { message: 'Memory not found' } });
+});
+
+app.post('/api/user-memory', async (req, res) => {
+  const { kind, text, tags, importance } = req.body || {};
+  if (typeof text !== 'string' || !text.trim() || text.length > 20000) return res.status(400).json({ error: { message: 'Valid text is required' } });
+  try {
+    const item = { id: `mem_${crypto.randomUUID()}`, timestamp: new Date().toISOString(), kind: typeof kind === 'string' ? kind.slice(0, 40) : 'fact', text: text.trim(), tags: Array.isArray(tags) ? tags.filter((tag: unknown) => typeof tag === 'string').slice(0, 30).map((tag: string) => tag.slice(0, 100)) : ['custom'], importance: Math.max(1, Math.min(5, Number(importance) || 1)), source: 'user_stated', verifiedByUser: true };
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'memories', [], (rows) => {
+      if (res.locals.rareIsGuest && rows.length >= 25) throw new Error('RARE_GUEST_LIMIT');
+      return [item, ...rows];
+    });
+    res.status(201).json(item);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'RARE_GUEST_LIMIT') return res.status(429).json({ error: { message: 'Guest memory limit reached. Create an account to continue.' } });
+    console.error('[Memory] Private memory write failed:', error);
+    res.status(503).json({ error: { message: 'Private memory storage is unavailable.' } });
+  }
+});
+
+app.post('/api/user-memory/forget', async (req, res) => {
+  const { id } = req.body || {};
+  try {
+    let removed = false;
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'memories', [], (rows) => rows.filter((item) => { if (item.id === String(id)) { removed = true; return false; } return true; }));
+    if (removed) return res.json({ success: true });
+    return res.status(404).json({ error: { message: 'Memory not found' } });
+  } catch (error) {
+    console.error('[Memory] Private memory deletion failed:', error);
+    return res.status(503).json({ error: { message: 'Private memory storage is unavailable.' } });
+  }
 });
 
 // Documents Management
-app.get('/api/documents', (req, res) => {
-  const list = documentStore.list().map((document) => ({
-    path: document.path,
-    size: document.size,
-    format: document.format,
-    updated_at: document.updatedAt,
-  }));
-  res.json(list);
+function normalizePrivateDocumentPath(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim() || value.length > 500 || value.includes('\0') || path.isAbsolute(value) || /^[A-Za-z]:/.test(value)) throw new Error('Document path must be a valid relative path.');
+  const normalized = path.posix.normalize(value.replace(/\\/g, '/'));
+  if (normalized === '.' || normalized === '..' || normalized.startsWith('../') || normalized.split('/').includes('..')) throw new Error('Document path must stay inside your document space.');
+  if (!['.md', '.txt', '.text', '.json', '.html', '.htm', '.csv', '.xml', '.yaml', '.yml', '.log'].includes(path.posix.extname(normalized).toLowerCase())) throw new Error('Only text-based document formats are supported.');
+  return normalized;
+}
+
+function parseCsvDocument(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let quoted = false;
+  const input = text.replace(/^\uFEFF/, '');
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    if (quoted) {
+      if (char === '"' && input[index + 1] === '"') { field += '"'; index += 1; }
+      else if (char === '"') quoted = false;
+      else field += char;
+      continue;
+    }
+    if (char === '"' && field.length === 0) quoted = true;
+    else if (char === ',') { row.push(field); field = ''; }
+    else if (char === '\n' || char === '\r') {
+      if (char === '\r' && input[index + 1] === '\n') index += 1;
+      row.push(field); field = '';
+      if (row.some((cell) => cell.length > 0)) rows.push(row);
+      row = [];
+    } else field += char;
+  }
+  if (quoted) throw new Error('CSV contains an unterminated quoted field.');
+  row.push(field);
+  if (row.some((cell) => cell.length > 0)) rows.push(row);
+  return rows;
+}
+
+app.post('/api/documents/parse', (req, res) => {
+  const content = req.body?.content;
+  const format = typeof req.body?.format === 'string' ? req.body.format.toLowerCase() : '';
+  if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 2 * 1024 * 1024) {
+    return res.status(400).json({ error: { message: 'Document content must be text of at most 2 MB.' } });
+  }
+  if (format === 'csv') {
+    try {
+      const rows = parseCsvDocument(content);
+      const headers = rows.shift() || [];
+      return res.json({ format, headers, rows: rows.map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? '']))), rowCount: rows.length });
+    } catch (error) {
+      return res.status(400).json({ error: { message: error instanceof Error ? error.message : 'CSV could not be parsed.' } });
+    }
+  }
+  if (format === 'markdown' || format === 'md') {
+    const headings = content.split(/\r?\n/).filter((line) => /^#{1,6}\s+/.test(line)).map((line) => line.replace(/^#{1,6}\s+/, '').trim());
+    const tableRows = content.split(/\r?\n/).filter((line) => /^\s*\|.*\|\s*$/.test(line)).map((line) => line.split('|').slice(1, -1).map((cell) => cell.trim()));
+    return res.json({ format: 'markdown', headings, tableRows, rowCount: tableRows.length });
+  }
+  return res.status(400).json({ error: { message: 'Supported parse formats are CSV and Markdown.' } });
 });
 
-app.get('/api/documents/*', (req, res) => {
-  const docPath = (req.params as any)[0];
+app.get('/api/documents', async (_req, res) => {
   try {
-    const document = documentStore.read(docPath);
+    const docs = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'documents', []);
+    res.json(docs.map((doc) => ({ path: doc.path, size: Buffer.byteLength(doc.content, 'utf8'), format: doc.format, updated_at: doc.updatedAt })));
+  } catch (error) {
+    console.error('[Documents] Private document list failed:', error);
+    res.status(503).json({ error: { message: 'Private document storage is unavailable.' } });
+  }
+});
+
+app.get('/api/documents/*', async (req, res) => {
+  try {
+    const docPath = normalizePrivateDocumentPath((req.params as any)[0]);
+    const docs = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'documents', []);
+    const document = docs.find((doc) => doc.path === docPath);
     if (document) return res.json(document);
   } catch (error) {
-    return res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Invalid document path.' } });
+    const status = error instanceof Error && /path|format/i.test(error.message) ? 400 : 503;
+    if (status === 503) console.error('[Documents] Private document read failed:', error);
+    return res.status(status).json({ error: { message: status === 400 ? (error as Error).message : 'Private document storage is unavailable.' } });
   }
   res.status(404).json({ error: { message: 'Document not found' } });
 });
 
 app.post('/api/documents', async (req, res) => {
-  const { path: requestedPath, text, format, url } = req.body;
+  const { path: requestedPath, text, url } = req.body || {};
   try {
+    let filename: string;
+    let content: string;
+    let sourceUrl: string | undefined;
     if (url) {
       const imported = await documentStore.importUrl(String(url));
-      const filename = String(requestedPath || `imports/${Date.now()}.${imported.format}`);
-      const saved = documentStore.write(filename, imported.content);
-      return res.status(201).json({ path: saved.path, size: saved.size, sourceUrl: imported.sourceUrl, format: saved.format });
+      filename = normalizePrivateDocumentPath(String(requestedPath || `imports/${Date.now()}.${imported.format}`));
+      content = imported.content;
+      sourceUrl = imported.sourceUrl;
+    } else {
+      if (!requestedPath) return res.status(400).json({ error: { message: 'Document path required' } });
+      filename = normalizePrivateDocumentPath(requestedPath);
+      if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 2 * 1024 * 1024) return res.status(400).json({ error: { message: 'Document text must be a string of at most 2 MB.' } });
+      content = text;
     }
-    if (!requestedPath) return res.status(400).json({ error: { message: 'Document path required' } });
-    const saved = documentStore.write(String(requestedPath), String(text ?? ''));
-    res.status(201).json({ path: saved.path, size: saved.size, format: saved.format });
+    const saved = { path: filename, content, format: path.posix.extname(filename).slice(1).toLowerCase(), updatedAt: new Date().toISOString(), ...(sourceUrl ? { sourceUrl } : {}) };
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'documents', [], (docs) => {
+      if (res.locals.rareIsGuest && !docs.some((doc) => doc.path === filename) && docs.length >= 20) throw new Error('RARE_GUEST_LIMIT');
+      return [saved, ...docs.filter((doc) => doc.path !== filename)];
+    });
+    res.status(201).json({ path: filename, size: Buffer.byteLength(content, 'utf8'), ...(sourceUrl ? { sourceUrl } : {}), format: saved.format });
   } catch (error) {
-    res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Document could not be saved.' } });
+    const message = error instanceof Error ? error.message : 'Document could not be saved.';
+    if (message === 'RARE_GUEST_LIMIT') return res.status(429).json({ error: { message: 'Guest document limit reached. Create an account to continue.' } });
+    const status = /storage|database|private user state/i.test(message) ? 503 : 400;
+    if (status === 503) console.error('[Documents] Private document write failed:', error);
+    res.status(status).json({ error: { message: status === 503 ? 'Private document storage is unavailable.' : message } });
   }
 });
 
@@ -3318,7 +3909,7 @@ app.post('/api/documents/transcribe', async (req, res) => {
   const dataUrl = rawAudio.match(/^data:([^;]+);base64,(.+)$/s);
   const audioBase64 = dataUrl ? dataUrl[2] : rawAudio;
   const mimeType = String(dataUrl?.[1] || req.body?.mimeType || 'audio/webm');
-  if (!audioBase64) return res.status(400).json({ error: { message: 'Audio data is required for transcription.' } });
+  if (!audioBase64 || audioBase64.length > 14 * 1024 * 1024) return res.status(400).json({ error: { message: 'Audio data is required and must not exceed the upload limit.' } });
   if (!/^audio\/(webm|ogg|wav|mpeg|mp3|aac|flac)$/i.test(mimeType)) {
     return res.status(400).json({ error: { message: 'Unsupported audio format.' } });
   }
@@ -3331,7 +3922,9 @@ app.post('/api/documents/transcribe', async (req, res) => {
       .replace(/\.[^/.]+$/, '')
       .replace(/[^a-zA-Z0-9_-]+/g, '_')
       .slice(0, 80) || 'recording';
-    const saved = documentStore.write(`transcripts/${basename}_transcript.txt`, transcription.text);
+    const transcriptPath = normalizePrivateDocumentPath(`transcripts/${basename}_transcript.txt`);
+    const saved = { path: transcriptPath, content: transcription.text.slice(0, 2 * 1024 * 1024), format: 'txt', updatedAt: new Date().toISOString() };
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'documents', [], (docs) => [saved, ...docs.filter((doc) => doc.path !== transcriptPath)]);
     res.json({
       success: true,
       path: saved.path,
@@ -3348,15 +3941,18 @@ app.post('/api/documents/transcribe', async (req, res) => {
 });
 
 // Format Conversion
-app.post('/api/documents/convert', (req, res) => {
+app.post('/api/documents/convert', async (req, res) => {
   const { path: docPath, targetFormat } = req.body;
   try {
-    const doc = documentStore.read(String(docPath || ''));
+    const sourcePath = normalizePrivateDocumentPath(docPath);
+    const docs = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'documents', []);
+    const doc = docs.find((item) => item.path === sourcePath);
     if (!doc) return res.status(404).json({ error: { message: 'Document not found' } });
     const format = String(targetFormat || '').toLowerCase().replace(/^\./, '');
-    const newPath = doc.path.replace(/\.[^/.]+$/, `.${format}`);
+    const newPath = normalizePrivateDocumentPath(doc.path.replace(/\.[^/.]+$/, `.${format}`));
     const converted = documentStore.convert(doc.content, format);
-    documentStore.write(newPath, converted);
+    const saved = { path: newPath, content: converted, format, updatedAt: new Date().toISOString() };
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'documents', [], (current) => [saved, ...current.filter((item) => item.path !== newPath)]);
     res.json({ success: true, originalPath: doc.path, convertedPath: newPath, format });
   } catch (error) {
     res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Document conversion failed.' } });
@@ -3364,8 +3960,13 @@ app.post('/api/documents/convert', (req, res) => {
 });
 
 // Research Engine
-app.get('/api/research/items', (req, res) => {
-  res.json(researchCache);
+app.get('/api/research/items', async (req, res) => {
+  try {
+    res.json(await persistentStorage!.getOwnedState<ResearchItem[]>(res.locals.rareUserId, 'research_items', []));
+  } catch (error) {
+    console.error('[Research] Private result list failed:', error);
+    res.status(503).json({ error: { message: 'Private research storage is unavailable.' } });
+  }
 });
 
 app.post('/api/research/search', async (req, res) => {
@@ -3394,7 +3995,7 @@ app.post('/api/research/search', async (req, res) => {
       sourceErrors: research.sourceErrors,
       timestamp: new Date().toISOString(),
     };
-    researchCache.unshift(newResearch);
+    await persistentStorage!.updateOwnedState<ResearchItem[]>(res.locals.rareUserId, 'research_items', [], (items) => [newResearch, ...items].slice(0, 100));
     res.json({ query, results: [newResearch] });
   } catch (error) {
     res.status(502).json({ error: { message: error instanceof Error ? error.message : 'Research sources could not be reached.' } });
@@ -3420,22 +4021,9 @@ app.post('/api/updates/apply', (req, res) => {
 });
 
 // Diagnostics Selftest Matrix
-app.get('/api/tools/selftest', (req, res) => {
-  res.json({
-    allPassed: true,
-    testsRun: 32,
-    passed: 32,
-    failed: 0,
-    coverage: '97.4%',
-    checks: [
-      { name: 'Multi-Agent Orchestration & Inter-Agent Messaging', status: 'PASS', durationMs: 44 },
-      { name: 'Developer Space Authentication Gate', status: 'PASS', durationMs: 12 },
-      { name: 'Context-Aware Universal Speech Transcription & Verification', status: 'PASS', durationMs: 38 },
-      { name: 'Single-writer lock concurrency & rollback safety', status: 'PASS', durationMs: 22 },
-      { name: 'Universal Build Engine toolchain detection', status: 'PASS', durationMs: 51 },
-      { name: 'Theme semantic design tokens (6 palettes)', status: 'PASS', durationMs: 18 },
-    ],
-  });
+app.get('/api/tools/selftest', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
+  return res.status(501).json({ success: false, allPassed: false, error: { message: 'The legacy self-test endpoint returned fabricated results and has been disabled. Use the repository test suite for verified results.' } });
 });
 
 // -----------------------------------------------------------------------------
@@ -3485,41 +4073,70 @@ const scheduledTasks: ScheduledTask[] = [
   },
 ];
 
-app.get('/api/schedules', (req, res) => {
-  res.json(scheduledTasks);
+app.get('/api/schedules', async (req, res) => {
+  try {
+    res.json(await persistentStorage!.getOwnedState<ScheduledTask[]>(res.locals.rareUserId, 'schedules', []));
+  } catch (error) {
+    console.error('[Schedules] Private schedule read failed:', error);
+    res.status(503).json({ error: { message: 'Schedule storage is unavailable.' } });
+  }
 });
 
-app.post('/api/schedules', (req, res) => {
+app.post('/api/schedules', async (req, res) => {
   const { title, time, type, action, repeat } = req.body;
-  if (!title) return res.status(400).json({ error: { message: 'Title is required' } });
+  if (typeof title !== 'string' || !title.trim() || title.length > 160) return res.status(400).json({ error: { message: 'A title of at most 160 characters is required.' } });
   const newTask: ScheduledTask = {
-    id: `sch_${Date.now()}`,
-    title: String(title).trim(),
-    time: time || '12:00',
-    type: type || 'reminder',
-    action: action || 'Execute scheduled action',
+    id: `sch_${crypto.randomUUID()}`,
+    title: title.trim(),
+    time: typeof time === 'string' ? time.slice(0, 80) : '12:00',
+    type: ['alarm', 'recurring', 'reminder', 'automation'].includes(type) ? type : 'reminder',
+    action: typeof action === 'string' ? action.slice(0, 2000) : 'Execute scheduled action',
     enabled: true,
-    repeat: repeat || 'Once',
+    repeat: typeof repeat === 'string' ? repeat.slice(0, 120) : 'Once',
     created_at: new Date().toISOString(),
   };
-  scheduledTasks.unshift(newTask);
-  res.status(201).json(newTask);
-});
-
-app.post('/api/schedules/:id/toggle', (req, res) => {
-  const task = scheduledTasks.find((t) => t.id === req.params.id);
-  if (!task) return res.status(404).json({ error: { message: 'Schedule not found' } });
-  task.enabled = !task.enabled;
-  res.json({ success: true, task });
-});
-
-app.delete('/api/schedules/:id', (req, res) => {
-  const idx = scheduledTasks.findIndex((t) => t.id === req.params.id);
-  if (idx !== -1) {
-    scheduledTasks.splice(idx, 1);
-    return res.json({ success: true });
+  try {
+    await persistentStorage!.updateOwnedState<ScheduledTask[]>(res.locals.rareUserId, 'schedules', [], (items) => {
+      if (res.locals.rareIsGuest && items.length >= 20) throw new Error('RARE_GUEST_LIMIT');
+      return [newTask, ...items].slice(0, 100);
+    });
+    res.status(201).json(newTask);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'RARE_GUEST_LIMIT') return res.status(429).json({ error: { message: 'Guest schedule limit reached. Create an account to continue.' } });
+    console.error('[Schedules] Private schedule write failed:', error);
+    res.status(503).json({ error: { message: 'Schedule storage is unavailable.' } });
   }
-  res.status(404).json({ error: { message: 'Schedule not found' } });
+});
+
+app.post('/api/schedules/:id/toggle', async (req, res) => {
+  try {
+    let task: ScheduledTask | undefined;
+    await persistentStorage!.updateOwnedState<ScheduledTask[]>(res.locals.rareUserId, 'schedules', [], (items) => items.map((entry) => {
+      if (entry.id !== req.params.id) return entry;
+      task = { ...entry, enabled: !entry.enabled };
+      return task;
+    }));
+    if (!task) return res.status(404).json({ error: { message: 'Schedule not found' } });
+    res.json({ success: true, task });
+  } catch (error) {
+    console.error('[Schedules] Private schedule update failed:', error);
+    res.status(503).json({ error: { message: 'Schedule storage is unavailable.' } });
+  }
+});
+
+app.delete('/api/schedules/:id', async (req, res) => {
+  try {
+    let removed = false;
+    await persistentStorage!.updateOwnedState<ScheduledTask[]>(res.locals.rareUserId, 'schedules', [], (items) => items.filter((entry) => {
+      if (entry.id === req.params.id) { removed = true; return false; }
+      return true;
+    }));
+    if (removed) return res.json({ success: true });
+    res.status(404).json({ error: { message: 'Schedule not found' } });
+  } catch (error) {
+    console.error('[Schedules] Private schedule delete failed:', error);
+    res.status(503).json({ error: { message: 'Schedule storage is unavailable.' } });
+  }
 });
 
 // -----------------------------------------------------------------------------
@@ -3628,15 +4245,33 @@ const pluginsDirectory: PluginDef[] = [
   },
 ];
 
-app.get('/api/plugins', (req, res) => {
-  res.json(pluginsDirectory);
+app.get('/api/plugins', async (req, res) => {
+  try {
+    const settings = await persistentStorage!.getOwnedState<Record<string, boolean>>(res.locals.rareUserId, 'plugin_settings', {});
+    res.json(pluginsDirectory.map((plugin) => ({
+      ...plugin,
+      installed: Object.prototype.hasOwnProperty.call(settings, plugin.id) ? settings[plugin.id] : plugin.installed,
+    })));
+  } catch (error) {
+    console.error('[Plugins] Private plugin settings read failed:', error);
+    res.status(503).json({ error: { message: 'Plugin settings are unavailable.' } });
+  }
 });
 
-app.post('/api/plugins/:id/toggle', (req, res) => {
-  const plugin = pluginsDirectory.find((p) => p.id === req.params.id);
-  if (!plugin) return res.status(404).json({ error: { message: 'Plugin not found' } });
-  plugin.installed = !plugin.installed;
-  res.json({ success: true, plugin });
+app.post('/api/plugins/:id/toggle', async (req, res) => {
+  const definition = pluginsDirectory.find((plugin) => plugin.id === req.params.id);
+  if (!definition) return res.status(404).json({ error: { message: 'Plugin not found' } });
+  try {
+    let enabled = definition.installed;
+    await persistentStorage!.updateOwnedState<Record<string, boolean>>(res.locals.rareUserId, 'plugin_settings', {}, (settings) => {
+      enabled = !(Object.prototype.hasOwnProperty.call(settings, definition.id) ? settings[definition.id] : definition.installed);
+      return { ...settings, [definition.id]: enabled };
+    });
+    res.json({ success: true, plugin: { ...definition, installed: enabled } });
+  } catch (error) {
+    console.error('[Plugins] Private plugin setting update failed:', error);
+    res.status(503).json({ error: { message: 'Plugin settings are unavailable.' } });
+  }
 });
 
 // -----------------------------------------------------------------------------
@@ -3800,20 +4435,28 @@ app.get('/api/images/status', (req, res) => {
 
 // Image Gallery List
 app.get('/api/images/gallery', (req, res) => {
-  res.json({
-    images: imageGallery,
-    total: imageGallery.length,
+  void persistentStorage!.getOwnedState<ImageRecord[]>(res.locals.rareUserId, 'image_gallery', []).then((images) => {
+    res.json({ images, total: images.length });
+  }).catch((error) => {
+    console.error('[Images] Private gallery read failed:', error);
+    res.status(503).json({ error: { message: 'Image gallery storage is unavailable.' } });
   });
 });
 
 // Delete Image from Gallery
-app.delete('/api/images/gallery/:id', (req, res) => {
-  const idx = imageGallery.findIndex((img) => img.id === req.params.id);
-  if (idx !== -1) {
-    imageGallery.splice(idx, 1);
-    return res.json({ success: true });
+app.delete('/api/images/gallery/:id', async (req, res) => {
+  try {
+    let removed = false;
+    await persistentStorage!.updateOwnedState<ImageRecord[]>(res.locals.rareUserId, 'image_gallery', [], (images) => images.filter((image) => {
+      if (image.id === req.params.id) { removed = true; return false; }
+      return true;
+    }));
+    if (removed) return res.json({ success: true });
+    res.status(404).json({ error: 'Image not found' });
+  } catch (error) {
+    console.error('[Images] Private gallery delete failed:', error);
+    res.status(503).json({ error: { message: 'Image gallery storage is unavailable.' } });
   }
-  res.status(404).json({ error: 'Image not found' });
 });
 
 // Generate Image Endpoint (Gemini 3 Pro Image & Nano Banana 2.1)
@@ -3900,8 +4543,12 @@ app.post('/api/images/generate', async (req, res) => {
     quotaExceeded,
   };
 
-  imageGallery.unshift(newRecord);
-  if (imageGallery.length > 50) imageGallery.pop();
+  try {
+    await persistentStorage!.updateOwnedState<ImageRecord[]>(res.locals.rareUserId, 'image_gallery', [], (images) => [newRecord, ...images].slice(0, 50));
+  } catch (error) {
+    console.error('[Images] Private gallery persistence failed:', error);
+    return res.status(503).json({ error: 'Image could not be saved to the user gallery.' });
+  }
 
   auditLog.unshift({
     id: `aud_${Date.now()}`,
@@ -4021,8 +4668,12 @@ app.post('/api/images/edit', async (req, res) => {
     quotaExceeded,
   };
 
-  imageGallery.unshift(newRecord);
-  if (imageGallery.length > 50) imageGallery.pop();
+  try {
+    await persistentStorage!.updateOwnedState<ImageRecord[]>(res.locals.rareUserId, 'image_gallery', [], (images) => [newRecord, ...images].slice(0, 50));
+  } catch (error) {
+    console.error('[Images] Private gallery persistence failed:', error);
+    return res.status(503).json({ error: 'Edited image could not be saved to the user gallery.' });
+  }
 
   auditLog.unshift({
     id: `aud_${Date.now()}`,
@@ -4051,6 +4702,9 @@ app.use('/api', (_req, res) => {
 async function startServer() {
   process.env.RARE_INTELLIGENCE_URL = process.env.RARE_INTELLIGENCE_URL || `http://127.0.0.1:${PORT}`;
   const isProduction = process.env.NODE_ENV === 'production' || process.argv.includes('--production');
+  if (isProduction && configuredOrigins.length === 0) {
+    throw new Error('Set RARE_ALLOWED_ORIGINS to the exact production frontend origin before starting RARE in production.');
+  }
   if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
     throw new Error(`Invalid PORT value "${process.env.PORT}". Set PORT to an integer between 1 and 65535.`);
   }
@@ -4159,6 +4813,10 @@ async function startServer() {
     res.status(responseStatus).json({ error: { message } });
   });
 
+  // Vercel invokes the exported Express application as a function. It must
+  // not start a second listener inside the serverless runtime.
+  if (process.env.VERCEL === '1') return;
+
   await new Promise<void>((resolve, reject) => {
     const onError = (error: Error) => {
       httpServer.off('listening', onListening);
@@ -4196,7 +4854,13 @@ async function startServer() {
   }
 }
 
-startServer().catch((error) => {
-  console.error('[RARE] Startup failed:', error?.message || error);
-  process.exitCode = 1;
-});
+export default app;
+
+if (process.env.VERCEL === '1') {
+  serverInitialization = startServer();
+} else {
+  startServer().catch((error) => {
+    console.error('[RARE] Startup failed:', error?.message || error);
+    process.exitCode = 1;
+  });
+}

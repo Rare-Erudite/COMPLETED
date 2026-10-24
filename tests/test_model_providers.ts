@@ -55,6 +55,20 @@ export async function runModelProviderTests() {
   assert.ok(regRes.reply.length > 10, 'Registry generated response without GEMINI_API_KEY');
   assert.strictEqual(regRes.providerType, 'offline_cognitive', 'Registry fell back to offline engine');
 
+  // HTTP-facing online generation must fail closed rather than run the
+  // heuristic engine or its global memory/tool side effects.
+  const registryInternals = registry as any;
+  const originalActiveProvider = registryInternals.getActiveProvider;
+  registryInternals.getActiveProvider = async () => ({ provider: registryInternals.offlineEngine });
+  const memoryCountBeforeOnlineAttempt = memoryStore.getAll().length;
+  await assert.rejects(
+    registry.generateOnline('Remember that I live at 1 Example Street.'),
+    (error: any) => error?.code === 'ONLINE_PROVIDER_UNAVAILABLE' && error?.statusCode === 503,
+    'Online generation reports unavailability when only the offline engine exists',
+  );
+  assert.equal(memoryStore.getAll().length, memoryCountBeforeOnlineAttempt, 'Failed online generation must not trigger offline memory mutations');
+  registryInternals.getActiveProvider = originalActiveProvider;
+
   if (originalKey) process.env.GEMINI_API_KEY = originalKey;
 
   console.log('✓ Model Providers & Offline Intelligence tests passed.');

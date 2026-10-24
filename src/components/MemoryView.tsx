@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../api.js';
 import { Database, Plus, Search, ShieldCheck, CheckCircle2, RotateCcw } from 'lucide-react';
 
 export function MemoryView() {
@@ -16,9 +17,10 @@ export function MemoryView() {
   const fetchMemories = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/memory');
+      const res = await apiFetch('/api/memories');
+      if (!res.ok) throw new Error(`Memory service returned HTTP ${res.status}.`);
       const data = await res.json();
-      setMemories(data.memories || []);
+      setMemories((Array.isArray(data) ? data : []).map((item: any) => ({ ...item, key: item.kind, content: item.text, category: item.kind })));
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -34,16 +36,16 @@ export function MemoryView() {
     e.preventDefault();
     if (!keyInput.trim() || !contentInput.trim()) return;
     try {
-      await fetch('/api/v1/memory', {
+      const response = await apiFetch('/api/memories', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          key: keyInput.trim(),
-          content: contentInput.trim(),
-          category: categoryInput,
+          kind: categoryInput,
+          text: `${keyInput.trim()}: ${contentInput.trim()}`,
           tags: ['manual_entry'],
         }),
       });
+      if (!response.ok) throw new Error(`Memory service returned HTTP ${response.status}.`);
       setKeyInput('');
       setContentInput('');
       fetchMemories();
@@ -54,13 +56,7 @@ export function MemoryView() {
 
   const handleVerifyRestart = async () => {
     setVerifyMessage(null);
-    try {
-      const res = await fetch('/api/v1/storage/verify-restart', { method: 'POST' });
-      const data = await res.json();
-      setVerifyMessage(data.message || 'Atomic write & restart durability confirmed.');
-    } catch (err: any) {
-      setVerifyMessage(`Verification error: ${err.message}`);
-    }
+    setVerifyMessage('Restart durability verification is not available from the browser. Use the isolated persistence test suite to verify it.');
   };
 
   return (

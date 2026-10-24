@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from 'react';
+import { apiFetch } from '../api.js';
 import { Bot, FileText, Globe, Search, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export function AssistantStudioView() {
@@ -21,10 +22,10 @@ export function AssistantStudioView() {
   const handleResearch = async () => {
     setLoadingResearch(true);
     try {
-      const res = await fetch('/api/v1/assistant/research', {
+      const res = await apiFetch('/api/research/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: researchQuery }),
+        body: JSON.stringify({ query: researchQuery }),
       });
       const data = await res.json();
       setResearchResult(data);
@@ -37,7 +38,7 @@ export function AssistantStudioView() {
 
   const handleParseDoc = async () => {
     try {
-      const res = await fetch('/api/v1/assistant/document-parse', {
+      const res = await apiFetch('/api/documents/parse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: docContent, format: docFormat }),
@@ -52,10 +53,10 @@ export function AssistantStudioView() {
   const handleSafeUrlRead = async () => {
     setLoadingUrl(true);
     try {
-      const res = await fetch('/api/v1/assistant/safe-url-read', {
+      const res = await apiFetch('/api/documents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: urlInput }),
+        body: JSON.stringify({ url: urlInput, path: `imports/assistant-studio-${Date.now()}.txt` }),
       });
       const data = await res.json();
       setUrlResult(data);

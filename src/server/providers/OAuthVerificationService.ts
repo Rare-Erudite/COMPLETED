@@ -12,6 +12,7 @@ import crypto from 'crypto';
 export interface VerifiedOAuthProfile {
   provider: 'google' | 'outlook';
   email: string;
+  emailVerified: boolean;
   name: string;
   sub: string;
   avatarUrl?: string;
@@ -22,7 +23,8 @@ export class OAuthVerificationService {
    * Verify a Google Identity / OpenID Connect ID token or OAuth access token.
    */
     public async verifyGoogleToken(
-    token: string
+    token: string,
+    expectedNonce: string
   ): Promise<VerifiedOAuthProfile> {
     if (
       !token ||
@@ -33,15 +35,12 @@ export class OAuthVerificationService {
     }
 
     const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
-    const isProduction =
-      process.env.NODE_ENV === 'production' ||
-      process.argv.includes('--production');
-
-    if (isProduction && !clientId) {
+    if (!clientId) {
       throw new Error(
-        'GOOGLE_CLIENT_ID must be configured in production.'
+        'GOOGLE_CLIENT_ID must be configured before Google sign-in is enabled.'
       );
     }
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(expectedNonce || '')) throw new Error('Google sign-in nonce is missing or malformed.');
 
     const response = await fetch(
       `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(token.trim())}`,
@@ -71,9 +70,11 @@ export class OAuthVerificationService {
       throw new Error('Google ID token has no audience.');
     }
 
-    if (clientId && audience !== clientId) {
+    if (audience !== clientId) {
       throw new Error('Google ID token audience mismatch.');
     }
+
+    if (data.nonce !== expectedNonce) throw new Error('Google ID token nonce mismatch.');
 
     if (
       !Number.isFinite(expiresAt) ||
@@ -100,6 +101,7 @@ export class OAuthVerificationService {
     return {
       provider: 'google',
       email,
+      emailVerified: true,
       name: String(data.name || data.given_name || email.split('@')[0]),
       sub: subject,
       avatarUrl: data.picture,
@@ -111,7 +113,8 @@ export class OAuthVerificationService {
    * This deliberately rejects Graph API access tokens.
    */
   public async verifyMicrosoftToken(
-    token: string
+    token: string,
+    expectedNonce: string
   ): Promise<VerifiedOAuthProfile> {
     if (
       !token ||
@@ -125,15 +128,12 @@ export class OAuthVerificationService {
     const tenantSetting =
       process.env.MICROSOFT_TENANT_ID?.trim().toLowerCase();
 
-    const isProduction =
-      process.env.NODE_ENV === 'production' ||
-      process.argv.includes('--production');
-
-    if (isProduction && !clientId) {
+    if (!clientId) {
       throw new Error(
-        'MICROSOFT_CLIENT_ID must be configured in production.'
+        'MICROSOFT_CLIENT_ID must be configured before Microsoft sign-in is enabled.'
       );
     }
+    if (!/^[A-Za-z0-9_-]{32,128}$/.test(expectedNonce || '')) throw new Error('Microsoft sign-in nonce is missing or malformed.');
 
     const parts = token.trim().split('.');
     if (parts.length !== 3) {
@@ -194,7 +194,7 @@ export class OAuthVerificationService {
       throw new Error('Microsoft ID token has no audience.');
     }
 
-    if (clientId && audience !== clientId) {
+    if (audience !== clientId) {
       throw new Error('Microsoft ID token audience mismatch.');
     }
 
@@ -225,6 +225,7 @@ export class OAuthVerificationService {
     ) {
       throw new Error('Microsoft ID token has no subject.');
     }
+    if (claims.nonce !== expectedNonce) throw new Error('Microsoft ID token nonce mismatch.');
 
     const metadataTenant =
       tenantSetting &&
@@ -299,25 +300,14 @@ export class OAuthVerificationService {
       throw new Error('Microsoft ID token signature is invalid.');
     }
 
-    const tokenEmail = String(
-      claims.email || claims.preferred_username || ''
-    ).trim().toLowerCase();
-
-    if (!tokenEmail || !tokenEmail.includes('@')) {
-      throw new Error(
-        'Microsoft ID token has no usable email identity.'
-      );
+    const verifiedPrimaryEmail = String(claims.verified_primary_email || '').trim().toLowerCase();
+    if (claims.email_verified !== undefined && claims.email_verified !== true && claims.email_verified !== 'true') {
+      throw new Error('Microsoft token email is not verified.');
     }
-
-    if (
-      claims.email_verified !== undefined &&
-      claims.email_verified !== true &&
-      claims.email_verified !== 'true'
-    ) {
-      throw new Error(
-        'Microsoft token email is not verified.'
-      );
-    }
+    const tokenEmail = String(verifiedPrimaryEmail || claims.email || claims.preferred_username || '').trim().toLowerCase();
+    const emailVerified = claims.email_verified === true || claims.email_verified === 'true' ||
+      Boolean(verifiedPrimaryEmail && verifiedPrimaryEmail.includes('@'));
+    const usableVerifiedEmail = emailVerified && tokenEmail.includes('@') ? tokenEmail : '';
 
     const name = String(
       claims.name ||
@@ -327,10 +317,51 @@ export class OAuthVerificationService {
 
     return {
       provider: 'outlook',
-      email: tokenEmail,
+      email: usableVerifiedEmail,
+      emailVerified,
       name,
-      sub: String(claims.sub),
+      // Microsoft subject values are issuer-scoped, so preserve the tenant
+      // issuer context in the persisted provider subject key.
+      sub: `${tenantId}:${String(claims.sub)}`,
     };
+  }
+
+  public async exchangeMicrosoftAuthorizationCode(
+    code: string,
+    codeVerifier: string,
+    expectedNonce: string,
+    redirectUri: string,
+  ): Promise<VerifiedOAuthProfile> {
+    const clientId = process.env.MICROSOFT_CLIENT_ID?.trim();
+    const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
+    const configuredRedirectUri = process.env.MICROSOFT_REDIRECT_URI?.trim();
+    if (!clientId || !clientSecret || !configuredRedirectUri) {
+      throw new Error('Microsoft client ID, client secret, and redirect URI must be configured on the server.');
+    }
+    if (redirectUri !== configuredRedirectUri) throw new Error('Microsoft redirect URI does not match the server configuration.');
+    if (typeof code !== 'string' || !code || code.length > 4096 || !/^[A-Za-z0-9._~-]{43,128}$/.test(codeVerifier || '')) {
+      throw new Error('Microsoft authorization code or PKCE verifier is malformed.');
+    }
+    const tenant = process.env.MICROSOFT_TENANT_ID?.trim() || 'common';
+    const form = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: configuredRedirectUri,
+      code_verifier: codeVerifier,
+      scope: 'openid profile email',
+    });
+    const response = await fetch(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body: form,
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error('Microsoft authorization code was rejected or expired.');
+    const tokens = await response.json() as { id_token?: unknown };
+    if (typeof tokens.id_token !== 'string') throw new Error('Microsoft did not return an OpenID identity token.');
+    return this.verifyMicrosoftToken(tokens.id_token, expectedNonce);
   }
 }
 

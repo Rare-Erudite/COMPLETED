@@ -72,8 +72,7 @@ export function DeveloperAuthModal({
 
         if (
           guestSession?.success !== true ||
-          typeof guestSession.sessionToken !== 'string' ||
-          !guestSession.sessionToken.trim()
+          typeof guestSession.expiresAt !== 'number'
         ) {
           setError(
             'Could not establish a RARE session. Check your connection and try again.'
@@ -81,7 +80,7 @@ export function DeveloperAuthModal({
           return;
         }
 
-        storeUserSessionToken(guestSession.sessionToken);
+        storeUserSessionToken();
       }
 
       const res = await safePost<any>(

@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import {
   getBackendUrl,
   normalizeBackendUrl,
+  apiFetch,
   resolveApiUrl,
+  safeFetch,
   setBackendUrl,
+  storeUserSessionToken,
   testBackendConnection,
 } from '../src/api.js';
 
@@ -91,6 +94,25 @@ export async function runApiConfigurationTests() {
     const unreachable = await testBackendConnection('https://api.rare.example');
     assert.equal(unreachable.success, false);
     assert.match(unreachable.message, /Could not reach the backend/i);
+    globalThis.fetch = (async () => { throw new TypeError('network unavailable'); }) as typeof fetch;
+    assert.equal(await safeFetch('/api/schedules'), null, 'Web requests must not be replaced by local mock schedule data when the backend is offline');
+
+    fakeWindow.location.hostname = 'rare.example';
+    fakeWindow.location.origin = 'https://rare.example';
+    setBackendUrl('');
+    storeUserSessionToken();
+    let capturedOptions: RequestInit | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, options?: RequestInit) => {
+      capturedOptions = options;
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json', 'x-csrf-token': 'signed-csrf-token' },
+      });
+    }) as typeof fetch;
+    await apiFetch('/api/user/me');
+    await apiFetch('/api/settings', { method: 'POST', body: JSON.stringify({ theme: 'blue' }) });
+    assert.equal(capturedOptions?.credentials, 'include', 'Browser API requests must send the HttpOnly session cookie');
+    assert.equal(new Headers(capturedOptions?.headers).get('X-CSRF-Token'), 'signed-csrf-token', 'Unsafe API requests must send the CSRF token received from the server');
   } finally {
     globalThis.fetch = originalFetch;
     if (originalWindow) {

@@ -7,6 +7,7 @@ import { runApiConfigurationTests } from './test_api_configuration.js';
 import { runRareIntelligenceBridgeTests } from './test_rare_intelligence_bridge.js';
 import { runAuthenticationSecurityTests } from './test_authentication_security.js';
 import { runPersistentWorkflowTests } from './test_persistent_workflows.js';
+import { runOAuthValidationTests } from './test_oauth_validation.js';
 
 async function main() {
   console.log('=====================================================');
@@ -19,6 +20,8 @@ async function main() {
     await runAuthenticationSecurityTests();
     console.log();
     await runPersistentWorkflowTests();
+    console.log();
+    await runOAuthValidationTests();
     console.log();
     await runModelProviderTests();
     console.log();

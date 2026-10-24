@@ -15,6 +15,18 @@ const BACKEND_URL_KEY = 'rare_backend_url';
 const SESSION_TOKEN_KEY = 'rare_session_token';
 export const DEFAULT_CLOUD_HTTPS_URL = '';
 
+// Browser sessions use an HttpOnly server cookie. The token remains in memory
+// only for standalone clients that cannot use same-site cookies.
+let standaloneSessionToken = '';
+let cookieSessionReady = false;
+let csrfToken = '';
+if (typeof window !== 'undefined') {
+  try {
+    window.localStorage.removeItem(SESSION_TOKEN_KEY);
+    cookieSessionReady = Boolean(window.localStorage.getItem('rare_user_account'));
+  } catch { /* Storage may be disabled; cookie auth remains available. */ }
+}
+
 export interface BackendConnectionState {
   reachable: boolean;
   lastChecked: number;
@@ -196,29 +208,40 @@ export function resolveApiUrl(path: string): string {
 
 export function getStoredSessionToken(): string {
   if (typeof window === 'undefined') return '';
-
-  try {
-    return window.localStorage.getItem(SESSION_TOKEN_KEY) || '';
-  } catch {
-    return '';
-  }
+  if (isStandaloneMobileApp()) return standaloneSessionToken;
+  return cookieSessionReady ? 'cookie-session' : '';
 }
 
-export function storeUserSessionToken(token: string): void {
+export function storeUserSessionToken(token?: string): void {
   if (typeof window === 'undefined') {
     throw new Error('Session storage is unavailable in this environment.');
   }
-
   const cleanToken = typeof token === 'string' ? token.trim() : '';
-  if (!cleanToken) {
-    throw new Error('The server did not provide a valid session token.');
-  }
+  if (isStandaloneMobileApp()) standaloneSessionToken = cleanToken;
+  else cookieSessionReady = true;
+}
 
-  try {
-    window.localStorage.setItem(SESSION_TOKEN_KEY, cleanToken);
-  } catch {
-    throw new Error('This browser could not save the RARE session.');
-  }
+function captureCsrfToken(response: Response): void {
+  csrfToken = response.headers.get('X-CSRF-Token') || csrfToken;
+}
+
+/** Send a browser component request to the configured backend with cookie
+ * credentials and the current CSRF token. Unlike safeFetch, this helper never
+ * turns an unavailable online endpoint into a local mock response. */
+export async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  if (typeof window === 'undefined') throw new Error('Browser API requests are unavailable during server rendering.');
+  const fullUrl = resolveApiUrl(url);
+  if (!isTrustedBackendRequest(fullUrl)) throw new Error('The backend URL is not trusted.');
+  const headers = new Headers(options.headers || {});
+  const method = (options.method || 'GET').toUpperCase();
+  const token = getStoredSessionToken();
+  if (isStandaloneMobileApp() && token && token !== 'cookie-session') headers.set('Authorization', `Bearer ${token}`);
+  if (csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes(method)) headers.set('X-CSRF-Token', csrfToken);
+  if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+  const response = await fetch(fullUrl, { ...options, method, headers, credentials: 'include' });
+  captureCsrfToken(response);
+  updateConnectionState(response.ok, response.ok ? undefined : `HTTP ${response.status}`);
+  return response;
 }
 
 function isTrustedBackendRequest(url: string): boolean {
@@ -285,9 +308,11 @@ async function initializeGuestSessionToken(): Promise<string | null> {
         // Direct fetch is intentional. Never call safePost/safeFetch here.
         const response = await fetch(resolveApiUrl('/api/user/guest-session'), {
           method: 'POST',
-          headers: { Accept: 'application/json' },
+          headers: { Accept: 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
+          credentials: 'include',
           signal: controller.signal,
         });
+        captureCsrfToken(response);
 
         if (!response.ok) {
           updateConnectionState(false, `HTTP ${response.status}`);
@@ -303,14 +328,13 @@ async function initializeGuestSessionToken(): Promise<string | null> {
 
         if (
           payload?.success !== true ||
-          typeof payload.sessionToken !== 'string' ||
-          !payload.sessionToken.trim()
+          payload.expiresAt === undefined
         ) {
           return null;
         }
 
-        storeUserSessionToken(payload.sessionToken);
-        return payload.sessionToken;
+        storeUserSessionToken();
+        return 'cookie-session';
       } catch {
         return null;
       } finally {
@@ -327,18 +351,19 @@ async function initializeGuestSessionToken(): Promise<string | null> {
 }
 
 export async function clearUserSession(): Promise<void> {
-  // Capture the token before clearing it locally.
   const token = getStoredSessionToken();
 
   if (typeof window !== 'undefined') {
     try {
       window.localStorage.removeItem(SESSION_TOKEN_KEY);
+      window.localStorage.removeItem('rare_user_account');
     } catch {
       // Continue with best-effort server-side invalidation.
     }
   }
-
-  if (!token || typeof window === 'undefined') return;
+  cookieSessionReady = false;
+  standaloneSessionToken = '';
+  if (typeof window === 'undefined') return;
 
   try {
     const target = resolveApiUrl('/api/user/logout');
@@ -347,12 +372,15 @@ export async function clearUserSession(): Promise<void> {
     const headers = new Headers({
       Accept: 'application/json',
     });
-    headers.set('Authorization', `Bearer ${token}`);
+    if (isStandaloneMobileApp() && token) headers.set('Authorization', `Bearer ${token}`);
+    if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
 
     await fetch(target, {
       method: 'POST',
       headers,
+      credentials: 'include',
     });
+    csrfToken = '';
   } catch {
     // The local token stays cleared even if the server cannot be reached.
     // Server-side invalidation is best-effort; the server expiry still applies.
@@ -376,7 +404,7 @@ export interface CurrentUserSessionResult {
 export async function validateCurrentUserSession(): Promise<CurrentUserSessionResult | null> {
   const token = getStoredSessionToken();
 
-  if (!token || typeof window === 'undefined') {
+  if (typeof window === 'undefined') {
     return {
       authenticated: false,
       user: null,
@@ -399,11 +427,12 @@ export async function validateCurrentUserSession(): Promise<CurrentUserSessionRe
       method: 'GET',
       headers: {
         Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...(isStandaloneMobileApp() && token ? { Authorization: `Bearer ${token}` } : {}),
       },
       credentials: 'include',
       signal: controller.signal,
     });
+    captureCsrfToken(response);
 
     if (response.status === 401) {
       return {
@@ -664,7 +693,7 @@ async function executeStandaloneLocalRoute(url: string, options?: RequestInit): 
       storedHistory.slice(-20)
     );
 
-    return { reply: gen.content };
+    return { reply: gen.content, mode: 'offline_local' };
   }
 
   // 3. Conversations & Chat
@@ -757,6 +786,7 @@ async function executeStandaloneLocalRoute(url: string, options?: RequestInit): 
         reply: botMsg,
         conversationTitle: conv.title,
         conversation: conv,
+        mode: 'offline_local',
       };
     }
   }
@@ -971,8 +1001,11 @@ export async function safeFetch<T>(
       const token = getStoredSessionToken();
 
       // Never send a stored bearer token to an unrelated absolute URL.
-      if (token && isTrustedBackendRequest(fullUrl)) {
+      if (isStandaloneMobileApp() && token && token !== 'cookie-session' && isTrustedBackendRequest(fullUrl)) {
         headers.set('Authorization', `Bearer ${token}`);
+      }
+      if (csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes((options?.method || 'GET').toUpperCase())) {
+        headers.set('X-CSRF-Token', csrfToken);
       }
 
       if (!headers.has('Accept')) {
@@ -982,8 +1015,10 @@ export async function safeFetch<T>(
       const res = await fetch(fullUrl, {
         ...options,
         headers,
+        credentials: 'include',
         signal: controller.signal,
       });
+      captureCsrfToken(res);
 
       receivedHttpResponse = true;
 
@@ -1024,16 +1059,18 @@ export async function safeFetch<T>(
     }
   }
 
-  // Offline fallback is allowed only when no HTTP response was received.
-  try {
-    const localFallback = await executeStandaloneLocalRoute(url, options);
-
-    if (localFallback !== null) {
-      updateConnectionState(true);
-      return localFallback as T;
+  // Local mock routes are an intentional standalone-app mode only. A web
+  // browser must never disguise a failed online request as a successful reply.
+  if (isStandaloneMobileApp()) {
+    try {
+      const localFallback = await executeStandaloneLocalRoute(url, options);
+      if (localFallback !== null) {
+        updateConnectionState(true);
+        return localFallback as T;
+      }
+    } catch {
+      // Report the unavailable service below rather than fabricating a reply.
     }
-  } catch {
-    // Report failure below rather than fabricating a response.
   }
 
   if (fallback !== undefined) {

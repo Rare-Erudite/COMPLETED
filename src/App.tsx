@@ -71,6 +71,7 @@ import { themes, ThemeKey, ThemeConfig } from './theme';
 import {
   safeFetch,
   safePost,
+  isStandaloneMobileApp,
   getStoredSessionToken,
   storeUserSessionToken,
   clearUserSession,
@@ -355,6 +356,7 @@ export default function App() {
       return null;
     }
   });
+  const [sessionGeneration, setSessionGeneration] = useState(0);
 
   // Full Conversation Share Modal state
   const [shareModalData, setShareModalData] = useState<{ id: string; title: string; messages?: ChatMessage[] } | null>(null);
@@ -433,6 +435,50 @@ useEffect(() => {
   };
 }, []);
 
+useEffect(() => {
+  const callback = async () => {
+    const callbackUrl = new URL(window.location.href);
+    const code = callbackUrl.searchParams.get('code');
+    const state = callbackUrl.searchParams.get('state');
+    const providerError = callbackUrl.searchParams.get('error');
+    if (!code && !providerError) return;
+
+    let transaction: { verifier?: string; nonce?: string; state?: string; redirectUri?: string } | null = null;
+    try {
+      transaction = JSON.parse(sessionStorage.getItem('rare_microsoft_oauth_transaction') || 'null');
+    } catch { /* Invalid local OAuth transaction is rejected below. */ }
+    sessionStorage.removeItem('rare_microsoft_oauth_transaction');
+    window.history.replaceState({}, document.title, `${callbackUrl.pathname}${callbackUrl.hash}`);
+
+    if (providerError || !code || !transaction?.verifier || !transaction.nonce || !transaction.state || !transaction.redirectUri || state !== transaction.state) {
+      sessionStorage.setItem('rare_oauth_error', providerError ? 'Microsoft sign-in was cancelled or rejected.' : 'Microsoft sign-in could not be verified. Start the sign-in again.');
+      setAuthModalMode('outlook');
+      setAuthModalOpen(true);
+      return;
+    }
+
+    try {
+      const response = await safePost<{ success: boolean; user?: UserAccount; error?: string }>('/api/user/oauth', {
+        provider: 'outlook',
+        code,
+        codeVerifier: transaction.verifier,
+        nonce: transaction.nonce,
+        redirectUri: transaction.redirectUri,
+      });
+      if (!response?.success || !response.user) throw new Error('Microsoft could not verify the sign-in. Check the OAuth application configuration and try again.');
+      setCurrentUser(response.user);
+      localStorage.setItem('rare_user_account', JSON.stringify(response.user));
+      setIsDeveloperAuthed(response.user.role === 'developer');
+      setAuthModalOpen(false);
+    } catch {
+      sessionStorage.setItem('rare_oauth_error', 'Microsoft sign-in could not be completed. Check the OAuth application and redirect URI configuration.');
+      setAuthModalMode('outlook');
+      setAuthModalOpen(true);
+    }
+  };
+  void callback();
+}, []);
+
   const checkForUpdates = async (forceOpenModal = false) => {
     const channel = isDeveloperAuthed ? 'developer' : 'public';
     const data = await safeFetch<any>(`/api/updates/check?clientVersion=${clientVersion}&channel=${channel}`);
@@ -493,8 +539,14 @@ useEffect(() => {
       return data;
     }
 
-    // Fallback to standalone local conversations store
-        let localList = Object.values(localStore).filter(
+    // Browser accounts must not fall back to a shared device cache when an
+    // online request is unavailable or returns an empty private collection.
+    if (!isStandaloneMobileApp()) {
+      setConversations([]);
+      return [];
+    }
+    // Standalone mode intentionally keeps conversations on the device.
+    let localList = Object.values(localStore).filter(
       (c) => c.userId === userKey || (!c.userId && userKey === 'guest')
     );
     if (q && q.trim()) {
@@ -516,10 +568,12 @@ useEffect(() => {
     return [];
   };
 
-  // Sync chats immediately when user logs in, signs out, or switches account
+  // Clear in-memory chat state before loading another account's private chats.
   useEffect(() => {
+    setConversations([]);
+    setActiveConvId('');
     loadConversations('', currentUser);
-  }, [currentUser?.email, currentUser?.phone, currentUser?.id]);
+  }, [currentUser?.id]);
 
   // Fresh initial startup
   useEffect(() => {
@@ -1105,6 +1159,9 @@ useEffect(() => {
                           setAccountMenuOpen(false);
                           void clearUserSession();
                           setCurrentUser(null);
+                          setConversations([]);
+                          setActiveConvId('');
+                          setSessionGeneration((value) => value + 1);
                           localStorage.removeItem('rare_user_account');
                         }}
                         className="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition"
@@ -1301,6 +1358,7 @@ useEffect(() => {
               thinkHarder={thinkHarder}
               voiceEnabled={voiceEnabled}
               activeConvId={activeConvId}
+              sessionKey={`${currentUser?.id || 'guest'}:${sessionGeneration}`}
               onSelectConv={setActiveConvId}
               onRefreshConversations={() => loadConversations()}
               onNewChat={handleNewChat}
@@ -1398,8 +1456,8 @@ useEffect(() => {
         currentUser={currentUser}
         initialMode={authModalMode}
         onClose={() => setAuthModalOpen(false)}
-                onLoginSuccess={(user, sessionToken) => {
-          storeUserSessionToken(sessionToken);
+                onLoginSuccess={(user) => {
+          storeUserSessionToken();
           setCurrentUser(user);
           localStorage.setItem('rare_user_account', JSON.stringify(user));
           if (user.role === 'developer') {
@@ -2710,6 +2768,7 @@ function CleanChatWorkspaceView({
   thinkHarder,
   voiceEnabled,
   activeConvId,
+  sessionKey,
   onSelectConv,
   onRefreshConversations,
   onNewChat,
@@ -2722,6 +2781,7 @@ function CleanChatWorkspaceView({
   thinkHarder: boolean;
   voiceEnabled: boolean;
   activeConvId: string;
+  sessionKey: string;
   onSelectConv?: (id: string) => void;
   onRefreshConversations?: () => void;
   onNewChat?: () => void;
@@ -2788,7 +2848,7 @@ function CleanChatWorkspaceView({
         messageCount: data.messages.length,
       };
       saveLocalConversationsStore(localStore);
-    } else if (localStore[convId] && Array.isArray(localStore[convId].messages) && localStore[convId].messages!.length > 0) {
+    } else if (isStandaloneMobileApp() && localStore[convId] && Array.isArray(localStore[convId].messages) && localStore[convId].messages!.length > 0) {
       setMessages(localStore[convId].messages!);
       setConvTitle(localStore[convId].title || 'New Chat');
       setTitleInput(localStore[convId].title || 'New Chat');
@@ -2815,6 +2875,18 @@ function CleanChatWorkspaceView({
       saveLocalConversationsStore(localStore);
     }
   };
+
+  useEffect(() => {
+    setMessages([{
+      id: `msg_session_${Date.now()}`,
+      role: 'assistant',
+      content: 'Hello! Messages in your account are private. Online AI responses require an available provider.',
+      timestamp: new Date().toISOString(),
+    }]);
+    setConvTitle('New Chat');
+    setTitleInput('New Chat');
+    setInput('');
+  }, [sessionKey]);
 
   useEffect(() => {
     stopHumanVoice();
@@ -3423,6 +3495,7 @@ function CleanChatWorkspaceView({
       if (data) {
         const botMsg: ChatMessage = {
           ...data.assistant_message,
+          ...(data.mode === 'offline_local' ? { content: `Offline local mode: ${data.assistant_message.content}` } : {}),
           actionDetected: data.actionDetected,
         };
 
@@ -3454,48 +3527,8 @@ function CleanChatWorkspaceView({
           if (onRefreshConversations) onRefreshConversations();
         }
       } else {
-        // Standalone built-in cognitive brain response (with live web/weather research & dynamic reasoning)
-        const localGen = await generateDynamicBrainReply({
-          prompt: textToSend,
-          assistantName,
-          personaMode,
-          thinkHarder,
-          recentMessages: messages,
-        });
-
-        const botMsg: ChatMessage = {
-          id: `msg_local_${Date.now()}`,
-          role: 'assistant',
-          content: localGen.content,
-          thought: localGen.thought,
-          timestamp: new Date().toISOString(),
-        };
-
-        setMessages((prev) => {
-          const updated = [
-            ...prev.filter((m) => m.id !== tempUserMsg.id),
-            tempUserMsg,
-            botMsg,
-          ];
-          const store = loadLocalConversationsStore();
-          const currentConv = store[targetConvId] || {
-            id: targetConvId,
-            title: convTitle || 'New Chat',
-            created_at: new Date().toISOString(),
-          };
-          if (!currentConv.customTitle && (currentConv.title === 'New Chat' || !currentConv.title)) {
-            const autoTitle = textToSend.replace(/[^\w\s]/g, '').trim().slice(0, 34) || 'Chat';
-            currentConv.title = autoTitle;
-            setConvTitle(autoTitle);
-            setTitleInput(autoTitle);
-          }
-          currentConv.messages = updated;
-          currentConv.messageCount = updated.length;
-          store[targetConvId] = currentConv;
-          saveLocalConversationsStore(store);
-          return updated;
-        });
-        if (onRefreshConversations) onRefreshConversations();
+        setMessages((prev) => prev.filter((message) => message.id !== tempUserMsg.id));
+        showToast('Online AI could not respond. Your message was not processed. Check the backend and provider connection, then retry.');
       }
     } finally {
       setLoading(false);
@@ -4624,21 +4657,12 @@ function LiveVoiceView({
         })),
       });
 
-      let replyText = data?.reply;
+      let replyText = data?.mode === 'offline_local'
+        ? `Offline local mode: ${data.reply || ''}`
+        : data?.reply;
 
       if (!replyText) {
-        const localGen = await generateDynamicBrainReply({
-          prompt: cleaned,
-          assistantName,
-          personaMode: 'casual',
-          isVoiceCall: true,
-          recentMessages: transcript.slice(-6).map((message) => ({
-            role: message.sender,
-            content: message.text,
-          })),
-        });
-
-        replyText = localGen.content;
+        throw new Error('Online voice response is unavailable.');
       }
 
 
@@ -4652,17 +4676,10 @@ function LiveVoiceView({
       // Speak back the response in the selected human voice
       speakAloud(replyText);
     } catch {
-      const localGen = await generateDynamicBrainReply({
-        prompt: cleaned,
-        assistantName,
-        personaMode: 'casual',
-        isVoiceCall: true,
-      });
       setTranscript((prev) => [
         ...prev,
-        { sender: 'assistant', text: localGen.content, time: new Date().toLocaleTimeString() },
+        { sender: 'assistant', text: 'Online voice response is unavailable. No AI reply was generated; please retry when the provider connection is restored.', time: new Date().toLocaleTimeString() },
       ]);
-      speakAloud(localGen.content);
     } finally {
       setIsProcessing(false);
       isProcessingRef.current = false;
