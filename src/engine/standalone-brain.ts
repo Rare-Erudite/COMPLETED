@@ -385,9 +385,13 @@ export async function conductLiveWebResearch(query: string): Promise<{
     }
   }
 
+  if (!shouldUseLiveWebResearch(cleaned)) {
+    return { found: false, summary: '' };
+  }
+
   // 2. Live Wikipedia + DuckDuckGo Instant Answer lookup for factual/research queries
   const searchTopic = cleaned
-    .replace(/^(what is|what are|who is|who was|tell me about|explain|search for|look up|find out about|how does|where is|why is)\s+/i, '')
+    .replace(/^(please\s+)?(search (the )?web for|search for|look up|browse for|investigate|research|find sources for|find out about|tell me about)\s+/i, '')
     .replace(/[?.!]+$/, '')
     .trim();
 
@@ -444,6 +448,12 @@ export async function conductLiveWebResearch(query: string): Promise<{
   return { found: false, summary: '' };
 }
 
+/** Generic live lookup is opt-in; ordinary questions belong in conversation. */
+export function shouldUseLiveWebResearch(query: string): boolean {
+  const cleaned = query.trim();
+  return /\b(search (the )?web|search online|search for|look (it|this|that|something) up|look up|browse( (the )?web| for)?|investigate|conduct research|do research|research\b|find sources|find information about|find out about)\b/i.test(cleaned);
+}
+
 /**
  * Dynamic, Compositional Standalone Cognitive Engine for RARE.
  * Never returns rigid hardcoded boilerplate; adapts phrasing, checks live environment
@@ -470,7 +480,9 @@ export async function generateDynamicBrainReply(options: {
 
   const q = prompt.trim();
   const lower = q.toLowerCase();
-  const env = await refreshLiveEnvironmentContext();
+  // Local clock data is immediate; only weather-specific requests refresh the
+  // network-backed location/weather cache.
+  const env = getImmediateTimeContext();
 
   // 0. Check if user interrupted or asked to stop talking during a call
   if (isVoiceCall && /\b(keep quiet|stop talking|be quiet|hold on|wait a second|shut up|pause|stop)\b/i.test(lower) && lower.split(/\s+/).length <= 8) {

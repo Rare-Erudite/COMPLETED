@@ -3490,7 +3490,7 @@ function CleanChatWorkspaceView({
         message: textToSend,
         think_harder: thinkHarder,
         persona: personaMode,
-      });
+      }, undefined, 55000);
 
       if (data) {
         const botMsg: ChatMessage = {

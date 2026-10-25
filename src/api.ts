@@ -958,10 +958,11 @@ export async function safeFetch<T>(
   url: string,
   options?: RequestInit,
   fallback?: T,
-  retries = 0
+  retries = 0,
+  timeoutMs = 6500
 ): Promise<T | null> {
-  const storedCustomUrl = getStoredBackendUrl();
-  const useLocalFirst = isStandaloneMobileApp() && !storedCustomUrl;
+  const configuredBackendUrl = getBackendUrl();
+  const useLocalFirst = isStandaloneMobileApp() && !configuredBackendUrl;
 
   // Preserve explicit on-device standalone operation.
   if (useLocalFirst) {
@@ -995,7 +996,7 @@ export async function safeFetch<T>(
     try {
       const fullUrl = resolveApiUrl(url);
       const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), 6500);
+      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       const headers = new Headers(options?.headers || {});
       const token = getStoredSessionToken();
@@ -1061,7 +1062,7 @@ export async function safeFetch<T>(
 
   // Local mock routes are an intentional standalone-app mode only. A web
   // browser must never disguise a failed online request as a successful reply.
-  if (isStandaloneMobileApp()) {
+  if (isStandaloneMobileApp() && !getBackendUrl()) {
     try {
       const localFallback = await executeStandaloneLocalRoute(url, options);
       if (localFallback !== null) {
@@ -1090,7 +1091,8 @@ export async function safeFetch<T>(
 export async function safePost<T>(
   url: string,
   body?: any,
-  fallback?: T
+  fallback?: T,
+  timeoutMs = 6500
 ): Promise<T | null> {
   return safeFetch<T>(
     url,
@@ -1100,6 +1102,7 @@ export async function safePost<T>(
       body: body ? JSON.stringify(body) : undefined,
     },
     fallback,
-    0
+    0,
+    timeoutMs
   );
 }

@@ -51,12 +51,26 @@ export class LocalTransformersServerProvider implements IModelProvider {
     }
 
     const systemInstruction = options?.systemPrompt || 'You are RARE-INTELLIGENCE, a helpful AI assistant.';
-    const formattedPrompt = context
-      ? `System Context:\n${context}\n\nUser Question:\n${prompt}`
-      : prompt;
+    const personaTone = options?.persona === 'professional'
+      ? 'Use a rigorous, professional, technically precise tone.'
+      : options?.persona === 'creative'
+      ? 'Use an imaginative, expressive tone.'
+      : options?.persona === 'concise'
+      ? 'Be concise and direct.'
+      : 'Be warm, natural, and conversational.';
+    const systemContext = `${systemInstruction}\n${personaTone}${options?.thinkHarder ? ' Analyze the request carefully before composing the answer.' : ''}${context ? `\n\nRelevant user memory:\n${context}` : ''}`;
+    const history = options?.conversationHistory || [];
+    const messages = history.length > 0
+      ? [
+          ...history.map((message) => ({ role: message.role === 'assistant' ? 'model' as const : 'user' as const, content: message.content })),
+          { role: 'user' as const, content: prompt },
+        ]
+      : null;
 
-    const result = await local.generate(formattedPrompt, {
-      systemInstruction,
+    const result = await local.generate(messages || (context
+      ? `Relevant user memory:\n${context}\n\nUser Question:\n${prompt}`
+      : prompt), {
+      systemInstruction: systemContext,
       temperature: options?.temperature ?? 0.7,
       maxOutputTokens: options?.maxTokens ?? 256,
     });

@@ -8,6 +8,7 @@ import { runRareIntelligenceBridgeTests } from './test_rare_intelligence_bridge.
 import { runAuthenticationSecurityTests } from './test_authentication_security.js';
 import { runPersistentWorkflowTests } from './test_persistent_workflows.js';
 import { runOAuthValidationTests } from './test_oauth_validation.js';
+import { runStandaloneResearchTests } from './test_standalone_research.js';
 
 async function main() {
   console.log('=====================================================');
@@ -16,6 +17,8 @@ async function main() {
 
   try {
     await runApiConfigurationTests();
+    console.log();
+    await runStandaloneResearchTests();
     console.log();
     await runAuthenticationSecurityTests();
     console.log();

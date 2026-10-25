@@ -26,6 +26,10 @@ export interface GenerationOptions {
   maxTokens?: number;
   systemPrompt?: string;
   activeConversationId?: string;
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  thinkHarder?: boolean;
+  persona?: string;
+  isVoiceCall?: boolean;
 }
 
 export interface ToolCall {

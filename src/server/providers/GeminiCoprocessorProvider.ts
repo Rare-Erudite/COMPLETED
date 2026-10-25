@@ -124,7 +124,15 @@ export class GeminiCoprocessorProvider implements IModelProvider {
           timeoutId = setTimeout(() => reject(new Error(`Gemini API timeout on ${modelId}`)), 25000);
         });
 
-        let contentsPayload: any = prompt;
+        let contentsPayload: any = options?.conversationHistory?.length
+          ? [
+              ...options.conversationHistory.map((message) => ({
+                role: message.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: message.content }],
+              })),
+              { role: 'user', parts: [{ text: prompt }] },
+            ]
+          : prompt;
         if ((options as any)?.image) {
           let mimeType = 'image/jpeg';
           let base64Data = (options as any).image;

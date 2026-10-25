@@ -16,6 +16,8 @@ import { DocumentStore } from './src/server/storage/DocumentStore.js';
 import { ResearchService } from './src/server/services/ResearchService.js';
 import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
 import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
+import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
+import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
 import { BenchmarkSuite } from './src/server/evaluation/BenchmarkSuite.js';
 import { engine } from './src/engine/engine.ts';
@@ -1024,37 +1026,9 @@ async function generateAssistantReply(
       console.error('[Memory] Could not load authenticated user memory context:', error);
     }
   }
-  const matching = userMemories.filter((memory) => `${memory.text} ${(memory.tags || []).join(' ')} ${memory.kind}`.toLowerCase().includes(prompt.toLowerCase()));
-  const retrievedMemories = matching.slice(0, 5);
-  const recentDurable = userMemories.slice(0, 6);
-  const memoryLines = Array.from(new Set([...retrievedMemories, ...recentDurable]))
-    .map((m) => `• [${m.kind}] ${m.text}`)
-    .join('\n');
-
-  
 const allMessages = recentMessages || [];
-const lastMessage = allMessages[allMessages.length - 1];
-
-const latestMessageIsCurrentPrompt =
-  lastMessage?.role === 'user' &&
-  lastMessage.content.trim() === prompt.trim();
-
-const previousMessages = latestMessageIsCurrentPrompt
-  ? allMessages.slice(0, -1)
-  : allMessages;
-
-const historyLines = previousMessages
-  .slice(-10)
-  .map(
-    (m) =>
-      `${m.role === 'user' ? 'User' : 'RARE'}: ${m.content.slice(0, 800)}`
-  )
-  .join('\n');
-  
-  const combinedContext = [
-    memoryLines ? `Durable Memory:\n${memoryLines}` : '',
-    historyLines ? `Recent Conversation:\n${historyLines}` : '',
-  ]
+  const context = prepareConversationContext(prompt, allMessages, userMemories);
+  const combinedContext = [context.memoryContext ? `Relevant User Memory:\n${context.memoryContext}` : '']
     .filter(Boolean)
     .join('\n\n');
 
@@ -1065,10 +1039,9 @@ const historyLines = previousMessages
     thinkHarder,
     persona,
     isVoiceCall: Boolean(isVoiceCall),
-    systemPrompt: isVoiceCall
-      ? `You are ${appSettings.assistantName}, speaking in a live, natural human phone call. Keep your reply warm, conversational, concise (1 to 3 spoken sentences), with zero markdown formatting or bullet points. Adapt naturally if the user corrects you or changes topics.`
-      : undefined,
-  } as any);
+    systemPrompt: buildRareSystemPrompt(appSettings.assistantName || 'RARE', Boolean(isVoiceCall)),
+    conversationHistory: context.history,
+  });
 
   // ProviderRegistry retains an offline engine for intentional local workflows,
   // but its heuristic output must never be presented as an online AI response.
