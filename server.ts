@@ -394,11 +394,13 @@ const requireAuthenticatedSession: express.RequestHandler = async (
   }
 
   try {
-    const session = await persistentStorage.getAuthSession(tokenHash);
+    const storage = persistentStorage;
+    if (!storage) throw new Error('Session storage is unavailable.');
+    const session = await storage.getAuthSession(tokenHash);
 
     if (!session || session.expiresAt <= Date.now()) {
       if (session) {
-        await persistentStorage.deleteAuthSession(tokenHash);
+        await storage.deleteAuthSession(tokenHash);
       }
 
       userSessions.delete(tokenHash);
@@ -2450,7 +2452,9 @@ app.post('/api/user/guest-session', async (_req, res) => {
   const tokenHash = hashUserSessionToken(session.sessionToken);
 
   try {
-    await persistentStorage.createAuthSession(
+    const storage = persistentStorage;
+    if (!storage) throw new Error('Authentication storage is unavailable.');
+    await storage.createAuthSession(
       tokenHash,
       guestId,
       null,
@@ -2487,7 +2491,9 @@ app.post('/api/user/logout', async (req, res) => {
   const tokenHash = hashUserSessionToken(token);
 
   try {
-    await persistentStorage.deleteAuthSession(tokenHash);
+    const storage = persistentStorage;
+    if (!storage) throw new Error('Authentication storage is unavailable.');
+    await storage.deleteAuthSession(tokenHash);
     userSessions.delete(tokenHash);
     clearSessionCookies(res);
 
@@ -2516,11 +2522,13 @@ app.get('/api/user/me', async (req, res) => {
   const tokenHash = hashUserSessionToken(token);
 
   try {
-    const session = await persistentStorage.getAuthSession(tokenHash);
+    const storage = persistentStorage;
+    if (!storage) throw new Error('Authentication storage is unavailable.');
+    const session = await storage.getAuthSession(tokenHash);
 
     if (!session || session.expiresAt <= Date.now()) {
       if (session) {
-        await persistentStorage.deleteAuthSession(tokenHash);
+        await storage.deleteAuthSession(tokenHash);
       }
 
       userSessions.delete(tokenHash);
@@ -2539,12 +2547,12 @@ app.get('/api/user/me', async (req, res) => {
       });
     }
 
-    const user = await persistentStorage.getAuthUserById(
+    const user = await storage.getAuthUserById(
       session.accountId
     );
 
     if (!user) {
-      await persistentStorage.deleteAuthSession(tokenHash);
+      await storage.deleteAuthSession(tokenHash);
       userSessions.delete(tokenHash);
 
       return res.status(401).json({
@@ -3698,7 +3706,7 @@ app.post('/api/user/verify-email-otp', async (req, res) => {
 
     const { sessionToken, expiresAt } = await issueUserSession(user);
     const sessionTokenHash = hashUserSessionToken(sessionToken);
-    await persistentStorage.createAuthSession(sessionTokenHash, user.id, user.id, expiresAt);
+    await storage.createAuthSession(sessionTokenHash, user.id, user.id, expiresAt);
     setSessionCookies(res, sessionToken);
 
     return res.json({

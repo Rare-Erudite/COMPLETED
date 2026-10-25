@@ -3507,10 +3507,10 @@ function CleanChatWorkspaceView({
           ];
           const store = loadLocalConversationsStore();
           const currentConv: Conversation = store[targetConvId] || {
-  id: targetConvId,
-  title: data.conversationTitle || convTitle || 'New Chat',
-  created_at: new Date().toISOString(),
-};
+            id: targetConvId,
+            title: data.conversationTitle || convTitle || 'New Chat',
+            created_at: new Date().toISOString(),
+          };
           if (data.conversationTitle) {
             currentConv.title = data.conversationTitle;
           }

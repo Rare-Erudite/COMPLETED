@@ -55,6 +55,8 @@ export function ChatView() {
         setConversationId(activeConversationId);
       }
 
+      if (!activeConversationId) throw new Error('Could not identify the active conversation.');
+
       const res = await apiFetch(`/api/conversations/${encodeURIComponent(activeConversationId)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
