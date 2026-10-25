@@ -4763,12 +4763,14 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const frontendDist = path.resolve(PROJECT_ROOT, 'dist');
-    if (!fs.existsSync(path.join(frontendDist, 'index.html'))) {
+    const vercelFrontend = path.resolve(PROJECT_ROOT, 'public');
+    const frontendRoot = process.env.VERCEL === '1' ? vercelFrontend : frontendDist;
+    if (!fs.existsSync(path.join(frontendRoot, 'index.html'))) {
       throw new Error('Production frontend build is missing. Run "npm run build" before "npm start".');
     }
-    app.use(express.static(frontendDist));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(frontendDist, 'index.html'));
+    app.use(express.static(frontendRoot));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(frontendRoot, 'index.html'));
     });
   }
 

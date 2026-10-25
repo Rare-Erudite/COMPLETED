@@ -1,6 +1,12 @@
 node_modules/
 build/
 dist/
+/public/assets/
+/public/index.html
+/public/manifest.webmanifest
+/public/sw.js
+/public/workbox-*.js
+/public/registerSW.js
 coverage/
 .DS_Store
 *.log

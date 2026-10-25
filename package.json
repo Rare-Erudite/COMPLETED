@@ -10,7 +10,7 @@
     "dev": "tsx server.ts",
     "start": "node server-build/server.js --production",
     "build": "npm run build:web && npm run build:server",
-    "build:web": "vite build",
+    "build:web": "vite build && node scripts/sync_vercel_static.mjs",
     "build:server": "node scripts/build_server.mjs",
     "preview": "vite preview",
     "migrate": "tsx scripts/migrate_database.ts",
