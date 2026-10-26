@@ -9,7 +9,7 @@ import { GoogleGenAI } from '@google/genai';
 import { MemoryStore, ConversationStore } from './src/server/storage/MemoryStore.js';
 import { CheckpointStore } from './src/server/storage/CheckpointStore.js';
 import { TrajectoryStore } from './src/server/storage/TrajectoryStore.js';
-import { UpdateStore, UpdateChannel } from './src/server/storage/UpdateStore.js';
+import { UpdateStore, UpdateChannel, AppUpdate } from './src/server/storage/UpdateStore.js';
 import { DurableStateStore } from './src/server/storage/DurableStateStore.js';
 import { PersistentJsonStore } from './src/server/storage/PersistentJsonStore.js';
 import { DocumentStore } from './src/server/storage/DocumentStore.js';
@@ -1457,11 +1457,15 @@ app.post('/api/updates/publish', async (req, res) => {
 
   const {
     version,
-    channel = 'public',
+    channel,
     title,
     description,
     changelog,
     mandatory,
+    packageUrl,
+    platform,
+    artifactSizeBytes,
+    sha256,
   } = req.body;
 
   if (!version || !title) {
@@ -1469,24 +1473,34 @@ app.post('/api/updates/publish', async (req, res) => {
       error: { message: 'Version and title are required.' },
     });
   }
+  if (channel !== 'developer' && channel !== 'public') {
+    return res.status(400).json({ error: { message: 'Select the release channel explicitly.' } });
+  }
 
-  const targetChannel: UpdateChannel =
-    channel === 'developer' ? 'developer' : 'public';
+  const targetChannel: UpdateChannel = channel;
 
-  const newUpdate = updateStore.publish({
-    version,
-    channel: targetChannel,
-    title,
-    description: description || 'New software update released.',
-    changelog: Array.isArray(changelog)
-      ? changelog
-      : [
-          changelog ||
-            'System optimizations and performance updates.',
-        ],
-    mandatory: Boolean(mandatory),
-    publishedBy: 'Developer Space (OTA)',
-  });
+  let newUpdate: AppUpdate;
+  try {
+    newUpdate = updateStore.publish({
+      version,
+      channel: targetChannel,
+      title,
+      description: description || 'New software update released.',
+      changelog: Array.isArray(changelog)
+        ? changelog
+        : [changelog || 'System optimizations and performance updates.'],
+      mandatory: Boolean(mandatory),
+      publishedBy: 'Developer Space (OTA)',
+      packageUrl,
+      platform,
+      artifactSizeBytes: Number(artifactSizeBytes),
+      sha256,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      error: { message: error instanceof Error ? error.message : 'Release artifact metadata is invalid.' },
+    });
+  }
 
   auditLog.unshift({
     id: `aud_${Date.now()}`,
@@ -3985,19 +3999,11 @@ app.post('/api/research/search', async (req, res) => {
 
 // Updates Apply Endpoint
 app.post('/api/updates/apply', (req, res) => {
-  const { version } = req.body;
-  auditLog.unshift({
-    id: `aud_${Date.now()}`,
-    timestamp: new Date().toISOString(),
-    actor: 'user',
-    action: 'release_update_applied',
-    kind: 'dev_privileged',
-    details: `Applied update v${version || 'latest'}. Verification completed.`,
-  });
-  res.json({
-    success: true,
-    installedVersion: version || '1.0.0',
-    message: `RARE update ${version ? 'v' + version : ''} verified and active.`,
+  return res.status(501).json({
+    success: false,
+    error: {
+      message: 'This endpoint cannot install or activate an application update. Use the platform-specific updater and report its verified result.',
+    },
   });
 });
 

@@ -6251,7 +6251,11 @@ function DeveloperSpaceView({
   // OTA Updates State
   const [updatesList, setUpdatesList] = useState<any[]>([]);
   const [newUpdateVersion, setNewUpdateVersion] = useState('');
-  const [newUpdateChannel, setNewUpdateChannel] = useState<'public' | 'developer'>('public');
+  const [newUpdateChannel, setNewUpdateChannel] = useState<'public' | 'developer'>('developer');
+  const [newUpdatePackageUrl, setNewUpdatePackageUrl] = useState('');
+  const [newUpdatePlatform, setNewUpdatePlatform] = useState<'web' | 'android' | 'windows'>('android');
+  const [newUpdateArtifactSize, setNewUpdateArtifactSize] = useState('');
+  const [newUpdateSha256, setNewUpdateSha256] = useState('');
   const [newUpdateTitle, setNewUpdateTitle] = useState('');
   const [newUpdateDescription, setNewUpdateDescription] = useState('');
   const [newUpdateChangelog, setNewUpdateChangelog] = useState('');
@@ -6311,6 +6315,10 @@ function DeveloperSpaceView({
         title: newUpdateTitle.trim(),
         description: newUpdateDescription.trim() || 'Software build update released.',
         changelog: changelogLines.length > 0 ? changelogLines : ['General performance improvements and fixes.'],
+        packageUrl: newUpdatePackageUrl.trim(),
+        platform: newUpdatePlatform,
+        artifactSizeBytes: Number(newUpdateArtifactSize),
+        sha256: newUpdateSha256.trim(),
       });
       if (res?.success) {
         setPublishSuccess(`Update v${res.update.version} published successfully to [${newUpdateChannel.toUpperCase()}] channel!`);
@@ -6319,6 +6327,9 @@ function DeveloperSpaceView({
         setNewUpdateTitle('');
         setNewUpdateDescription('');
         setNewUpdateChangelog('');
+        setNewUpdatePackageUrl('');
+        setNewUpdateArtifactSize('');
+        setNewUpdateSha256('');
         loadDevStatus();
       }
     } finally {
@@ -6720,13 +6731,60 @@ function DeveloperSpaceView({
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-[11px] font-semibold text-slate-300">RARE GitHub Release Artifact URL</label>
+                  <input
+                    type="url"
+                    value={newUpdatePackageUrl}
+                    onChange={(e) => setNewUpdatePackageUrl(e.target.value)}
+                    placeholder="https://github.com/Rare-Erudite/COMPLETED/releases/download/.../artifact.apk"
+                    className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3 py-2 text-xs focus:outline-none font-mono`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Platform</label>
+                  <select
+                    value={newUpdatePlatform}
+                    onChange={(e) => setNewUpdatePlatform(e.target.value as 'web' | 'android' | 'windows')}
+                    className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3 py-2 text-xs focus:outline-none`}
+                  >
+                    <option value="android">Android APK</option>
+                    <option value="windows">Windows package</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Artifact size (bytes)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={512 * 1024 * 1024}
+                    value={newUpdateArtifactSize}
+                    onChange={(e) => setNewUpdateArtifactSize(e.target.value)}
+                    placeholder="Measured file size"
+                    className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3 py-2 text-xs focus:outline-none font-mono`}
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-[11px] font-semibold text-slate-300">Artifact SHA-256</label>
+                  <input
+                    type="text"
+                    value={newUpdateSha256}
+                    onChange={(e) => setNewUpdateSha256(e.target.value)}
+                    placeholder="64 hexadecimal characters"
+                    maxLength={64}
+                    className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3 py-2 text-xs focus:outline-none font-mono`}
+                  />
+                </div>
+              </div>
+
               <div className="flex items-center justify-between pt-1">
                 <p className={`text-[11px] ${t.textDim}`}>
-                  Clients on the selected channel will see the update popup on app launch.
+                  Publish a real package with measured size and SHA-256. Public releases require selecting Public explicitly.
                 </p>
                 <button
                   type="submit"
-                  disabled={publishingUpdate || !newUpdateVersion.trim() || !newUpdateTitle.trim()}
+                  disabled={publishingUpdate || !newUpdateVersion.trim() || !newUpdateTitle.trim() || !newUpdatePackageUrl.trim() || !newUpdateArtifactSize.trim() || !/^[a-f0-9]{64}$/i.test(newUpdateSha256.trim())}
                   className={`px-5 py-2.5 rounded-xl ${
                     newUpdateChannel === 'developer'
                       ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold'
@@ -6864,26 +6922,16 @@ function DeveloperSpaceView({
       {devTab === 'diagnostics' && (
         <div className={`${t.card} border ${t.cardBorder} rounded-xl p-5 space-y-4`}>
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold">Test Suite Verification Matrix</h3>
-            <span className="text-xs text-emerald-400 font-bold">32/32 Passed (97.4% Coverage)</span>
+            <h3 className="text-sm font-bold">Test Suite Verification</h3>
+            <span className="text-xs text-amber-300 font-bold">No live result</span>
           </div>
-          <div className="divide-y divide-white/5 text-xs font-mono">
-            {[
-              'Multi-Agent Orchestration & Inter-Agent Messaging (44ms)',
-              'Developer Space Authentication Gate (12ms)',
-              'Contextual Audio Quotation Verification (38ms)',
-              'Single-writer lock concurrency & rollback safety (22ms)',
-              'Universal Build Engine toolchain detection (51ms)',
-              'Theme semantic design tokens - 6 palettes (18ms)',
-            ].map((chk, i) => (
-              <div key={i} className="py-2.5 flex items-center justify-between">
-                <span className="flex items-center space-x-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>{chk}</span>
-                </span>
-                <span className="text-emerald-400 font-bold">PASS</span>
-              </div>
-            ))}
+          <div className={`rounded-xl ${t.cardSub} border ${t.cardBorder} p-4 space-y-2`}>
+            <p className={`text-xs ${t.textMuted}`}>
+              This screen does not run repository tests. No test result or coverage value is available from the deployed app.
+            </p>
+            <p className="text-[11px] text-slate-400 font-mono">
+              Run the repository test suite on the build host and review its recorded exit status.
+            </p>
           </div>
         </div>
       )}

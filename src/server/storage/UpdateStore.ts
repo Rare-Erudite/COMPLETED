@@ -18,6 +18,9 @@ export interface AppUpdate {
   mandatory?: boolean;
   packageUrl?: string;
   apkSize?: string;
+  artifactSizeBytes?: number;
+  sha256?: string;
+  platform?: 'web' | 'android' | 'windows';
   publishedBy: string;
   targetRoles: ('all' | 'developer')[];
 }
@@ -34,66 +37,21 @@ export class UpdateStore {
 
   public async initializePersistence(persistence: PersistentJsonStore): Promise<void> {
     this.persistence = persistence;
-    this.updates = await persistence.getOrSeed('updates', this.updates);
+    const persisted = await persistence.getOrSeed('updates', this.updates);
+    this.updates = Array.isArray(persisted) ? persisted.filter(isValidStoredUpdate) : [];
   }
 
   private init() {
     try {
       const dir = path.dirname(this.filePath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       if (fs.existsSync(this.filePath)) {
         const raw = fs.readFileSync(this.filePath, 'utf-8');
-        this.updates = JSON.parse(raw);
-      } else {
-        // Seed initial releases
-        this.updates = [
-          {
-            id: 'upd_100_stable',
-            version: '1.0.0',
-            releaseDate: new Date(Date.now() - 86400000 * 2).toISOString(),
-            channel: 'public',
-            title: 'RARE Core Intelligence 1.0 General Release',
-            description: 'Official release of RARE with native offline cognitive engine, persistent cross-chat memory, VisionCraft image synthesis, and multi-agent builder.',
-            changelog: [
-              'Zero external API key requirement for general conversations and reasoning',
-              'Integrated 12 autonomous tool primitives with audit logging and sandbox safety',
-              'Persistent cross-chat memory and customizable appearance themes',
-              'Standalone APK package ready for Android installation and offline sharing',
-              'Universal PWA support with WebAPK launcher icon and offline cache'
-            ],
-            mandatory: false,
-            packageUrl: '/api/download/apk',
-            apkSize: '24.8 MB',
-            publishedBy: 'RARE Core Engineering',
-            targetRoles: ['all']
-          },
-          {
-            id: 'upd_110_dev_preview',
-            version: '1.1.0-dev',
-            releaseDate: new Date(Date.now() - 3600000 * 4).toISOString(),
-            channel: 'developer',
-            title: 'Developer Preview: Autonomous Self-Development & Live OTA Push',
-            description: 'Developer-only early access release featuring privileged self-development engine telemetry, real-time OTA update deployment, and atomic rollback snapshots.',
-            changelog: [
-              'Privileged Developer Space OTA push system: publish builds to Public or Developer channels',
-              'Self-development trajectory dataset inspection and automated verification loops',
-              'Fine-grained benchmark evaluation suite across 6 empirical cognitive vectors',
-              'Dual-channel distribution router ensuring unreleased features remain restricted to developers'
-            ],
-            mandatory: false,
-            packageUrl: '/api/download/apk',
-            apkSize: '25.2 MB',
-            publishedBy: 'Self-Development Engine',
-            targetRoles: ['developer']
-          }
-        ];
-        this.persist();
+        const parsed = JSON.parse(raw);
+        this.updates = Array.isArray(parsed) ? parsed.filter(isValidStoredUpdate) : [];
       }
     } catch (err) {
-      console.warn('[UpdateStore] Init fallback:', err);
+      console.warn('[UpdateStore] Could not load release metadata; starting with no releases.');
       this.updates = [];
     }
   }
@@ -108,12 +66,13 @@ export class UpdateStore {
   }
 
   public getAll(channel?: UpdateChannel): AppUpdate[] {
+    const published = this.updates.filter(isValidStoredUpdate);
     if (!channel || channel === 'developer') {
       // Developers can see both developer and public updates
-      return [...this.updates].sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime());
+      return [...published].sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime());
     }
     // Public users only see public updates
-    return this.updates
+    return published
       .filter((u) => u.channel === 'public')
       .sort((a, b) => new Date(b.releaseDate).getTime() - new Date(a.releaseDate).getTime());
   }
@@ -161,7 +120,35 @@ export class UpdateStore {
     changelog: string[];
     mandatory?: boolean;
     publishedBy?: string;
+    packageUrl: string;
+    platform: 'web' | 'android' | 'windows';
+    artifactSizeBytes: number;
+    sha256: string;
   }): AppUpdate {
+    const packageUrl = new URL(data.packageUrl);
+    if (
+      packageUrl.protocol !== 'https:' ||
+      packageUrl.hostname !== 'github.com' ||
+      !packageUrl.pathname.startsWith('/Rare-Erudite/COMPLETED/releases/download/') ||
+      packageUrl.username || packageUrl.password
+    ) {
+      throw new Error('Release artifacts must use the configured RARE GitHub Releases repository over HTTPS.');
+    }
+    if (!Number.isSafeInteger(data.artifactSizeBytes) || data.artifactSizeBytes <= 0) {
+      throw new Error('A release must include the verified artifact size in bytes.');
+    }
+    if (data.artifactSizeBytes > 512 * 1024 * 1024) {
+      throw new Error('Release artifacts larger than 512 MiB cannot be verified by this client.');
+    }
+    if (!/^[a-f0-9]{64}$/i.test(data.sha256)) {
+      throw new Error('A release must include the artifact SHA-256 checksum.');
+    }
+    if (!['web', 'android', 'windows'].includes(data.platform)) {
+      throw new Error('A supported release platform is required.');
+    }
+    if (!data.version.trim() || !data.title.trim() || !data.description.trim()) {
+      throw new Error('Release version, title, and description are required.');
+    }
     const id = `upd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const newUpdate: AppUpdate = {
       id,
@@ -174,8 +161,11 @@ export class UpdateStore {
         ? data.changelog.map((c) => String(c).trim()).filter(Boolean)
         : ['General performance improvements and system optimizations.'],
       mandatory: Boolean(data.mandatory),
-      packageUrl: '/api/download/apk',
-      apkSize: '25.0 MB',
+      packageUrl: packageUrl.toString(),
+      platform: data.platform,
+      artifactSizeBytes: data.artifactSizeBytes,
+      apkSize: `${(data.artifactSizeBytes / (1024 * 1024)).toFixed(2)} MB`,
+      sha256: data.sha256.toLowerCase(),
       publishedBy: data.publishedBy || 'Developer Space',
       targetRoles: data.channel === 'developer' ? ['developer'] : ['all'],
     };
@@ -217,5 +207,23 @@ export class UpdateStore {
     // If numerical numbers are identical, but candidate has dev/preview and current does not,
     // or candidate is explicitly different string
     return candidate !== current;
+  }
+}
+
+function isValidStoredUpdate(value: unknown): value is AppUpdate {
+  if (!value || typeof value !== 'object') return false;
+  const update = value as Partial<AppUpdate>;
+  if (!update.packageUrl || !update.platform || !update.artifactSizeBytes || !update.sha256) return false;
+  try {
+    const url = new URL(update.packageUrl);
+    return url.protocol === 'https:' &&
+      url.hostname === 'github.com' &&
+      url.pathname.startsWith('/Rare-Erudite/COMPLETED/releases/download/') &&
+      Number.isSafeInteger(update.artifactSizeBytes) &&
+      update.artifactSizeBytes <= 512 * 1024 * 1024 &&
+      /^[a-f0-9]{64}$/i.test(update.sha256) &&
+      ['web', 'android', 'windows'].includes(update.platform);
+  } catch {
+    return false;
   }
 }
