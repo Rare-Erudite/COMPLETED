@@ -312,5 +312,5 @@ export async function runAuthenticationSecurityTests() {
     assert.ok(sendData.error.includes('EMAIL_PROVIDER_API_KEY'));
   }
 
-  console.log('\u2713 Authentication & Verification Code Security tests passed.');
+  console.log('✓ Authentication & Verification Code Security tests passed.');
 }

@@ -544,7 +544,7 @@ export async function testBackendConnection(url: string): Promise<BackendHealthT
         latencyMs,
         success: true,
         message: `${data.name || 'RARE Server'} is connected and healthy.`,
-        responseDetails: `HTTP ${response.status} \u00b7 Latency: ${latencyMs} ms`,
+        responseDetails: `HTTP ${response.status} · Latency: ${latencyMs} ms`,
       };
     }
     updateConnectionState(false, 'Unhealthy response payload');
@@ -710,7 +710,7 @@ async function executeStandaloneLocalRoute(url: string, options?: RequestInit): 
           {
             id: `msg_${Date.now()}`,
             role: 'assistant',
-            content: `Hello! I am ${assistantName} \u2014 your personal AI companion and software builder.\n\nWhat would you like to explore today?\n\u2022 Chat naturally about any topic \u2014 my permanent memory retains everything we discuss\n\u2022 Research live weather, news, science, or web topics\n\u2022 Type to build a project (APK, EXE, or Web bundle)\n\u2022 Schedule an alarm, reminder, or recurring automation`,
+            content: `Hello! I am ${assistantName} — your personal AI companion and software builder.\n\nWhat would you like to explore today?\n• Chat naturally about any topic — my permanent memory retains everything we discuss\n• Research live weather, news, science, or web topics\n• Type to build a project (APK, EXE, or Web bundle)\n• Schedule an alarm, reminder, or recurring automation`,
             timestamp: new Date().toISOString(),
           },
         ],
@@ -892,10 +892,10 @@ async function executeStandaloneLocalRoute(url: string, options?: RequestInit): 
         currentStage: 'Verified & Packaged',
         userProgressMessage: 'All specialist agents completed build and verification checks.',
         agents: [
-          { id: 'ag_1', name: 'Alpha \u2014 System Architect', status: 'completed', progressPercent: 100, currentTask: 'Architecture verified' },
-          { id: 'ag_2', name: 'Beta \u2014 Core Engineer', status: 'completed', progressPercent: 100, currentTask: 'Modules compiled' },
-          { id: 'ag_3', name: 'Gamma \u2014 UI Specialist', status: 'completed', progressPercent: 100, currentTask: 'Responsive interface ready' },
-          { id: 'ag_4', name: 'Delta \u2014 QA Verifier', status: 'completed', progressPercent: 100, currentTask: 'Zero-defect gate passed' },
+          { id: 'ag_1', name: 'Alpha — System Architect', status: 'completed', progressPercent: 100, currentTask: 'Architecture verified' },
+          { id: 'ag_2', name: 'Beta — Core Engineer', status: 'completed', progressPercent: 100, currentTask: 'Modules compiled' },
+          { id: 'ag_3', name: 'Gamma — UI Specialist', status: 'completed', progressPercent: 100, currentTask: 'Responsive interface ready' },
+          { id: 'ag_4', name: 'Delta — QA Verifier', status: 'completed', progressPercent: 100, currentTask: 'Zero-defect gate passed' },
         ],
         events: [
           { id: 'ev_1', time: new Date().toLocaleTimeString(), agentName: 'System Architect', message: 'Designed standalone modular blueprint.' },
