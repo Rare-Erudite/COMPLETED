@@ -1,6 +1,43 @@
 import { Pool } from 'pg';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
+
+/**
+ * Directory used for the file-backed JSON fallback store.
+ *
+ * Order of precedence:
+ *  1. RARE_APP_ROOT — explicit operator choice, always honoured.
+ *  2. Vercel's writable temp directory — the deployment filesystem is read-only
+ *     except for os.tmpdir(), so writing next to process.cwd() would fail with
+ *     EROFS/EACCES and turn every request into a 500.
+ *  3. process.cwd() — normal self-hosted behaviour, unchanged.
+ */
+function resolveWritableAppRoot(): string {
+  const configured = process.env.RARE_APP_ROOT?.trim();
+  if (configured) return configured;
+  if (process.env.VERCEL) return os.tmpdir();
+  return process.cwd();
+}
+
+/**
+ * True only when the operator has EXPLICITLY opted in to ephemeral local storage.
+ *
+ * Deliberately independent of NODE_ENV: managed platforms (Vercel, Render, Fly)
+ * always set NODE_ENV=production, so gating on it would make the documented
+ * RARE_ALLOW_LOCAL_STORAGE_FALLBACK flag impossible to use there. The default
+ * remains fail-closed — without this flag, a missing database still throws.
+ *
+ * The `--production` CLI flag stays an absolute block: it is an explicit request
+ * for a production-grade process and must never fall back to local storage.
+ */
+export function isLocalStorageFallbackExplicitlyAllowed(): boolean {
+  if (process.argv.includes('--production')) return false;
+  return process.env.RARE_ALLOW_LOCAL_STORAGE_FALLBACK === 'true';
+}
+
+/** Emit the production opt-in warning once per process, not once per request. */
+let localFallbackWarningEmitted = false;
 
 export interface StoredSnapshotFile {
   relativePath: string;
@@ -52,7 +89,7 @@ export class PersistentJsonStore {
   private readonly localDeveloperCredentials = new Map<string, string>();
   private readonly localDeveloperGrants = new Map<string, number>();
   private readonly fallbackPath = path.resolve(
-    process.env.RARE_APP_ROOT || process.cwd(),
+    resolveWritableAppRoot(),
     '.rare',
     'state',
     'persistent-documents.json',
@@ -393,14 +430,15 @@ export class PersistentJsonStore {
   }
   /**
    * Authentication and session data must use PostgreSQL in production.
-   * Local persistence is permitted only when explicitly enabled in
-   * development and never when --production is present.
+   *
+   * Local persistence is never used *silently*: it requires the operator to set
+   * RARE_ALLOW_LOCAL_STORAGE_FALLBACK=true explicitly. The `--production` CLI
+   * flag remains an absolute block, because it is an explicit request for a
+   * production-grade process. NODE_ENV=production alone no longer vetoes the
+   * opt-in, because managed platforms (Vercel, Render, Fly) always set it and
+   * would otherwise make the documented flag impossible to use.
    */
   public requireReadyPostgres(): Pool | null {
-    const isProduction =
-      process.env.NODE_ENV === 'production' ||
-      process.argv.includes('--production');
-
     if (
       this.pool &&
       this.databaseStatus.reachable &&
@@ -409,18 +447,27 @@ export class PersistentJsonStore {
       return this.pool;
     }
 
-    const allowLocalFallback =
-      !isProduction &&
-      !process.argv.includes('--production') &&
-      process.env.RARE_ALLOW_LOCAL_STORAGE_FALLBACK === 'true';
+    const allowLocalFallback = isLocalStorageFallbackExplicitlyAllowed();
 
     if (allowLocalFallback) {
+      if (process.env.NODE_ENV === 'production' && !localFallbackWarningEmitted) {
+        localFallbackWarningEmitted = true;
+        console.warn(
+          '[AI Studio] RARE_ALLOW_LOCAL_STORAGE_FALLBACK=true is active in a ' +
+          'production process. Authentication and session data will use ' +
+          'ephemeral local storage instead of PostgreSQL. This is an explicit ' +
+          'operator opt-in for single-instance demos only; configure ' +
+          'DATABASE_URL for durable, multi-instance deployments.'
+        );
+      }
       return null;
     }
 
     throw new Error(
       'Authentication storage requires a reachable PostgreSQL database ' +
       'with rare_users and rare_sessions installed. ' +
+      'Set DATABASE_URL, or set RARE_ALLOW_LOCAL_STORAGE_FALLBACK=true to ' +
+      'explicitly accept ephemeral single-instance local storage. ' +
       (this.databaseStatus.error || '')
     );
   }
