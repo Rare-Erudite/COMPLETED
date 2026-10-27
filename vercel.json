@@ -5,7 +5,7 @@
   "functions": {
     "server.ts": {
       "maxDuration": 60,
-      "includeFiles": "public/index.html"
+      "includeFiles": "public/**"
     }
   }
 }
