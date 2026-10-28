@@ -39,6 +39,9 @@ export async function runServerlessFrontendAvailabilityTests() {
   process.env.NODE_ENV = 'production';
   delete process.env.RARE_ALLOWED_ORIGINS;
 
+  // A boot failure must be *handled*, not left as an unhandled rejection: an
+  // unhandled rejection at module scope kills the Node process, which would
+  // take the SPA down with the API and reintroduce "Cannot GET /".
   const unhandled: unknown[] = [];
   const onUnhandled = (reason: unknown) => unhandled.push(reason);
   process.on('unhandledRejection', onUnhandled);
@@ -92,7 +95,11 @@ export async function runServerlessFrontendAvailabilityTests() {
     }
   }
 
-  check('boot failure is reported, not silently swallowed', unhandled.length > 0);
+  check(
+    'boot failure is handled, not left as an unhandled rejection',
+    unhandled.length === 0,
+    `saw ${unhandled.length} unhandled rejection(s)`,
+  );
 
   console.log(`  → ${pass} passed, ${fail} failed\n`);
   if (fail > 0) {

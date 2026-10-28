@@ -4864,7 +4864,15 @@ if (process.env.VERCEL === '1') {
       res.sendFile(path.join(frontendRoot, 'index.html'));
     });
   }
+  // The rejection must be handled here: an unhandled rejection at module scope
+  // terminates the Node process, which would take the SPA down with the API and
+  // reintroduce the very failure this block exists to prevent. Attach a no-op
+  // handler rather than swallowing the error, so the /api middleware can still
+  // await this promise and turn the rejection into a 503 (fail closed).
   serverInitialization = startServer();
+  serverInitialization.catch((error) => {
+    console.error('[RARE] Startup failed:', error?.message || error);
+  });
 } else {
   startServer().catch((error) => {
     console.error('[RARE] Startup failed:', error?.message || error);
