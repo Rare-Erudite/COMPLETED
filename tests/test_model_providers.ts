@@ -19,8 +19,13 @@ export async function runModelProviderTests() {
 
   const originalGeminiKey = process.env.GEMINI_API_KEY;
   process.env.GEMINI_API_KEY = 'test-gemini-key';
+  // The provider's supported-model set is env-driven (GEMINI_MODEL /
+  // GEMINI_MODEL_LITE) because Google retires model ids. The mock must return
+  // the model the provider is actually configured for, not a hardcoded id —
+  // otherwise this test fails the day a model is retired, for the wrong reason.
+  const configuredModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
   const reachableGemini = new GeminiCoprocessorProvider(async () => new Response(JSON.stringify({
-    models: [{ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }],
+    models: [{ name: `models/${configuredModel}`, supportedGenerationMethods: ['generateContent'] }],
   }), { status: 200 }));
   assert.equal(await reachableGemini.isAvailable(), true, 'Gemini is reachable only when a supported model is returned');
   assert.equal((await reachableGemini.getInfo()).is_configured, true, 'Gemini info distinguishes key configuration');
