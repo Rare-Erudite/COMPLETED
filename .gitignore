@@ -16,3 +16,4 @@ data/models_cache/
 
 # Build output — never commit; `npm start` rebuilds it.
 server-build/
+.vercel
