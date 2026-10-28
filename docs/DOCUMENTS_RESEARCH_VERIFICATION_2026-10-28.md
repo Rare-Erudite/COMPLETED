@@ -1,365 +1,293 @@
-# RARE Documents / Research — Implementation & Verification Report
+# RARE Documents & Research — Live Verification Report
 
 **Date:** 2026-10-28
 **Branch:** `New-Fixes-by-Erudite`
-**Supabase project:** `moxtuqgfhucmnblxensw` (`https://moxtuqgfhucmnblxensw.supabase.co`)
+**Head commit:** `9695929` (pushed, verified via `git ls-remote`)
+**Supabase project:** `moxtuqgfhucmnblxensw` (eu-north-1)
+**Preview deployment:** https://rareproject-pf2ywtv6h-mypremierai-2827.vercel.app
+**Production:** untouched (not promoted)
 
-This report records only what was actually executed in this pass. Where a check
-could not run, it is labelled **BLOCKED** and is not counted as a pass.
-
----
-
-## 1. Headline
-
-The Documents and Research workspaces are now **wired end to end** and were
-**live-tested against a real PostgreSQL 15 instance** — migrations applied,
-documents written through the HTTP API, rows confirmed in the database, search
-and cross-user isolation exercised.
-
-**Live testing against the Supabase project itself is BLOCKED.** The project URL
-was supplied, but **no anon key, no service-role key, and no `DATABASE_URL`
-connection string were provided**. Nothing in this report claims a successful
-authenticated Supabase read or write, because none was performed.
+Every claim below is backed by a command that was actually run. Where something
+could not be verified, it is listed under **Still blocked** rather than assumed.
 
 ---
 
-## 2. What was implemented
+## 1. Supabase live persistence — UNBLOCKED
 
-### 2.1 Shared content engine (`src/server/content/`)
+### Connection
 
-One pipeline for every source, so Documents and Research cannot diverge:
+| Attempt | Result |
+|---|---|
+| `psql` port 6543, `sslmode=require` | **works** (PostgreSQL 17.11) |
+| `pg` + `sslmode=require` in URL | **fails** — `self-signed certificate in certificate chain` |
+| `pg` + `uselibpqcompat=true` | **rejected** — silently yields `ssl=false` (unencrypted) |
+| `pg` + explicit `ssl:{rejectUnauthorized:false}` | **works, encrypted** |
 
-| File | Role |
-| --- | --- |
-| `SafeFetcher.ts` | SSRF-safe retrieval: HTTPS-only, DNS-pinned, private-range rejection, redirect revalidation, byte caps |
-| `ContentSniffer.ts` | Identifies the payload from **magic bytes**, not the filename or declared MIME |
-| `Extractors.ts` | 20+ adapters: text, Markdown, code, HTML, JSON, YAML, CSV/TSV, XML, PDF (text layer + OCR fallback), DOCX, ODT, RTF, XLSX, PPTX, EPUB, ZIP, GZIP, image OCR, EML, subtitles |
-| `ContentEngine.ts` | Orchestrates accept → identify → retrieve → extract → fall back → normalise → record provenance; plus page/section-aware chunking |
-| `SearchIndex.ts` | Per-owner BM25 + exact-phrase index, rebuilt from persisted documents |
+**Root cause.** `pg-connection-string` v2 maps `sslmode=require` to
+`verify-full`, demanding a chain verifiable against Node's bundled CA store.
+libpq (and therefore `psql`) treats `require` as "encrypt, do not verify".
+Supabase's chain terminates at *Supabase Root 2021 CA*, which is not in Node's
+bundle — so the identical URL worked in `psql` and failed in Node.
 
-### 2.2 Services
+**Fix** (`src/server/storage/pgSsl.ts`, commit `91eff0f`): `resolvePgSsl()`
+keeps the connection encrypted and skips chain verification **only** for
+`*.supabase.com` / `*.supabase.co` hosts, matching libpq's `require` semantics.
+`RARE_DB_SSL_STRICT=true` restores full verification. Applied to both the
+application pool and the migration runner.
 
-- **`DocumentsService.ts`** — library semantics on top of the owner-scoped store:
-  path validation, bounded version history (5 revisions), provenance
-  (`sourceUrl`, `finalUrl`, `kind`, `method`, `ocr`, `pages`, `warnings`),
-  URL import, buffer import, multi-URL import with dedupe and per-item outcomes,
-  convert, rename, delete, reindex.
-- **`DeepResearchEngine.ts`** — multi-provider discovery, full-text retrieval,
-  claim extraction, corroboration, cited report composition, honest
-  `providerErrors` / `unreadable` / `limitations` reporting.
-- **`ResearchProviders.ts`** — Wikipedia, Crossref, OpenAlex, arXiv, GitHub,
-  Open Library, DuckDuckGo, each with an `available()` probe.
+Port **6543 (transaction pooling) was used throughout and worked** — no retry on
+5432 was needed. `PersistentJsonStore` uses transaction-local
+`SELECT set_config('rare.user_id', …)` inside explicit transactions, which is
+pooler-safe.
 
-### 2.3 Routes wired in `server.ts`
+### Migrations
 
-All behind the existing session guard (`res.locals.rareUserId`), so every read
-and write is owner-scoped:
+`npm run migrate` → applied `20261024_rare_user_state`, `20261026_*`, and the
+new `20261028_rls_role_grants`. Idempotent (checksum-tracked).
 
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/documents` | List the owner's library |
-| `GET` | `/api/documents/capabilities` | Which extractors are available in this runtime |
-| `GET` | `/api/documents/*` | Read one document |
-| `POST` | `/api/documents` | Save text · import URL · import uploaded file |
-| `POST` | `/api/documents/import-many` | Multi-URL import, dedupe, partial failure |
-| `POST` | `/api/documents/preview-url` | Read a URL without saving |
-| `POST` | `/api/documents/rename` | Rename |
-| `DELETE` | `/api/documents/*` | Delete + evict from index |
-| `POST` | `/api/documents/reindex` | Rebuild the search index |
-| `POST` | `/api/documents/convert` | Convert between text formats |
-| `POST` | `/api/documents/transcribe` | Audio → transcript document |
-| `GET` | `/api/research/providers` | Provider availability |
-| `GET` | `/api/research/items` | Saved research projects |
-| `GET` | `/api/research/items/:id` | One research project |
-| `DELETE` | `/api/research/items/:id` | Delete a research project |
-| `POST` | `/api/research/search` | Deep research run |
-| `GET` | `/api/search` | Unified search across documents, transcripts, research |
+**Pre-existing data preserved:** `rare_persistent_documents` count = **16**
+before and after every migration run.
 
-`DocumentsService` is constructed in `startServer()` against the same
-`PersistentJsonStore` the rest of the app uses, so persistence semantics are
-identical to conversations, memories and projects.
+### Schema & RLS (queried from `pg_class` / `pg_policies`)
 
----
+| Table | RLS | Forced |
+|---|---|---|
+| `rare_user_state` | on | **yes** |
+| `rare_persistent_documents` | on | yes |
+| `rare_users` | on | yes |
+| `rare_sessions` | on | yes |
 
-## 3. Verification actually performed
-
-### 3.1 Typecheck
+### Persistence proof (local server, `DATABASE_URL` → Supabase)
 
 ```
-npx tsc --noEmit   →  exit 0
+POST /api/documents            → 201
+GET  /api/documents            → 200
+GET  /api/documents/<path>     → 200
+GET  /api/search?q=ZXQ-7731    → 200, hit
+--- server killed, restarted ---
+GET  /api/documents/<path>     → 200  (content intact)
+GET  /api/search?q=ZXQ-7731    → 200, hit
 ```
 
-### 3.2 Migrations against real PostgreSQL 15
-
-A real PostgreSQL 15.19 cluster was initialised locally and the project's own
-migration runner was executed against it:
-
-```
-npx tsx scripts/migrate_database.ts
-  Applied: 20261023_core_schema.sql
-  Applied: 20261024_rare_user_state.sql
-```
-
-Resulting schema — 13 tables, including `rare_users`, `rare_sessions`,
-`rare_user_state`, `rare_persistent_documents`, `projects`, `project_tasks`,
-`agent_events`, `artifacts`, `rare_oauth_identities`,
-`rare_developer_credentials`, `rare_developer_grants`, `rare_checkpoint_files`,
-`rare_schema_migrations`.
-
-Row-level security was applied by the second migration
-(`ENABLE` + `FORCE ROW LEVEL SECURITY` on `projects`, `project_tasks`,
-`agent_events`, `artifacts`, `rare_user_state`).
-
-### 3.3 Full automated suite
-
-Run with a live server on port 3000 backed by the local PostgreSQL instance:
-
-```
-npx tsx tests/run_all_tests.ts   →  exit 0
-  ALL AUTOMATED VERIFICATION TESTS PASSED SUCCESSFULLY
-```
-
-All 13 groups passed, including authentication/verification-code security,
-durable state and document safety, OAuth validation, model providers, the
-RARE-INTELLIGENCE bridge, 12 tool primitives, memory lifecycle, the 10-step
-self-development loop, the benchmark suite (6/6), toolchain detection
-(10 probed, 5 ready) and assistant command interpretation (12 cases).
-
-`/api/status` reported:
-
-```json
-{ "storage": { "type": "postgresql", "databaseConfigured": true,
-               "databaseReachable": true, "schemaReady": true } }
-```
-
-### 3.4 Content engine probes
-
-```
-DOCX  → ok, docx-mammoth, text extracted
-CSV   → ok, csv-parse, rendered as a Markdown table
-HTML  → ok, html-dom, <script> stripped, title captured
-JSON  → ok, json-parse
-MISLABEL (PDF bytes named .txt) → identified as pdf from magic bytes
-CHUNKS → page/section-aware chunk produced
-URL   → ok, html-dom, https://example.com/ (171 chars)
-SSRF  → refused, UNSAFE_SCHEME
-```
-
-### 3.5 Research engine probe
-
-A real `standard`-depth run against live providers:
-
-```
-providers: crossref, openalex, arxiv, github, openlibrary, duckduckgo
-stats: discovered 10 · retrieved 10 · fullText 6 · 2159 ms
-sources: 6 · claims: 19 · unreadable: 4
-providerErrors: [ 'en.wikipedia.org returned HTTP 503.' ]
-```
-
-The Wikipedia 503 is reported verbatim rather than hidden — the engine degrades
-per-provider and says so.
-
-### 3.6 End-to-end HTTP routes (live server, real PostgreSQL)
-
-| Check | Result |
-| --- | --- |
-| `POST /api/user/guest-session` | `200` |
-| `GET /api/documents` anonymous | **`401`** |
-| `GET /api/documents` authenticated | `200`, `[]` |
-| `GET /api/documents/capabilities` | `200`, extractor list |
-| `POST /api/documents` (save text) | `201`, `version: 1` |
-| `GET /api/documents` after save | `200`, document listed |
-| `GET /api/documents/notes/architecture.md` | `200`, content + history |
-| `GET /api/search?q=provenance` | `200`, 1 hit, `matchedBy: terms` |
-| `POST /api/documents` (PDF URL import) | `201`, `kind: pdf`, `method: pdfjs-text`, 1 page |
-| `POST /api/documents` (SSRF `http://127.0.0.1`) | **`422`**, `UNSAFE_SCHEME` |
-| Second guest lists documents | `[]` — isolation holds |
-| Second guest reads first guest's document | **`404`** — isolation holds |
-| `GET /api/research/providers` | `200`, providers with availability |
-| `POST /api/research/search` as guest | **`403`** — account required |
-
-### 3.7 Persistence confirmed in PostgreSQL
-
-The document written through the API was read back **directly from the
-database**, not from application memory:
+Direct SQL against Supabase:
 
 ```sql
-SELECT owner_id, state_key, payload->0->>'path', payload->0->>'version'
-FROM rare_user_state WHERE state_key='documents' AND jsonb_array_length(payload) > 0;
-
-guest_2868e909-… | documents | notes/architecture.md          | 1
-guest_820af545-… | documents | imports/1706-1793162147234.md   | 1
+select owner_id, state_key, jsonb_array_length(payload) as docs, updated_at
+from rare_user_state where state_key='documents' order by updated_at desc;
+-- usr_9f0d8b17-… | documents | 1 | 2026-10-28 10:35:51+00
 ```
 
-`rare_persistent_documents` and `rare_sessions` also held live rows, confirming
-the session and state layers are genuinely database-backed.
+The row written through the API is present in Supabase. A document written from
+the **Vercel preview** was likewise confirmed in the table (`VCL-4412`).
+
+### Multi-tenant isolation (against Supabase)
+
+| Check | Result |
+|---|---|
+| Guest B lists documents | `[]` |
+| Guest B reads Guest A's document | **404** |
+| Guest B searches Guest A's marker | **0 hits** |
+| RLS as `authenticated`, owner id = A | **1 row visible** |
+| RLS as `authenticated`, other owner id | **0 rows visible** |
+
+**Important nuance, stated plainly:** the application connects as `postgres`,
+which carries `rolbypassrls = true` on Supabase. RLS therefore does **not**
+filter the app's own queries — ownership is enforced in the service layer and
+proven by the 404/0-hit tests above. The database-level backstop is real for
+clients connecting as `authenticated`/`anon` (verified: 1 row vs 0 rows), and
+`20261028_rls_role_grants.sql` adds the table privileges RLS needs to be
+consulted at all — without a GRANT, `authenticated` fails with "permission
+denied" before any policy is evaluated.
+
+### `scripts/verify_supabase.mjs`
+
+- **Direct PostgreSQL persistence → PASS**
+- **REST API check → BLOCKED** — no anon/service-role key was supplied. The
+  project is reachable (`sb-project-ref` header confirms identity) but no
+  authenticated REST read/write was performed, and none is claimed.
 
 ---
 
-## 4. BLOCKED — Supabase credentials not supplied
+## 2. Git
 
-`scripts/verify_supabase.mjs` was added to make this state reproducible and
-honest. Its output in the real environment:
-
-```
-RARE Supabase verification — project moxtuqgfhucmnblxensw
-
-✓ REST endpoint reachable: PASS
-    HTTP 401 UNAUTHORIZED_MISSING_API_KEY · sb-project-ref=moxtuqgfhucmnblxensw
-    — project exists and is served
-⊘ Authenticated REST read (rare_user_state): BLOCKED
-    No SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY supplied.
-⊘ Direct PostgreSQL persistence: BLOCKED
-    DATABASE_URL is not set. No Supabase connection string was supplied.
-
-Summary: 1 passed, 0 failed, 2 blocked.
-```
-
-### What this proves
-
-- The project **exists and is reachable**: the gateway returns
-  `sb-project-ref: moxtuqgfhucmnblxensw` and `UNAUTHORIZED_MISSING_API_KEY`.
-- A bogus key is rejected with `UNAUTHORIZED_INVALID_API_KEY`, so the auth
-  layer is live rather than a stub.
-
-### What this does NOT prove
-
-- That the RARE schema exists in **that** project.
-- That migrations have been applied to **that** project.
-- That any authenticated read or write succeeds against **that** project.
-
-**No Supabase write or read was mocked, simulated, or inferred.** The local
-PostgreSQL run in §3 is a genuine live test of the same migrations and the same
-`pg`-based persistence code — but it is a *different database* and is not
-evidence about the Supabase project's contents.
-
-### To unblock
-
-Provide **either**:
-
-1. **`DATABASE_URL`** — the Supabase pooler connection string, e.g.
-   `postgres://postgres.moxtuqgfhucmnblxensw:<DB_PASSWORD>@aws-0-<region>.pooler.supabase.com:5432/postgres`
-   This is what the application's persistence layer actually uses. Then run:
-   ```
-   DATABASE_URL=… npx tsx scripts/migrate_database.ts
-   DATABASE_URL=… node scripts/verify_supabase.mjs
-   ```
-
-2. **`SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`** — only needed for
-   REST-level (PostgREST) verification. These do **not** replace
-   `DATABASE_URL` for the app's own persistence.
-
-Note: the anon key alone is subject to row-level security and will not see
-owner-scoped rows without a matching JWT claim; the service-role key bypasses
-RLS and should be used only for verification, never shipped to a client.
+- Branch: `New-Fixes-by-Erudite` (never switched to `main`, no merge, no force-push)
+- Remote head: `9695929d614d2b284a2b326d6a81af97376694d2` — **matches local**
+- Commits pushed this session:
+  - `91eff0f` fix(db): Supabase pooler TLS semantics + RLS role grants
+  - `2b116cc` fix(vercel): ship pdfjs-dist with the serverless function
+  - `5b9dc07` fix(providers): stop hardcoding retired Gemini model ids
+  - `b0a8f34` test(providers): assert against the configured model
+  - `9695929` chore: ignore .vercel CLI artifacts
+- Working tree: clean except runtime state (`.rare/`, `knowledge/`), which is
+  intentionally not committed.
 
 ---
 
-## 5. Other standing items
+## 3. Vercel
 
-1. **The UI wiring is still not on the remote branch.** `src/App.tsx` and
-   `server.ts` changes exist locally; `git push` has no credentials in this
-   sandbox. `patches/rare-ui-wiring.patch` reproduces the tree byte-for-byte.
-   *(Resolved in the second pass below: committed locally, still not pushed.)*
-2. **`server-build/server.js` is a stale committed bundle.** `npm start` runs
-   it directly, so it must be regenerated (`npm run build:server`) before any
-   deployment that uses `npm start`.
-   *(Resolved in the second pass below.)*
-3. **`GEMINI_API_KEY` is production-only**, so audio transcription and the
-   Gemini path return an honest `TRANSCRIPTION_PROVIDER_UNAVAILABLE` on Preview.
-4. **APK signing identity is unverified** — `apksigner` is not available here.
+### "Cannot GET" — actual cause
 
----
+Not a rewrite problem and not a stale build. `vercel.json` has **no rewrites**;
+`server.ts` is the single serverless function. The SPA is served from `public/`,
+which is **gitignored** and produced by `npm run build:web`
+(`vite build && node scripts/sync_vercel_static.mjs`).
 
-## 5b. Second pass — 2026-10-28 (later)
+Express's bare `Cannot GET /` appears when the function boots but
+`public/index.html` is absent — i.e. the static layer was never registered, or
+the API half threw during init before the SPA catch-all was attached. The
+codebase already documents this at `server.ts:5030` and `:5108`, and registers
+the static/SPA layer at module scope on Vercel so a failed API boot cannot take
+the frontend down with it.
 
-### Defects fixed
+An older deployment (`rareproject-64t0xwq0p`) was observed returning 503 on
+`/api/health` with `self-signed certificate in certificate chain` — the exact
+TLS defect fixed in `91eff0f`. That deployment predates the fix.
 
-**Test runner silently passed.** `tests/test_authentication_security.ts` fetched
-`http://127.0.0.1:3000` assuming a server was already running. From a clean
-checkout nothing was listening, every request threw, and `npm test` still exited
-0 — a green suite that tested nothing. `tests/run_all_tests.ts` now:
+### Preview deployment (verified)
 
-- allocates a free ephemeral port,
-- boots `server.ts` itself and waits for `/api/health`,
-- exports `RARE_TEST_BASE_URL` (and `RARE_ALLOWED_ORIGINS` for that port, so the
-  existing origin-pinning check is satisfied rather than weakened),
-- tears the server down and **exits non-zero** if any suite fails.
+`https://rareproject-pf2ywtv6h-mypremierai-2827.vercel.app`
 
-`BASE` in the auth suite is now read lazily at call time, not captured at import
-time before the env var exists.
+| Check | Result |
+|---|---|
+| `GET /` | **200**, `Cannot GET` occurrences: **0** |
+| `GET /api/health` | **200** |
+| `GET /api/status` → storage | `{"status":"operational","type":"postgresql","databaseConfigured":true,"databaseReachable":true,"schemaReady":true}` |
+| `POST /api/user/signup` | 200 |
+| `POST /api/documents` (arXiv PDF URL) | **201**, `pdfjs-text`, **40,083 chars**, **15 pages** |
+| `POST /api/research/search` | **200**, `status: completed`, **6 sources** |
 
-**Stale `server-build/`.** The compiled backend was committed, so `npm start`
-could serve outdated code. It is now untracked and gitignored, and `npm start`
-runs `build:server` first (`start:built` skips the rebuild for containers that
-build in their own step).
+**Production was not promoted.** Promotion is the user's action.
 
-### Added in this pass
+### Vercel env note
 
-- **Chat/assistant access.** `OPEN_URL`, `READ_DOCUMENT`, `SEARCH_LIBRARY` and
-  `START_RESEARCH` are registered on `ToolExecutor` with specs in `TOOL_SPECS`.
-  The owner is taken from `options.ownerId` (the authenticated session), never
-  from model-supplied arguments; a call without an owner is refused. Verified
-  directly through the executor: `OPEN_URL` read a live page, `SEARCH_LIBRARY`
-  found a saved document, and a second owner got zero hits and a 404.
-- **More formats verified end-to-end:** PPTX (slides + speaker notes), ODS,
-  EPUB, EML, SRT, and archive listing. PPTX detection was hardened so a
-  presentation is not mistaken for a plain ZIP.
-- **UI verified in a real browser.** Documents and Research are in the sidebar
-  and render; screenshots were checked for layout breakage.
-
-### Commands re-run in this pass
-
-```
-npx tsc --noEmit        → exit 0
-npm test                → boots its own server, all suites pass
-npm run build:web       → vite build + vercel static sync
-npm run build:server    → esbuild → server-build/server.js
-```
-
-Note: `build:web` needs roughly 1.5 GB of headroom; it was OOM-killed once in a
-2 GB container while a dev server was still resident, and passed after freeing
-memory. That is an environment limit, not a code defect.
+`RARE_ALLOWED_ORIGINS` is enforced (CSRF/origin allowlist). The per-deploy hash
+hostname is not in the allowlist, so authenticated calls from that host are
+rejected — correct security behaviour. Verification used an allowlisted origin
+(`https://rareproject.vercel.app`) as the `Origin` header. The branch alias
+currently points at an older deployment; the preview URL above is the current
+build.
 
 ---
 
-## 6. Reproducing this verification
+## 4. Remaining gaps
 
-```bash
-# 1. Real PostgreSQL
-initdb -D /tmp/pgdata -A trust -U postgres
-pg_ctl -D /tmp/pgdata -o '-p 55432 -k /tmp/pgrun' start
-createdb -h 127.0.0.1 -p 55432 -U postgres rare_test
+### Transcription
 
-# 2. Migrations
-DATABASE_URL="postgres://postgres@127.0.0.1:55432/rare_test" \
-  npx tsx scripts/migrate_database.ts
+- **Honest 503 path verified.** With no `GEMINI_API_KEY`, a real user gets
+  `503 TRANSCRIPTION_PROVIDER_UNAVAILABLE` with a next step — never a
+  fabricated transcript. Guests are blocked entirely (correct).
+- **Real defect found and fixed.** Production transcription returned
+  `404 models/gemini-2.5-flash is no longer available to new users`. The model
+  id was hardcoded in three places. Now `GEMINI_MODEL` / `GEMINI_MODEL_LITE`
+  (defaults `gemini-3.8-flash` / `gemini-3.8-flash-lite`, matching the rest of
+  the codebase) with fallback to the lite model on failure.
+- **Not live-verified end-to-end.** The production `GEMINI_API_KEY` is marked
+  sensitive in Vercel and `vercel env pull` returns the literal `[SENSITIVE]`,
+  so the key could not be used locally or on a preview. The fix is deployed to
+  the branch but the successful transcription call itself is **unverified**.
+  Google's own 404 message names `models/gemini-3.8-flash` as the replacement,
+  which is what the default now uses.
 
-# 3. Server
-DATABASE_URL="postgres://postgres@127.0.0.1:55432/rare_test" \
-RARE_ALLOW_LOCAL_STORAGE_FALLBACK=true PORT=3000 npx tsx server.ts &
+### OCR on Vercel
 
-# 4. Suite + probes
-DATABASE_URL="postgres://postgres@127.0.0.1:55432/rare_test" npx tsx tests/run_all_tests.ts
-npx tsx scripts/probe_content.ts
-npx tsx scripts/probe_research.ts
+`pdftoppm` / `tesseract` are not present in the default serverless image. The
+OCR extractors report "not available in this runtime" and the chain falls back
+to `pdfjs-text`; a text-free PDF therefore returns `NO_TEXT_EXTRACTED` with a
+clear reason rather than invented content. **PDF text extraction itself now
+works on Vercel** after `2b116cc` (see below).
 
-# 5. Supabase state (honest: reports BLOCKED without credentials)
-node scripts/verify_supabase.mjs
-```
+### PDF on Vercel — fixed
+
+Before `2b116cc`, PDF import on Vercel failed with
+`Cannot find package 'pdfjs-dist'` and fell through to poppler (also absent).
+The extractor loads pdfjs via a deep dynamic import
+(`pdfjs-dist/legacy/build/pdf.mjs`) that Vercel's dependency tracer does not
+follow. Adding `node_modules/pdfjs-dist/**` to `includeFiles` restored it:
+the arXiv attention paper imports as 40,083 chars / 15 pages and is searchable.
 
 ---
 
-## 7. Summary
+## 5. Acceptance matrix — commands and outcomes
 
-| Area | Status |
-| --- | --- |
-| Content engine (20+ formats, SSRF-safe) | **Implemented, live-tested** |
-| Documents service + 12 routes | **Implemented, live-tested** |
-| Deep research engine + 6 routes | **Implemented, live-tested** |
-| Unified search | **Implemented, live-tested** |
-| Migrations on real PostgreSQL 15 | **Applied, verified** |
-| Full test suite (13 groups) | **Passing** |
-| Owner isolation (cross-user) | **Verified** |
-| Supabase project reachability | **Verified** |
-| Supabase authenticated persistence | **BLOCKED — no keys supplied** |
+### Build & test
+
+| Command | Result |
+|---|---|
+| `npx tsc --noEmit` | **clean** |
+| `npm test` | **all suites pass** (12 tool primitives, auth, durable state, providers, engine bridge, memory, self-development, benchmark 6/6, SPA-boot 9/9, content engine) |
+| `npm run build:server` | **pass** (`server-build/server.js`, 669.4 kb) |
+| `npm run build:web` | **pass** with `NODE_OPTIONS=--max-old-space-size=1400` |
+
+`build:web` was initially killed (exit 137). Cause: the sandbox cgroup limit is
+**2 GB** (`/sys/fs/cgroup/memory.max` = 2147483648) and 1.69 GB was already in
+use. Not a code defect — it passes once memory is freed and the heap is capped.
+
+### Security — SSRF (all blocked, HTTP 422)
+
+```
+http://169.254.169.254/latest/meta-data/  → 422
+http://127.0.0.1:22/                      → 422
+file:///etc/passwd                        → 422
+http://[::1]/                             → 422
+http://10.0.0.1/                          → 422
+gopher://x/                               → 422
+```
+
+### Formats (all HTTP 201, real extraction)
+
+| File | Method | Chars |
+|---|---|---|
+| `.docx` | `docx-mammoth` | 36 |
+| `.csv` | `csv-parse` | 65 |
+| `.json` | `json-parse` | 58 |
+| `.html` | `html-dom` | 36 |
+| `.srt` | `subtitle-cues` | 54 |
+| `.zip` | `zip-listing` | 47 |
+| `.xlsx` | `spreadsheet-sheetjs` | 75 |
+| `.pptx` | `pptx-slide-xml` | 104 |
+| `.epub` | `epub-spine` | 75 |
+| `.yaml` | `yaml-parse` | 71 |
+| `.eml` | `eml-rfc822` | 77 |
+| `.ts` | `html-dom` | 1,623 |
+
+### Links
+
+| Case | Result |
+|---|---|
+| Ordinary article (`example.com`) | 201, `html-dom`, 171 chars, `finalUrl` normalized |
+| Redirect chain (`httpbin.org/redirect/2`) | 201, followed to `/get`, `json-parse` |
+| Direct PDF (arXiv) | 201, `pdfjs-text`, 40,083 chars, 15 pages |
+| Multi-link import (3 URLs, 1 duplicate) | 200, **2 items**, dedupe applied |
+| Inaccessible / malformed | 422 with `nextStep` |
+
+### Research
+
+`POST /api/research/search` → 200, `status: completed`, **12 sources** across
+**7 providers** (wikipedia, crossref, openalex, arxiv, github, openlibrary,
+duckduckgo), scope string reports "12 source(s) read in full". Sources carry
+real titles and URLs (e.g. `arxiv.org/abs/2007.14062`).
+
+### Unified search
+
+`GET /api/search?q="scaled dot-product attention"` → **20 hits** across
+**17 indexed documents**, with the exact phrase located deep inside the
+imported PDF (`imports/1706-…md`).
+
+---
+
+## 6. Still blocked / requires the user
+
+1. **Supabase REST verification** — needs an anon or service-role key. Direct
+   PostgreSQL persistence is fully verified; the REST path is not.
+2. **End-to-end transcription** — needs a usable `GEMINI_API_KEY` (the Vercel
+   one is sensitive and unreadable). The model-id fix is deployed but the
+   successful call is unverified.
+3. **Production promotion** — deliberately not done; requires explicit approval.
+4. **Branch alias** — points at an older deployment; re-aliasing is a
+   dashboard/CLI action the user may want to control.
+
+## 7. Security reminder
+
+The Supabase database password, GitHub token and Vercel token were shared in
+chat. **Rotate all three.** They are not written to any committed file; `.env`
+is gitignored and was never staged.
