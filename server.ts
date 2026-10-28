@@ -19,7 +19,7 @@ import { DeepResearchEngine } from './src/server/services/DeepResearchEngine.js'
 import { listProviders as listResearchProviders } from './src/server/services/ResearchProviders.js';
 import { OwnerSearchIndexRegistry } from './src/server/content/SearchIndex.js';
 import { processBuffer, processUrl, describeResult } from './src/server/content/ContentEngine.js';
-import { listExtractors } from './src/server/content/Extractors.js';
+import { probeExtractors } from './src/server/content/Extractors.js';
 import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
 import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
@@ -3841,27 +3841,56 @@ app.get('/api/documents', async (_req, res) => {
   }
 });
 
+// Transcription availability, reported without claiming a provider that is not configured.
+async function describeTranscriptionCapability(): Promise<{
+  available: boolean;
+  provider?: string;
+  model?: string;
+  note?: string;
+}> {
+  if (!process.env.GEMINI_API_KEY?.trim()) {
+    return {
+      available: false,
+      note: 'GEMINI_API_KEY is not set on the server, so audio cannot be transcribed in this deployment.',
+    };
+  }
+  try {
+    const provider = providerRegistry.getGeminiProvider();
+    const version = typeof (provider as any).getVersion === 'function' ? (provider as any).getVersion() : undefined;
+    return { available: true, provider: 'gemini', model: typeof version === 'string' ? version : undefined };
+  } catch (error) {
+    return {
+      available: false,
+      note: error instanceof Error ? error.message : 'The configured transcription provider is unavailable.',
+    };
+  }
+}
+
 // Capability discovery: what this deployment can actually read right now.
-app.get('/api/documents/capabilities', (_req, res) => {
-  res.json({
-    extractors: listExtractors(),
-    formats: {
-      documents: ['pdf', 'docx', 'doc', 'odt', 'rtf', 'epub', 'html', 'markdown', 'text'],
-      spreadsheets: ['xlsx', 'xls', 'ods', 'csv', 'tsv'],
-      presentations: ['pptx', 'ppt', 'odp'],
-      data: ['json', 'jsonl', 'yaml', 'xml'],
-      images: ['png', 'jpeg', 'gif', 'webp', 'tiff', 'bmp', 'svg'],
-      archives: ['zip', 'gzip', 'tar', '7z'],
-      email: ['eml', 'mbox'],
-      subtitles: ['srt', 'vtt'],
-      media: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'mp4', 'webm', 'mov'],
-    },
-    notes: [
-      'Content type is determined from the bytes, not the filename or Content-Type header.',
-      'Scanned PDFs and images fall back to OCR when no text layer exists.',
-      'Media requires a configured transcription provider.',
-    ],
-  });
+app.get('/api/documents/capabilities', async (_req, res) => {
+  try {
+    // Probe each adapter instead of publishing a static wish-list: an extractor
+    // that cannot run here (missing poppler/tesseract/LibreOffice) reports
+    // available:false so the UI never promises a format this runtime cannot read.
+    const extractors = await probeExtractors();
+
+    const transcription = await describeTranscriptionCapability();
+    const usable = extractors.filter((extractor) => extractor.available).map((extractor) => extractor.id);
+
+    res.json({
+      runtime: process.env.VERCEL ? 'vercel-serverless' : 'node',
+      extractors,
+      usableExtractors: usable.length,
+      transcription,
+      notes: [
+        'Content type is determined from the bytes, not the filename or Content-Type header.',
+        'Scanned PDFs and images fall back to OCR when no text layer exists.',
+        'Only adapters reporting available:true can run in this deployment.',
+      ],
+    });
+  } catch (error) {
+    res.status(500).json({ error: { message: error instanceof Error ? error.message : 'Capability probe failed.' } });
+  }
 });
 
 app.get('/api/documents/*', async (req, res) => {
@@ -4029,6 +4058,19 @@ app.delete('/api/documents/*', async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     sendDocumentError(res, error, 'The document could not be deleted.');
+  }
+});
+
+app.post('/api/documents/restore-version', async (req, res) => {
+  try {
+    const restored = await requireDocumentsService().restoreVersion(
+      res.locals.rareUserId,
+      String(req.body?.path || ''),
+      Number(req.body?.version),
+    );
+    res.json({ path: restored.path, version: restored.version, content: restored.content });
+  } catch (error) {
+    sendDocumentError(res, error, 'The document version could not be restored.');
   }
 });
 

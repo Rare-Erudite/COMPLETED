@@ -36,12 +36,49 @@ interface DocumentSummary {
   size: number;
   format: string;
   updated_at?: string;
+  kind?: string;
+  label?: string;
+  title?: string;
+  sourceUrl?: string;
+  ocr?: boolean;
+  origin?: string;
+  version?: number;
+}
+
+interface DocumentHistoryEntry {
+  content: string;
+  updatedAt: string;
+  version: number;
 }
 
 interface DocumentRecord extends DocumentSummary {
   content: string;
   updatedAt?: string;
+  finalUrl?: string;
+  method?: string;
+  warnings?: string[];
+  derivedFrom?: string;
+  history?: DocumentHistoryEntry[];
+}
+
+interface SearchHit {
+  documentId: string;
+  title: string;
+  origin?: string;
   sourceUrl?: string;
+  chunkIndex: number;
+  page?: number;
+  section?: string;
+  snippet: string;
+  score: number;
+  matchedBy: 'phrase' | 'terms' | 'both';
+}
+
+interface CapabilityReport {
+  runtime?: string;
+  extractors?: Array<{ format: string; available: boolean; method?: string; note?: string }>;
+  transcription?: { available: boolean; provider?: string; note?: string };
+  browserRendering?: { available: boolean; note?: string };
 }
 
 interface DocumentsWorkspaceViewProps {
@@ -90,8 +127,27 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
   const [transcriptBusy, setTranscriptBusy] = useState(false);
   const [transcriptNote, setTranscriptNote] = useState('');
 
+  // Server-side search (indexed content, not just path matching).
+  const [searchHits, setSearchHits] = useState<SearchHit[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchIndexed, setSearchIndexed] = useState<number | null>(null);
+
+  // Rename / delete.
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // Version history for the open document.
+  const [history, setHistory] = useState<DocumentHistoryEntry[]>([]);
+  const [currentVersion, setCurrentVersion] = useState<number | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // What this deployment can actually read.
+  const [capabilities, setCapabilities] = useState<CapabilityReport | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dirty = content !== originalContent;
 
@@ -113,12 +169,17 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
     setLoadingDoc(true);
     setError('');
     try {
-      const response = await apiFetch(`/api/documents/${encodeURI(path)}`);
+      // encodeURI leaves '#' and '?' raw, which would truncate the request path.
+      const response = await apiFetch(`/api/documents/${encodeURIComponent(path)}`);
       if (!response.ok) throw new Error(await readErrorMessage(response));
       const data = (await response.json()) as DocumentRecord;
       setActivePath(data.path || path);
       setContent(String(data.content ?? ''));
       setOriginalContent(String(data.content ?? ''));
+      setHistory(Array.isArray(data.history) ? data.history : []);
+      setCurrentVersion(typeof data.version === 'number' ? data.version : null);
+      setShowHistory(false);
+      setConfirmDelete(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not open the document.');
     } finally {
@@ -126,9 +187,121 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
     }
   }, []);
 
+  const loadCapabilities = useCallback(async () => {
+    try {
+      const response = await apiFetch('/api/documents/capabilities');
+      if (!response.ok) return;
+      setCapabilities((await response.json()) as CapabilityReport);
+    } catch {
+      // Capability display is informational only; never block the workspace on it.
+    }
+  }, []);
+
+  // Debounced server-side search over indexed document content.
+  const runSearch = useCallback((term: string) => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const trimmed = term.trim();
+    if (!trimmed) {
+      setSearchHits(null);
+      setSearchIndexed(null);
+      return;
+    }
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const response = await apiFetch(`/api/search?q=${encodeURIComponent(trimmed)}&limit=25`);
+        if (!response.ok) throw new Error(await readErrorMessage(response));
+        const data = (await response.json()) as { hits: SearchHit[]; indexedDocuments: number };
+        setSearchHits(Array.isArray(data.hits) ? data.hits : []);
+        setSearchIndexed(typeof data.indexedDocuments === 'number' ? data.indexedDocuments : null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Search failed.');
+        setSearchHits([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 300);
+  }, []);
+
+  const renameDocument = async () => {
+    if (!activePath) return;
+    const target = renameValue.trim();
+    if (!target || target === activePath) {
+      setRenaming(false);
+      return;
+    }
+    setBusy('rename');
+    setError('');
+    setNotice('');
+    try {
+      const response = await apiFetch('/api/documents/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: activePath, newPath: target }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      setRenaming(false);
+      await loadList();
+      await openDocument(target);
+      setNotice(`Renamed to ${target}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Rename failed.');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const deleteDocument = async () => {
+    if (!activePath) return;
+    setBusy('delete');
+    setError('');
+    setNotice('');
+    try {
+      const response = await apiFetch(`/api/documents/${encodeURIComponent(activePath)}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const removedPath = activePath;
+      setConfirmDelete(false);
+      setActivePath('');
+      setContent('');
+      setOriginalContent('');
+      setHistory([]);
+      setCurrentVersion(null);
+      await loadList();
+      setNotice(`Deleted ${removedPath}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed.');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const restoreVersion = async (version: number) => {
+    if (!activePath) return;
+    setBusy('restore');
+    setError('');
+    setNotice('');
+    try {
+      const response = await apiFetch('/api/documents/restore-version', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: activePath, version }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const data = (await response.json()) as { version: number };
+      await openDocument(activePath);
+      await loadList();
+      setNotice(`Restored version ${version} as the current revision ${data.version}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Restore failed.');
+    } finally {
+      setBusy('');
+    }
+  };
+
   useEffect(() => {
     void loadList();
-  }, [loadList]);
+    void loadCapabilities();
+  }, [loadList, loadCapabilities]);
 
   // Auto-open the first document once the list arrives.
   useEffect(() => {
@@ -416,10 +589,16 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
           <input
             type="text"
             value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search documents..."
+            onChange={(event) => {
+              setSearchTerm(event.target.value);
+              runSearch(event.target.value);
+            }}
+            placeholder="Search inside documents..."
             className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-lg pl-8 pr-3 py-1.5 text-xs focus:outline-none`}
           />
+          {searching && (
+            <Loader2 className={`w-3 h-3 absolute right-2.5 top-2.5 animate-spin ${t.textDim}`} />
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-1">
@@ -518,27 +697,64 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
           {loadingList && documents.length === 0 && (
             <div className={`text-[10px] ${t.textDim} px-1`}>Loading…</div>
           )}
-          {!loadingList && filtered.length === 0 && (
-            <div className={`text-[10px] ${t.textDim} px-1 py-2`}>
-              {documents.length === 0 ? 'No documents yet — upload one or import a URL.' : 'No matches.'}
-            </div>
+
+          {/* Server-side search results take over the list while a query is active. */}
+          {searchHits !== null ? (
+            <>
+              <div className={`text-[9px] font-mono ${t.textDim} px-1 pb-1`}>
+                {searchHits.length} passage(s)
+                {searchIndexed !== null ? ` · ${searchIndexed} indexed` : ''}
+              </div>
+              {searchHits.length === 0 && !searching && (
+                <div className={`text-[10px] ${t.textDim} px-1 py-2`}>
+                  No passage matched. Search covers indexed document text, not just filenames.
+                </div>
+              )}
+              {searchHits.map((hit, index) => (
+                <button
+                  key={`${hit.documentId}-${hit.chunkIndex}-${index}`}
+                  onClick={() => void openDocument(hit.documentId)}
+                  className={`w-full text-left p-1.5 rounded-lg text-[10px] space-y-0.5 transition ${
+                    activePath === hit.documentId ? `${t.card} border ${t.cardBorder}` : `${t.textMuted} hover:opacity-80`
+                  }`}
+                  title={hit.documentId}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <FileText className={`w-3 h-3 ${t.accentText} shrink-0`} />
+                    <span className="truncate flex-1 font-semibold">{hit.documentId}</span>
+                    {typeof hit.page === 'number' && (
+                      <span className={`text-[9px] font-mono ${t.textDim} shrink-0`}>p.{hit.page}</span>
+                    )}
+                  </div>
+                  <p className={`${t.textDim} line-clamp-2 leading-tight`}>{hit.snippet}</p>
+                </button>
+              ))}
+            </>
+          ) : (
+            <>
+              {!loadingList && filtered.length === 0 && (
+                <div className={`text-[10px] ${t.textDim} px-1 py-2`}>
+                  {documents.length === 0 ? 'No documents yet — upload one or import a URL.' : 'No matches.'}
+                </div>
+              )}
+              {filtered.map((document) => (
+                <button
+                  key={document.path}
+                  onClick={() => void openDocument(document.path)}
+                  className={`w-full text-left p-1.5 rounded-lg text-[11px] flex items-center gap-2 transition ${
+                    activePath === document.path
+                      ? `${t.card} font-bold border ${t.cardBorder}`
+                      : `${t.textMuted} hover:opacity-80`
+                  }`}
+                  title={`${document.path} · ${formatBytes(document.size)}`}
+                >
+                  <FileText className={`w-3 h-3 ${t.accentText} shrink-0`} />
+                  <span className="truncate flex-1">{document.path}</span>
+                  <span className={`text-[9px] font-mono ${t.textDim} shrink-0`}>{formatBytes(document.size)}</span>
+                </button>
+              ))}
+            </>
           )}
-          {filtered.map((document) => (
-            <button
-              key={document.path}
-              onClick={() => void openDocument(document.path)}
-              className={`w-full text-left p-1.5 rounded-lg text-[11px] flex items-center gap-2 transition ${
-                activePath === document.path
-                  ? `${t.card} font-bold border ${t.cardBorder}`
-                  : `${t.textMuted} hover:opacity-80`
-              }`}
-              title={`${document.path} · ${formatBytes(document.size)}`}
-            >
-              <FileText className={`w-3 h-3 ${t.accentText} shrink-0`} />
-              <span className="truncate flex-1">{document.path}</span>
-              <span className={`text-[9px] font-mono ${t.textDim} shrink-0`}>{formatBytes(document.size)}</span>
-            </button>
-          ))}
         </div>
       </div>
 
@@ -546,15 +762,75 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
       <div className="flex-1 flex flex-col min-w-0">
         <div className={`h-12 border-b ${t.cardBorder} px-4 flex items-center justify-between ${t.cardSub} gap-2`}>
           <div className="flex items-center gap-2 min-w-0">
-            <span className={`text-xs font-mono font-bold truncate ${t.textPrimary}`}>
-              {activePath || 'No document selected'}
-            </span>
+            {renaming ? (
+              <input
+                autoFocus
+                value={renameValue}
+                onChange={(event) => setRenameValue(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') void renameDocument();
+                  if (event.key === 'Escape') setRenaming(false);
+                }}
+                className={`text-xs font-mono ${t.inputBg} border ${t.inputBorder} rounded px-1.5 py-0.5 focus:outline-none min-w-0 flex-1`}
+              />
+            ) : (
+              <span className={`text-xs font-mono font-bold truncate ${t.textPrimary}`}>
+                {activePath || 'No document selected'}
+              </span>
+            )}
             {dirty && <span className="text-[9px] font-mono text-amber-400 shrink-0">unsaved</span>}
             {activeSummary && (
               <span className={`text-[9px] font-mono ${t.textDim} shrink-0`}>{formatBytes(activeSummary.size)}</span>
             )}
+            {currentVersion !== null && currentVersion > 1 && (
+              <span className={`text-[9px] font-mono ${t.textDim} shrink-0`}>v{currentVersion}</span>
+            )}
+            {activeSummary?.ocr && (
+              <span className="text-[9px] font-mono text-amber-400 shrink-0" title="Text recovered by OCR, not an embedded text layer">
+                OCR
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
+            {renaming ? (
+              <>
+                <button
+                  onClick={() => void renameDocument()}
+                  disabled={busy === 'rename'}
+                  className={`px-2 py-1 rounded-lg ${t.accentBg} text-white text-[10px] font-medium disabled:opacity-40`}
+                >
+                  {busy === 'rename' ? 'Renaming…' : 'Save name'}
+                </button>
+                <button
+                  onClick={() => setRenaming(false)}
+                  className={`px-2 py-1 rounded-lg ${t.cardSub} border ${t.cardBorder} text-[10px]`}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    setRenameValue(activePath);
+                    setRenaming(true);
+                  }}
+                  disabled={!activePath}
+                  className={`px-2 py-1 rounded-lg ${t.cardSub} border ${t.cardBorder} text-[10px] font-medium disabled:opacity-40`}
+                  title="Rename this document"
+                >
+                  Rename
+                </button>
+                <button
+                  onClick={() => setShowHistory((value) => !value)}
+                  disabled={!activePath || history.length === 0}
+                  className={`px-2 py-1 rounded-lg ${t.cardSub} border ${t.cardBorder} text-[10px] font-medium disabled:opacity-40`}
+                  title={history.length === 0 ? 'No earlier revisions retained' : `${history.length} earlier revision(s)`}
+                >
+                  History{history.length > 0 ? ` (${history.length})` : ''}
+                </button>
+              </>
+            )}
             <button
               onClick={saveDocument}
               disabled={!activePath || !dirty || busy === 'save'}
@@ -592,21 +868,58 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
                 <option value="html">to .html</option>
               </select>
             </div>
-            <button
-              onClick={() => {
-                setContent('');
-                setOriginalContent('');
-                setActivePath('');
-                setNotice('');
-                setError('');
-              }}
-              className={`p-1 rounded ${t.textMuted} hover:opacity-80`}
-              title="Close the current document"
-            >
-              <Trash2 className="w-3 h-3" />
-            </button>
+            {confirmDelete ? (
+              <>
+                <span className="text-[10px] text-amber-300">Delete permanently?</span>
+                <button
+                  onClick={() => void deleteDocument()}
+                  disabled={busy === 'delete'}
+                  className="px-2 py-1 rounded-lg bg-red-600 text-white text-[10px] font-medium disabled:opacity-40"
+                >
+                  {busy === 'delete' ? 'Deleting…' : 'Yes, delete'}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(false)}
+                  className={`px-2 py-1 rounded-lg ${t.cardSub} border ${t.cardBorder} text-[10px]`}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                disabled={!activePath}
+                className={`p-1 rounded ${t.textMuted} hover:text-red-400 disabled:opacity-40`}
+                title="Delete this document"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Version history */}
+        {showHistory && history.length > 0 && (
+          <div className={`border-b ${t.cardBorder} ${t.cardSub} px-4 py-2 space-y-1 max-h-40 overflow-y-auto`}>
+            <div className={`text-[10px] uppercase font-semibold ${t.textDim}`}>
+              Earlier revisions — restoring keeps the current text as a new revision
+            </div>
+            {history.map((entry) => (
+              <div key={entry.version} className="flex items-center justify-between gap-2 text-[10px]">
+                <span className={`font-mono ${t.textMuted}`}>
+                  v{entry.version} · {new Date(entry.updatedAt).toLocaleString()} · {formatBytes(entry.content.length)}
+                </span>
+                <button
+                  onClick={() => void restoreVersion(entry.version)}
+                  disabled={busy === 'restore'}
+                  className={`px-2 py-0.5 rounded ${t.accentBg} text-white font-medium disabled:opacity-40`}
+                >
+                  {busy === 'restore' ? 'Restoring…' : 'Restore'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {(error || notice || transcriptNote) && (
           <div className="px-4 py-2 space-y-1 border-b border-white/5">

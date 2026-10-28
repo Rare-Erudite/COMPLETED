@@ -814,4 +814,36 @@ export function listExtractors(): Array<{ id: string; kind: ContentKind; method:
   return REGISTRY.map(({ id, kind, method }) => ({ id, kind, method }));
 }
 
+/**
+ * Probe every adapter for real availability in this runtime.
+ *
+ * `listExtractors` only describes what the registry contains; this reports what
+ * can actually run here, so callers never advertise a format whose dependency
+ * (poppler, tesseract, LibreOffice) is missing from the deployment.
+ */
+export async function probeExtractors(): Promise<
+  Array<{ id: string; kind: ContentKind; method: string; ocr: boolean; available: boolean; note?: string }>
+> {
+  return Promise.all(
+    REGISTRY.map(async (extractor) => {
+      let available = false;
+      let note: string | undefined;
+      try {
+        available = await extractor.available();
+        if (!available) note = 'Runtime dependency missing in this deployment.';
+      } catch (error) {
+        note = error instanceof Error ? error.message : 'Availability probe failed.';
+      }
+      return {
+        id: extractor.id,
+        kind: extractor.kind,
+        method: extractor.method,
+        ocr: Boolean(extractor.ocr),
+        available,
+        ...(note ? { note } : {}),
+      };
+    }),
+  );
+}
+
 export { DEFAULT_MAX_CHARS, htmlToText, decodeText, clampText };

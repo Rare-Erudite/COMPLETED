@@ -423,6 +423,31 @@ export class DocumentsService {
     return refreshed;
   }
 
+  /**
+   * Restore a previously saved revision.
+   *
+   * The current content is pushed onto the history stack by `save`, so a restore
+   * is itself undoable: restoring version 2 makes the pre-restore content
+   * version n+1. Nothing is destroyed.
+   */
+  async restoreVersion(ownerId: string, rawPath: string, version: number): Promise<DocumentRecord> {
+    const documentPath = normalizeDocumentPath(rawPath);
+    const document = await this.read(ownerId, documentPath);
+    if (!document) throw new DocumentPathError('Document not found.');
+    const target = Number(version);
+    if (!Number.isInteger(target) || target < 1) {
+      throw new DocumentPathError('A valid version number is required.');
+    }
+    if (target === document.version) {
+      throw new DocumentPathError('That is already the current version.');
+    }
+    const entry = (document.history || []).find((item) => item.version === target);
+    if (!entry) {
+      throw new DocumentPathError('That version is no longer retained.');
+    }
+    return this.save(ownerId, documentPath, entry.content, { origin: document.origin });
+  }
+
   /** Rebuild this owner's search index from persisted documents. */
   async reindex(ownerId: string): Promise<{ documents: number; chunks: number }> {
     const documents = await this.all(ownerId);
