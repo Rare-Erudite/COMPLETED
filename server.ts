@@ -4776,6 +4776,9 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
+    // The SPA must be served even when the API half of this process failed to
+    // initialise. Otherwise every route 404s ("Cannot GET /") and the whole
+    // deployment looks broken when only the backend is misconfigured.
     const frontendDist = path.resolve(PROJECT_ROOT, 'dist');
     const vercelFrontend = path.resolve(PROJECT_ROOT, 'public');
     const frontendRoot = process.env.VERCEL === '1' ? vercelFrontend : frontendDist;
@@ -4783,9 +4786,13 @@ async function startServer() {
       throw new Error('Production frontend build is missing. Run "npm run build" before "npm start".');
     }
     app.use(express.static(frontendRoot));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(frontendRoot, 'index.html'));
-    });
+    // On Vercel the SPA catch-all was already registered at module scope so it
+    // survives an API boot failure; registering it twice would shadow later routes.
+    if (process.env.VERCEL !== '1') {
+      app.get('*', (_req, res) => {
+        res.sendFile(path.join(frontendRoot, 'index.html'));
+      });
+    }
   }
 
   app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -4846,6 +4853,17 @@ async function startServer() {
 export default app;
 
 if (process.env.VERCEL === '1') {
+  // Register the static/SPA layer immediately, before any database work. A
+  // failed API boot must never leave the deployment with no frontend routes:
+  // that produced Express's bare "Cannot GET /" for every URL. API requests
+  // still fail closed, via the /api middleware and its 503.
+  const frontendRoot = path.resolve(PROJECT_ROOT, 'public');
+  if (fs.existsSync(path.join(frontendRoot, 'index.html'))) {
+    app.use(express.static(frontendRoot));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(frontendRoot, 'index.html'));
+    });
+  }
   serverInitialization = startServer();
 } else {
   startServer().catch((error) => {

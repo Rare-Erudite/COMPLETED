@@ -10,6 +10,7 @@ import { runPersistentWorkflowTests } from './test_persistent_workflows.js';
 import { runOAuthValidationTests } from './test_oauth_validation.js';
 import { runStandaloneResearchTests } from './test_standalone_research.js';
 import { runToolchainRegistryTests, runAssistantCommandTests } from './test_builder_and_assistant.js';
+import { runServerlessFrontendAvailabilityTests } from './test_serverless_frontend.js';
 
 async function main() {
   console.log('=====================================================');
@@ -42,6 +43,8 @@ async function main() {
     await runToolchainRegistryTests();
     console.log();
     await runAssistantCommandTests();
+    console.log();
+    await runServerlessFrontendAvailabilityTests();
     console.log();
     console.log('=====================================================');
     console.log('  ALL AUTOMATED VERIFICATION TESTS PASSED SUCCESSFULLY');
