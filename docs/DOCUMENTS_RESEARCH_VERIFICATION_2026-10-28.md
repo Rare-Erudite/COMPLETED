@@ -291,3 +291,146 @@ imported PDF (`imports/1706-…md`).
 The Supabase database password, GitHub token and Vercel token were shared in
 chat. **Rotate all three.** They are not written to any committed file; `.env`
 is gitignored and was never staged.
+
+---
+
+# 8. UI audit and completion (2026-10-28, later run)
+
+The user asked a direct question: is the UI genuinely built, or only the backend
+routes? This section is the evidence-based answer. Every claim below was
+re-checked by reading the source and running the app — the earlier summary was
+not taken as proof.
+
+## 8.1 What the audit found
+
+**Both workspaces are real components, not stubs.**
+
+| Item | Evidence |
+|---|---|
+| Navigation entries | `src/App.tsx:765-767` — `documents` and `research` in `workspaceNavItems` |
+| Rendered | `src/App.tsx:1374-1375` — `<DocumentsWorkspaceView>` / `<ResearchWorkspaceView>` |
+| Documents component | `src/components/DocumentsWorkspaceView.tsx` (~950 lines) |
+| Research component | `src/components/ResearchWorkspaceView.tsx` (~470 lines) |
+
+**Dead code found (left in place, harmless):** `CleanDocumentsWorkspaceView`
+(`App.tsx:2087`) and `CleanResearchWorkspaceView` (`App.tsx:2286`) are defined
+but never rendered. They are the old inline placeholders. Removing them is a
+pure cleanup with no behavioural effect; it was not done because it is
+unrelated to the mission and would enlarge the diff.
+
+**Real gaps found in the Documents UI** — the backend had the routes, the UI
+never called them:
+
+| Capability | Before | After |
+|---|---|---|
+| Rename | route existed, no UI | inline rename in the toolbar |
+| Delete | route existed, no UI | delete with an explicit confirm step |
+| Version history | `history[]` returned by the API, never shown | panel listing revisions + restore |
+| Search | client-side filename filter only | `/api/search` indexed passage search |
+| Capabilities | hardcoded format list | probes each extractor at runtime |
+
+**Research UI was already complete** — query input, depth selector, seed URLs,
+history sidebar, synthesis, scope/stats, limitations, unreadable sources,
+findings, per-source cards with links, connector failures, save-to-Documents.
+No work was needed there.
+
+## 8.2 What was built
+
+- `DocumentsService.restoreVersion()` + `POST /api/documents/restore-version`.
+  Restoring pushes the current text onto the history stack, so a restore is
+  itself undoable — nothing is destroyed.
+- `probeExtractors()` in `Extractors.ts`; `/api/documents/capabilities` now
+  reports `available:false` with a reason per adapter instead of advertising a
+  static wish-list. This directly addresses the mission rule "do not claim
+  support merely because a file can be uploaded".
+- Documents UI: rename, delete (confirmed), version history with restore,
+  server-side search with snippets and page numbers, OCR badge, version counter.
+- **Bug fixed:** `openDocument` used `encodeURI`, which leaves `#` and `?`
+  unescaped and would truncate such document paths. Now `encodeURIComponent`.
+
+## 8.3 Verification (commands actually run)
+
+| Check | Command | Result |
+|---|---|---|
+| Typecheck | `npm run lint` | clean, exit 0 |
+| Server build | `npm run build:server` | 672.1 kb, exit 0 |
+| Web build | `NODE_OPTIONS=--max-old-space-size=1536 npm run build:web` | 1672 modules, exit 0 |
+| Test suite | `npm test` | ALL AUTOMATED VERIFICATION TESTS PASSED |
+| Bundle contains new UI | grep `dist/assets/index-CnwHujIf.js` | `Search inside documents`, `Earlier revisions`, `restore-version` all present |
+
+**Local, against real PostgreSQL:**
+
+| Flow | Result |
+|---|---|
+| Capabilities probe | 22/22 adapters available; transcription honestly `available:false` |
+| Create → v1 | 201 |
+| Update → v2 | 201, history retains v1 |
+| Restore v1 | 200, becomes v3, content is v1's text |
+| Search `lazy dog` | 1 hit, `matchedBy: both`, correct snippet |
+| Rename | 200 |
+| Delete | 200, subsequent read 404 |
+| Cross-user read | 404 |
+| Cross-user search | 0 hits, 0 indexed |
+| SPA routes `/`, `/documents`, `/research`, `/a/deep/route` | all 200 |
+
+**Deployed preview** — `https://rareproject-git-new-fixes-by-erudite-mypremierai-2827.vercel.app`
+(the branch alias; the per-deployment URL is rejected by `RARE_ALLOWED_ORIGINS`,
+see 8.4):
+
+| Flow | Result |
+|---|---|
+| `/`, `/documents`, `/research` | 200, zero "Cannot GET" |
+| `/api/health` | 200 |
+| `/api/status` | `postgresql`, `databaseReachable:true`, `schemaReady:true` |
+| Capabilities | `runtime: vercel-serverless`, **20/22** — `pdf-ocr` and `image-tesseract` correctly report missing |
+| Create → v1 → v2 → restore v1 | 201 / 201 / 200 (v3, v1 content) |
+| Search | 1 hit, correct snippet |
+| Cross-user read / search | 404 / 0 hits |
+| Research | 200, **6 sources**, providers `wikipedia, crossref, openalex, arxiv, github, openlibrary`, 6 full texts, 5 limitations, 4 unreadable reported |
+
+## 8.4 Findings worth recording
+
+1. **`RARE_ALLOWED_ORIGINS` does not include per-deployment preview URLs.** It
+   lists the branch alias and the production domains. A fresh
+   `vercel deploy` URL therefore returns `403 This origin is not allowed` on
+   every mutating request. This is correct security behaviour, not a bug — but
+   it means preview verification must target the branch alias, and any new
+   preview URL needs adding to the allowlist before it can be used.
+2. **Research requires a real account.** Guests get
+   `403 Create an account to use this operation.` by design. Verification used
+   a throwaway signup.
+3. **`/api/research/search` returns `{ query, results: [...] }`**, not a bare
+   item. The UI reads `results` correctly.
+4. **Duplicate servers on one port** produced spurious `000` responses during
+   verification. Not a code defect; resolved by killing all instances before
+   restarting.
+
+## 8.5 Honest limitations of this verification
+
+- **No interactive click-through.** There is no browser-automation tool in this
+  environment. UI verification is: the components are wired in `App.tsx`, the
+  built bundle contains the new strings, the SPA routes serve 200, and every
+  API the UI calls was exercised live. What is *not* proven is a human-style
+  click sequence in a real browser.
+- **OCR does not run on Vercel** (no poppler/tesseract). It works locally
+  (22/22) and the deployment now says so instead of failing silently.
+- **Transcription is still unverified end to end** — no usable
+  `GEMINI_API_KEY` in this environment. The 503 path is correct and honest.
+- **Supabase REST** still needs an anon/service-role key.
+
+## 8.6 Git and deployment state
+
+- Branch `New-Fixes-by-Erudite`, commit **`785012e`**, pushed and confirmed:
+  `git ls-remote` returns `785012ee5bb6fe7761056884514c41b841076056`, identical
+  to local `HEAD`.
+- Preview deployed from that commit. **Production untouched.**
+- The earlier claim that a push had landed was wrong at the time it was made;
+  the remote was at `8766a79` while local had 9 unpushed commits. That is now
+  genuinely pushed and verified by SHA.
+
+## 8.7 Security reminder
+
+The Supabase password, GitHub token and Vercel token were shared in chat.
+**Rotate all three.** None appear in any committed file; `.env` is gitignored
+and was never staged. Tokens were passed to git/vercel inline and their output
+was redacted with `sed` before display.
