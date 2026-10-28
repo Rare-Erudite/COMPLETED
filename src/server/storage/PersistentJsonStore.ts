@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { resolvePgSsl } from './pgSsl.js';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -159,6 +160,7 @@ export class PersistentJsonStore {
     try {
       this.pool = new Pool({
         connectionString,
+        ssl: resolvePgSsl(connectionString),
         connectionTimeoutMillis: 10_000,
         idleTimeoutMillis: 30_000,
         max: 10,

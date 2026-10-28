@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Pool } from 'pg';
+import { resolvePgSsl } from '../src/server/storage/pgSsl.js';
 
 const connectionString = process.env.DATABASE_URL?.trim();
 if (!connectionString) {
@@ -10,7 +11,12 @@ if (!connectionString) {
 }
 
 const migrationDirectory = path.resolve(process.cwd(), 'database', 'migrations');
-const pool = new Pool({ connectionString, connectionTimeoutMillis: 10_000, max: 1 });
+const pool = new Pool({
+  connectionString,
+  ssl: resolvePgSsl(connectionString),
+  connectionTimeoutMillis: 10_000,
+  max: 1,
+});
 
 async function runMigrations(): Promise<void> {
   const client = await pool.connect();
