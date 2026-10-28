@@ -71,7 +71,11 @@ export type ToolName =
   | 'RESTORE_CHECKPOINT'
   | 'RESEARCH'
   | 'MEMORY_RECALL'
-  | 'MEMORY_STORE';
+  | 'MEMORY_STORE'
+  | 'OPEN_URL'
+  | 'READ_DOCUMENT'
+  | 'SEARCH_LIBRARY'
+  | 'START_RESEARCH';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'prohibited';
 
@@ -84,7 +88,7 @@ export interface ToolInputSchema {
 export interface ToolSpec {
   name: ToolName;
   description: string;
-  category: 'filesystem' | 'execution' | 'inspection' | 'security' | 'research' | 'memory';
+  category: 'filesystem' | 'execution' | 'inspection' | 'security' | 'research' | 'memory' | 'content';
   risk: RiskLevel;
   requiresDeveloperAuth: boolean;
   inputSchema: ToolInputSchema;

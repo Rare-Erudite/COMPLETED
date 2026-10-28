@@ -11,6 +11,16 @@
 
 import assert from 'assert';
 
+/**
+ * Base URL of the server the runner booted for this suite.
+ *
+ * Read lazily: this module is imported before the runner sets
+ * RARE_TEST_BASE_URL, so a top-level const would capture the fallback.
+ */
+function baseUrl(): string {
+  return process.env.RARE_TEST_BASE_URL || 'http://127.0.0.1:3000';
+}
+
 function sessionHeaders(response: Response): Record<string, string> {
   const raw = typeof (response.headers as any).getSetCookie === 'function'
     ? (response.headers as any).getSetCookie() as string[]
@@ -24,20 +34,20 @@ function sessionHeaders(response: Response): Record<string, string> {
   assert.match(sessionCookie, /SameSite=(?:Lax|None)/i, 'Session cookie must use a SameSite policy');
   if (process.env.NODE_ENV === 'production') assert.match(sessionCookie, /Secure/i, 'Production session cookie must require HTTPS');
   assert.ok(csrf, 'Authentication must issue a CSRF token');
-  return { 'Content-Type': 'application/json', Origin: 'http://127.0.0.1:3000', Cookie: cookies.join('; '), 'X-CSRF-Token': decodeURIComponent(csrf) };
+  return { 'Content-Type': 'application/json', Origin: baseUrl(), Cookie: cookies.join('; '), 'X-CSRF-Token': decodeURIComponent(csrf) };
 }
 
 export async function runAuthenticationSecurityTests() {
   console.log('--- Testing Authentication & Verification Code Security ---');
 
   // Sensitive application data routes reject direct requests without a server-issued session.
-  const privateDocsRes = await fetch('http://127.0.0.1:3000/api/documents');
+  const privateDocsRes = await fetch(`${baseUrl()}/api/documents`);
   assert.strictEqual(
     privateDocsRes.status,
     401,
     'Private document listing must require a RARE session'
   );
-  const privateWriteRes = await fetch('http://127.0.0.1:3000/api/documents', {
+  const privateWriteRes = await fetch(`${baseUrl()}/api/documents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path: 'unauthorized.txt', text: 'must not be written' }),
@@ -49,7 +59,7 @@ export async function runAuthenticationSecurityTests() {
   const testPhone = '+15550001111';
 
   // Requesting verification without prior dispatch must return HTTP 400
-  const verifyRes = await fetch('http://127.0.0.1:3000/api/user/verify-email-otp', {
+  const verifyRes = await fetch(`${baseUrl()}/api/user/verify-email-otp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: testEmail, code: '123456' }),
@@ -63,7 +73,7 @@ export async function runAuthenticationSecurityTests() {
   assert.strictEqual(verifyData.success, false);
 
   // Phone arbitrary bypass check
-  const verifyPhoneRes = await fetch('http://127.0.0.1:3000/api/user/verify-otp', {
+  const verifyPhoneRes = await fetch(`${baseUrl()}/api/user/verify-otp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone: testPhone, code: '654321' }),
@@ -76,7 +86,7 @@ export async function runAuthenticationSecurityTests() {
 
   // 2. Test rejection of unverified/fabricated OAuth requests
   // Attempting to submit plain email without token must fail
-  const forgedOAuthRes = await fetch('http://127.0.0.1:3000/api/user/oauth', {
+  const forgedOAuthRes = await fetch(`${baseUrl()}/api/user/oauth`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -91,7 +101,7 @@ export async function runAuthenticationSecurityTests() {
   );
 
   // Attempting to submit invalid/fabricated token
-  const invalidTokenRes = await fetch('http://127.0.0.1:3000/api/user/oauth', {
+  const invalidTokenRes = await fetch(`${baseUrl()}/api/user/oauth`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -107,13 +117,13 @@ export async function runAuthenticationSecurityTests() {
 
   // 3. Test privilege escalation prevention
   // Regular signup must never receive developer privileges
-  const weakPasswordSignup = await fetch('http://127.0.0.1:3000/api/user/signup', {
+  const weakPasswordSignup = await fetch(`${baseUrl()}/api/user/signup`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: `weak_${Date.now()}@example.com`, password: 'short' }),
   });
   assert.strictEqual(weakPasswordSignup.status, 400, 'Signup must reject passwords below the minimum length');
   const testUserEmail = `test_regular_${Date.now()}@example.com`;
-  const signupRes = await fetch('http://127.0.0.1:3000/api/user/signup', {
+  const signupRes = await fetch(`${baseUrl()}/api/user/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -128,7 +138,7 @@ export async function runAuthenticationSecurityTests() {
   assert.strictEqual(signupData.sessionToken, undefined, 'Browser session secrets must never be returned to JavaScript');
 
   const userAHeaders = sessionHeaders(signupRes);
-  const secondSignupRes = await fetch('http://127.0.0.1:3000/api/user/signup', {
+  const secondSignupRes = await fetch(`${baseUrl()}/api/user/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: `test_other_${Date.now()}@example.com`, password: 'SecurePassword123!', name: 'Other Test User' }),
@@ -139,154 +149,154 @@ export async function runAuthenticationSecurityTests() {
 
   // Direct API access must isolate memories and documents by the authenticated
   // session even when the body attempts to claim the other account's identity.
-  const unauthenticatedMemory = await fetch('http://127.0.0.1:3000/api/memories');
+  const unauthenticatedMemory = await fetch(`${baseUrl()}/api/memories`);
   assert.strictEqual(unauthenticatedMemory.status, 401, 'Memory reads must reject requests without a session');
-  const expiredSessionMemory = await fetch('http://127.0.0.1:3000/api/user-memory', { headers: { Authorization: 'Bearer expired-or-unknown-session' } });
+  const expiredSessionMemory = await fetch(`${baseUrl()}/api/user-memory`, { headers: { Authorization: 'Bearer expired-or-unknown-session' } });
   assert.strictEqual(expiredSessionMemory.status, 401, 'Unknown or expired sessions must not access private memories');
 
-  const memoryCreateRes = await fetch('http://127.0.0.1:3000/api/memories', {
+  const memoryCreateRes = await fetch(`${baseUrl()}/api/memories`, {
     method: 'POST', headers: userAHeaders,
     body: JSON.stringify({ text: 'owner A private marker', userId: secondSignupData.user.id, ownerId: secondSignupData.user.id }),
   });
   assert.strictEqual(memoryCreateRes.status, 201, 'Authenticated user should be able to create a private memory');
   const memory = await memoryCreateRes.json();
-  const crossUserMemories = await fetch('http://127.0.0.1:3000/api/memories', { headers: userBHeaders });
+  const crossUserMemories = await fetch(`${baseUrl()}/api/memories`, { headers: userBHeaders });
   assert.strictEqual(crossUserMemories.status, 200);
   assert.ok(!(await crossUserMemories.json()).some((item: any) => item.id === memory.id), 'Another account must not read a private memory');
-  const crossUserMemoryUpdate = await fetch(`http://127.0.0.1:3000/api/memories/${memory.id}`, { method: 'PUT', headers: userBHeaders, body: JSON.stringify({ text: 'stolen' }) });
+  const crossUserMemoryUpdate = await fetch(`${baseUrl()}/api/memories/${memory.id}`, { method: 'PUT', headers: userBHeaders, body: JSON.stringify({ text: 'stolen' }) });
   assert.strictEqual(crossUserMemoryUpdate.status, 404, 'Another account must not update a private memory');
-  const crossUserMemoryDelete = await fetch(`http://127.0.0.1:3000/api/memories/${memory.id}`, { method: 'DELETE', headers: userBHeaders });
+  const crossUserMemoryDelete = await fetch(`${baseUrl()}/api/memories/${memory.id}`, { method: 'DELETE', headers: userBHeaders });
   assert.strictEqual(crossUserMemoryDelete.status, 404, 'Another account must not delete a private memory');
 
-  const documentCreateRes = await fetch('http://127.0.0.1:3000/api/documents', {
+  const documentCreateRes = await fetch(`${baseUrl()}/api/documents`, {
     method: 'POST', headers: userAHeaders,
     body: JSON.stringify({ path: 'private-owner-a.txt', text: 'owner A private document', userId: secondSignupData.user.id }),
   });
   assert.strictEqual(documentCreateRes.status, 201, 'Authenticated user should be able to create a private document');
-  const crossUserDocument = await fetch('http://127.0.0.1:3000/api/documents/private-owner-a.txt', { headers: userBHeaders });
+  const crossUserDocument = await fetch(`${baseUrl()}/api/documents/private-owner-a.txt`, { headers: userBHeaders });
   assert.strictEqual(crossUserDocument.status, 404, 'Another account must not read a private document');
-  const crossUserDocumentList = await fetch('http://127.0.0.1:3000/api/documents', { headers: userBHeaders });
+  const crossUserDocumentList = await fetch(`${baseUrl()}/api/documents`, { headers: userBHeaders });
   assert.strictEqual(crossUserDocumentList.status, 200);
   assert.ok(!(await crossUserDocumentList.json()).some((item: any) => item.path === 'private-owner-a.txt'), 'Another account must not list a private document');
 
-  const conversationCreateRes = await fetch('http://127.0.0.1:3000/api/conversations', {
+  const conversationCreateRes = await fetch(`${baseUrl()}/api/conversations`, {
     method: 'POST', headers: userAHeaders,
     body: JSON.stringify({ title: 'Owner A private chat', userId: secondSignupData.user.id }),
   });
   assert.strictEqual(conversationCreateRes.status, 201, 'Authenticated user should be able to create a conversation');
   const privateConversation = await conversationCreateRes.json();
   const privateMessage = privateConversation.messages[0];
-  const crossUserConversation = await fetch(`http://127.0.0.1:3000/api/conversations/${privateConversation.id}`, { headers: userBHeaders });
+  const crossUserConversation = await fetch(`${baseUrl()}/api/conversations/${privateConversation.id}`, { headers: userBHeaders });
   assert.strictEqual(crossUserConversation.status, 404, 'Another account must not read a private conversation');
-  const crossUserConversationDelete = await fetch(`http://127.0.0.1:3000/api/conversations/${privateConversation.id}`, { method: 'DELETE', headers: userBHeaders });
+  const crossUserConversationDelete = await fetch(`${baseUrl()}/api/conversations/${privateConversation.id}`, { method: 'DELETE', headers: userBHeaders });
   assert.strictEqual(crossUserConversationDelete.status, 404, 'Another account must not delete a private conversation');
-  const crossUserMessageEdit = await fetch(`http://127.0.0.1:3000/api/conversations/${privateConversation.id}/messages/${privateMessage.id}`, {
+  const crossUserMessageEdit = await fetch(`${baseUrl()}/api/conversations/${privateConversation.id}/messages/${privateMessage.id}`, {
     method: 'PUT', headers: userBHeaders, body: JSON.stringify({ content: 'stolen message' }),
   });
   assert.strictEqual(crossUserMessageEdit.status, 404, 'Another account must not edit a nested private message');
-  const crossUserMessageDelete = await fetch(`http://127.0.0.1:3000/api/conversations/${privateConversation.id}/messages/${privateMessage.id}`, {
+  const crossUserMessageDelete = await fetch(`${baseUrl()}/api/conversations/${privateConversation.id}/messages/${privateMessage.id}`, {
     method: 'DELETE', headers: userBHeaders,
   });
   assert.strictEqual(crossUserMessageDelete.status, 404, 'Another account must not delete a nested private message');
-  const ownMessageEdit = await fetch(`http://127.0.0.1:3000/api/conversations/${privateConversation.id}/messages/${privateMessage.id}`, {
+  const ownMessageEdit = await fetch(`${baseUrl()}/api/conversations/${privateConversation.id}/messages/${privateMessage.id}`, {
     method: 'PUT', headers: userAHeaders, body: JSON.stringify({ content: 'updated by owner A' }),
   });
   assert.strictEqual(ownMessageEdit.status, 200, 'The conversation owner can edit their own message');
-  const ownMessageDelete = await fetch(`http://127.0.0.1:3000/api/conversations/${privateConversation.id}/messages/${privateMessage.id}`, {
+  const ownMessageDelete = await fetch(`${baseUrl()}/api/conversations/${privateConversation.id}/messages/${privateMessage.id}`, {
     method: 'DELETE', headers: userAHeaders,
   });
   assert.strictEqual(ownMessageDelete.status, 200, 'The conversation owner can delete their own message');
 
-  const userSettingsRes = await fetch('http://127.0.0.1:3000/api/settings', {
+  const userSettingsRes = await fetch(`${baseUrl()}/api/settings`, {
     method: 'POST', headers: userAHeaders, body: JSON.stringify({ theme: 'red', assistant_name: 'Private A' }),
   });
   assert.strictEqual(userSettingsRes.status, 200, 'Authenticated users should be able to save their own preferences');
-  const otherUserSettingsRes = await fetch('http://127.0.0.1:3000/api/settings', { headers: userBHeaders });
+  const otherUserSettingsRes = await fetch(`${baseUrl()}/api/settings`, { headers: userBHeaders });
   assert.strictEqual(otherUserSettingsRes.status, 200);
   const otherUserSettings = await otherUserSettingsRes.json();
   assert.notStrictEqual(otherUserSettings.theme, 'red', 'Another account must not read private settings');
   assert.notStrictEqual(otherUserSettings.assistant_name, 'Private A', 'Another account must not read a private profile preference');
 
-  const scheduleCreate = await fetch('http://127.0.0.1:3000/api/schedules', {
+  const scheduleCreate = await fetch(`${baseUrl()}/api/schedules`, {
     method: 'POST', headers: userAHeaders, body: JSON.stringify({ title: 'Owner A reminder', time: '10:30' }),
   });
   assert.strictEqual(scheduleCreate.status, 201, 'A user can create a private schedule');
   const schedule = await scheduleCreate.json();
-  const otherSchedules = await fetch('http://127.0.0.1:3000/api/schedules', { headers: userBHeaders });
+  const otherSchedules = await fetch(`${baseUrl()}/api/schedules`, { headers: userBHeaders });
   assert.ok(!(await otherSchedules.json()).some((item: any) => item.id === schedule.id), 'Schedules must be isolated by owner');
-  const crossUserScheduleToggle = await fetch(`http://127.0.0.1:3000/api/schedules/${schedule.id}/toggle`, {
+  const crossUserScheduleToggle = await fetch(`${baseUrl()}/api/schedules/${schedule.id}/toggle`, {
     method: 'POST', headers: userBHeaders, body: JSON.stringify({}),
   });
   assert.strictEqual(crossUserScheduleToggle.status, 404, 'Another user cannot toggle a private schedule');
-  const crossUserScheduleDelete = await fetch(`http://127.0.0.1:3000/api/schedules/${schedule.id}`, {
+  const crossUserScheduleDelete = await fetch(`${baseUrl()}/api/schedules/${schedule.id}`, {
     method: 'DELETE', headers: userBHeaders,
   });
   assert.strictEqual(crossUserScheduleDelete.status, 404, 'Another user cannot delete a private schedule');
 
-  const pluginToggle = await fetch('http://127.0.0.1:3000/api/plugins/plugin_smart_scheduler/toggle', {
+  const pluginToggle = await fetch(`${baseUrl()}/api/plugins/plugin_smart_scheduler/toggle`, {
     method: 'POST', headers: userAHeaders, body: JSON.stringify({}),
   });
   assert.strictEqual(pluginToggle.status, 200);
-  const pluginsUserA = await fetch('http://127.0.0.1:3000/api/plugins', { headers: userAHeaders });
-  const pluginsUserB = await fetch('http://127.0.0.1:3000/api/plugins', { headers: userBHeaders });
+  const pluginsUserA = await fetch(`${baseUrl()}/api/plugins`, { headers: userAHeaders });
+  const pluginsUserB = await fetch(`${baseUrl()}/api/plugins`, { headers: userBHeaders });
   const pluginA = (await pluginsUserA.json()).find((item: any) => item.id === 'plugin_smart_scheduler');
   const pluginB = (await pluginsUserB.json()).find((item: any) => item.id === 'plugin_smart_scheduler');
   assert.notStrictEqual(pluginA.installed, pluginB.installed, 'Plugin settings must be isolated by owner');
 
-  const projectListRes = await fetch(`http://127.0.0.1:3000/api/agents/runs?userId=${encodeURIComponent(signupData.user.email)}`, { headers: userBHeaders });
+  const projectListRes = await fetch(`${baseUrl()}/api/agents/runs?userId=${encodeURIComponent(signupData.user.email)}`, { headers: userBHeaders });
   assert.strictEqual(projectListRes.status, 200);
   const otherUserProjects = await projectListRes.json();
   assert.ok(otherUserProjects.every((run: any) => run.ownerId === secondSignupData.user.id), 'Project listing must use session ownership rather than a userId query parameter');
 
-  const ordinaryRollbackRes = await fetch('http://127.0.0.1:3000/api/developer/rollback', {
+  const ordinaryRollbackRes = await fetch(`${baseUrl()}/api/developer/rollback`, {
     method: 'POST', headers: userAHeaders, body: JSON.stringify({ checkpointId: 'not-a-real-checkpoint' }),
   });
   assert.strictEqual(ordinaryRollbackRes.status, 403, 'Ordinary sessions must not run developer rollback actions');
-  const ordinaryPasskeyRes = await fetch('http://127.0.0.1:3000/api/developer/change-passkey', {
+  const ordinaryPasskeyRes = await fetch(`${baseUrl()}/api/developer/change-passkey`, {
     method: 'POST', headers: userAHeaders, body: JSON.stringify({ currentPasskey: 'wrong', newPasskey: 'attempted-change' }),
   });
   assert.strictEqual(ordinaryPasskeyRes.status, 403, 'Ordinary sessions must not change developer credentials');
-  const ordinaryToolRes = await fetch('http://127.0.0.1:3000/api/tools/execute', {
+  const ordinaryToolRes = await fetch(`${baseUrl()}/api/tools/execute`, {
     method: 'POST', headers: userAHeaders, body: JSON.stringify({ tool: 'WRITE_FILE', inputs: { path: 'unauthorized.txt', content: 'no' } }),
   });
   assert.strictEqual(ordinaryToolRes.status, 403, 'Ordinary users must not directly execute system tools');
-  const ordinaryCheckpointRes = await fetch('http://127.0.0.1:3000/api/checkpoints', { headers: userAHeaders });
+  const ordinaryCheckpointRes = await fetch(`${baseUrl()}/api/checkpoints`, { headers: userAHeaders });
   assert.strictEqual(ordinaryCheckpointRes.status, 403, 'Ordinary users must not inspect developer checkpoints');
-  const ordinaryEvaluationRes = await fetch('http://127.0.0.1:3000/api/intelligence/evaluate', {
+  const ordinaryEvaluationRes = await fetch(`${baseUrl()}/api/intelligence/evaluate`, {
     method: 'POST', headers: userAHeaders, body: JSON.stringify({}),
   });
   assert.strictEqual(ordinaryEvaluationRes.status, 403, 'Ordinary users must not run developer evaluation operations');
 
-  const guestSessionRes = await fetch('http://127.0.0.1:3000/api/user/guest-session', { method: 'POST' });
+  const guestSessionRes = await fetch(`${baseUrl()}/api/user/guest-session`, { method: 'POST' });
   assert.strictEqual(guestSessionRes.status, 200, 'Guest sessions remain available as a limited product feature');
   const guestSession = await guestSessionRes.json();
   assert.strictEqual(guestSession.sessionToken, undefined, 'Guest browser sessions must not expose bearer secrets');
   const guestHeaders = sessionHeaders(guestSessionRes);
-  const csrfFailure = await fetch('http://127.0.0.1:3000/api/settings', {
+  const csrfFailure = await fetch(`${baseUrl()}/api/settings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: guestHeaders.Cookie },
     body: JSON.stringify({ theme: 'red' }),
   });
   assert.strictEqual(csrfFailure.status, 403, 'Cookie-authenticated writes must require a CSRF token');
-  const originFailure = await fetch('http://127.0.0.1:3000/api/settings', {
+  const originFailure = await fetch(`${baseUrl()}/api/settings`, {
     method: 'POST',
     headers: { ...guestHeaders, Origin: 'https://attacker.example' },
     body: JSON.stringify({ theme: 'red' }),
   });
   assert.strictEqual(originFailure.status, 403, 'Cookie-authenticated writes must reject untrusted origins');
-  const guestProjectRes = await fetch('http://127.0.0.1:3000/api/agents/runs', {
+  const guestProjectRes = await fetch(`${baseUrl()}/api/agents/runs`, {
     method: 'POST',
     headers: guestHeaders,
     body: JSON.stringify({ title: 'Guest project', objective: 'must require an account' }),
   });
   assert.strictEqual(guestProjectRes.status, 403, 'Guest sessions must not create unrestricted build projects');
-  const logoutRes = await fetch('http://127.0.0.1:3000/api/user/logout', { method: 'POST', headers: guestHeaders });
+  const logoutRes = await fetch(`${baseUrl()}/api/user/logout`, { method: 'POST', headers: guestHeaders });
   assert.strictEqual(logoutRes.status, 200, 'Logout revokes a cookie-backed session');
-  const revokedSessionRes = await fetch('http://127.0.0.1:3000/api/user/me', { headers: { Cookie: guestHeaders.Cookie } });
+  const revokedSessionRes = await fetch(`${baseUrl()}/api/user/me`, { headers: { Cookie: guestHeaders.Cookie } });
   assert.strictEqual(revokedSessionRes.status, 401, 'A logged-out session cannot be reused');
 
   // Verify developer endpoint is blocked for unauthorized requests
-  const devStatusRes = await fetch('http://127.0.0.1:3000/api/developer/status');
+  const devStatusRes = await fetch(`${baseUrl()}/api/developer/status`);
   assert.strictEqual(
     devStatusRes.status,
     403,
@@ -295,7 +305,7 @@ export async function runAuthenticationSecurityTests() {
 
   // 4. Test missing credentials error for OTP sending (honesty requirement)
   // When credentials are not configured, send-otp must report 503 instead of pretending success
-  const sendEmailRes = await fetch('http://127.0.0.1:3000/api/user/send-email-otp', {
+  const sendEmailRes = await fetch(`${baseUrl()}/api/user/send-email-otp`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: `test_delivery_${Date.now()}@test.com` }),

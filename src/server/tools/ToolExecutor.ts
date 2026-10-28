@@ -6,6 +6,10 @@ import { ToolName, ToolSpec, ToolExecutionResult, RiskLevel } from '../types.js'
 import { MemoryStore } from '../storage/MemoryStore.js';
 import { CheckpointStore } from '../storage/CheckpointStore.js';
 import { ResearchService } from '../services/ResearchService.js';
+import { DocumentsService } from '../services/DocumentsService.js';
+import { DeepResearchEngine } from '../services/DeepResearchEngine.js';
+import { OwnerSearchIndexRegistry } from '../content/SearchIndex.js';
+import { processUrl, describeResult } from '../content/ContentEngine.js';
 
 const execFileAsync = promisify(execFile);
 const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
@@ -210,6 +214,66 @@ export const TOOL_SPECS: Record<ToolName, ToolSpec> = {
       required: ['text'],
     },
   },
+  OPEN_URL: {
+    name: 'OPEN_URL',
+    description: 'Retrieve a public HTTPS URL and return its real extracted text (articles, PDFs, office docs, books, images via OCR). Private/local addresses are refused.',
+    category: 'content',
+    risk: 'low',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Public HTTPS URL to read' },
+        maxChars: { type: 'number', description: 'Maximum characters to return (default 20000)' },
+      },
+      required: ['url'],
+    },
+  },
+  READ_DOCUMENT: {
+    name: 'READ_DOCUMENT',
+    description: "Read one of the current user's saved RARE documents by path.",
+    category: 'content',
+    risk: 'low',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Document path, e.g. imports/report-123.md' },
+        maxChars: { type: 'number', description: 'Maximum characters to return (default 20000)' },
+      },
+      required: ['path'],
+    },
+  },
+  SEARCH_LIBRARY: {
+    name: 'SEARCH_LIBRARY',
+    description: "Search the current user's own documents, transcripts and research reports for matching passages.",
+    category: 'content',
+    risk: 'low',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Words or an exact phrase to find' },
+        limit: { type: 'number', description: 'Maximum hits (default 10)' },
+      },
+      required: ['query'],
+    },
+  },
+  START_RESEARCH: {
+    name: 'START_RESEARCH',
+    description: 'Run a cited, evidence-grounded research investigation across public sources and return a report with real sources.',
+    category: 'content',
+    risk: 'low',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: 'The research question' },
+        depth: { type: 'string', description: 'quick, standard or deep', enum: ['quick', 'standard', 'deep'] },
+      },
+      required: ['question'],
+    },
+  },
 };
 
 export class ToolExecutor {
@@ -217,7 +281,52 @@ export class ToolExecutor {
     private memoryStore: MemoryStore,
     private checkpointStore: CheckpointStore,
     private researchService = new ResearchService(),
+    /** Owner-scoped document service, injected once storage is ready. */
+    private documentsService?: DocumentsService,
+    private searchIndexes?: OwnerSearchIndexRegistry,
+    private researchEngine?: DeepResearchEngine,
   ) {}
+
+  /**
+   * The authenticated owner for this call. Never taken from model-supplied
+   * arguments: knowing a path must not grant access to another user's data.
+   */
+  private requireOwner(options?: { ownerId?: string }): string {
+    const owner = options?.ownerId;
+    if (!owner || typeof owner !== 'string') {
+      throw new Error('This tool requires an authenticated user session.');
+    }
+    return owner;
+  }
+
+  private requireDocuments(): DocumentsService {
+    if (!this.documentsService) throw new Error('Document storage is not ready yet.');
+    return this.documentsService;
+  }
+
+  private requireIndexes(): OwnerSearchIndexRegistry {
+    if (!this.searchIndexes) throw new Error('The search index is not ready yet.');
+    return this.searchIndexes;
+  }
+
+  private requireResearchEngine(): DeepResearchEngine {
+    if (!this.researchEngine) throw new Error('The research engine is not ready yet.');
+    return this.researchEngine;
+  }
+
+  /**
+   * Attach the owner-scoped content services once storage is initialised.
+   * Called at startup so the executor and the HTTP routes share one instance.
+   */
+  public attachContentServices(
+    documents: DocumentsService,
+    indexes: OwnerSearchIndexRegistry,
+    research: DeepResearchEngine,
+  ): void {
+    this.documentsService = documents;
+    this.searchIndexes = indexes;
+    this.researchEngine = research;
+  }
 
   public getSpecs(): ToolSpec[] {
     return Object.values(TOOL_SPECS);
@@ -239,7 +348,7 @@ export class ToolExecutor {
   public async execute(
     name: ToolName,
     inputs: Record<string, any>,
-    options?: { isDeveloperAuth?: boolean; actor?: string }
+    options?: { isDeveloperAuth?: boolean; actor?: string; ownerId?: string }
   ): Promise<ToolExecutionResult> {
     const start = Date.now();
     const spec = TOOL_SPECS[name];
@@ -515,6 +624,78 @@ export class ToolExecutor {
           const { query, maxResults = 5 } = inputs;
           if (!query) throw new Error('query is required');
           output = await this.researchService.search(String(query), Number(maxResults));
+          break;
+        }
+
+        // --- Universal content engine tools -------------------------------
+        // Ownership comes from the authenticated actor, never from the model.
+        case 'OPEN_URL': {
+          const { url, maxChars = 20000 } = inputs;
+          if (!url || typeof url !== 'string') throw new Error('url is required');
+          const result = await processUrl(url, { maxBytes: 8 * 1024 * 1024 });
+          if (!result.ok) {
+            throw new Error(`${result.error?.message || 'The URL could not be read.'}${result.error?.nextStep ? ` ${result.error.nextStep}` : ''}`);
+          }
+          const limit = Math.min(60000, Number(maxChars) || 20000);
+          output = {
+            title: result.title,
+            kind: result.label,
+            method: result.method,
+            ocr: result.ocr,
+            finalUrl: result.finalUrl,
+            text: result.text.slice(0, limit),
+            truncated: result.text.length > limit || result.truncated,
+            summary: describeResult(result),
+          };
+          break;
+        }
+
+        case 'READ_DOCUMENT': {
+          const { path: documentPath, maxChars = 20000 } = inputs;
+          if (!documentPath || typeof documentPath !== 'string') throw new Error('path is required');
+          const owner = this.requireOwner(options);
+          const document = await this.requireDocuments().read(owner, documentPath);
+          if (!document) throw new Error('Document not found.');
+          const limit = Math.min(60000, Number(maxChars) || 20000);
+          output = {
+            path: document.path,
+            title: document.title || document.path,
+            kind: document.label || document.kind,
+            sourceUrl: document.sourceUrl,
+            ocr: document.ocr,
+            text: document.content.slice(0, limit),
+            truncated: document.content.length > limit,
+          };
+          break;
+        }
+
+        case 'SEARCH_LIBRARY': {
+          const { query, limit = 10 } = inputs;
+          if (!query || typeof query !== 'string') throw new Error('query is required');
+          const owner = this.requireOwner(options);
+          const documents = this.requireDocuments();
+          await documents.ensureIndexed(owner);
+          output = {
+            query,
+            hits: this.requireIndexes().forOwner(owner).search(query, { limit: Math.min(30, Number(limit) || 10) }),
+          };
+          break;
+        }
+
+        case 'START_RESEARCH': {
+          const { question, depth = 'standard' } = inputs;
+          if (!question || typeof question !== 'string') throw new Error('question is required');
+          const report = await this.requireResearchEngine().research({
+            question,
+            depth: ['quick', 'standard', 'deep'].includes(String(depth)) ? (String(depth) as any) : 'standard',
+          });
+          output = {
+            question: report.question,
+            scope: report.scope,
+            sources: report.sources.map((source) => ({ title: source.title, url: source.finalUrl || source.url, provider: source.provider })),
+            limitations: report.limitations,
+            report: report.report,
+          };
           break;
         }
 

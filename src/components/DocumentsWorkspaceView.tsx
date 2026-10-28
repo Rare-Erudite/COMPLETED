@@ -211,20 +211,64 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
     setError('');
     setNotice('');
     try {
-      const extension = 'txt';
+      // The server sniffs the real content type and picks the extractor, so no
+      // extension is forced here.
       const response = await apiFetch('/api/documents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: importUrl.trim(), path: `imports/${Date.now()}.${extension}` }),
+        body: JSON.stringify({ url: importUrl.trim() }),
       });
       if (!response.ok) throw new Error(await readErrorMessage(response));
       const imported = await response.json();
       setImportUrl('');
-      setNotice(`Imported ${imported.path} (${formatBytes(imported.size || 0)}).`);
+      const detail = [
+        imported.label || imported.kind,
+        imported.method ? `via ${imported.method}` : '',
+        imported.pages ? `${imported.pages} page(s)` : '',
+        imported.ocr ? 'OCR' : '',
+      ].filter(Boolean).join(' · ');
+      setNotice(`Imported ${imported.path}${detail ? ` (${detail})` : ''}.`);
+      if (Array.isArray(imported.warnings) && imported.warnings.length > 0) {
+        setError(imported.warnings.join(' · '));
+      }
       await loadList();
       await openDocument(imported.path);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'URL import failed.');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const importManyUrls = async () => {
+    const urls = importUrl
+      .split(/[\n,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (urls.length < 2) {
+      setError('Paste two or more URLs (one per line) to import them together.');
+      return;
+    }
+    setBusy('import-many');
+    setError('');
+    setNotice('');
+    try {
+      const response = await apiFetch('/api/documents/import-many', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urls, limit: 8 }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const outcome = await response.json();
+      const failures = (outcome.results || [])
+        .filter((item: any) => !item.ok)
+        .map((item: any) => `${item.sourceUrl || 'source'}: ${item.error?.message || 'failed'}`);
+      setNotice(`Imported ${outcome.succeeded} of ${outcome.visited.length} source(s).`);
+      if (failures.length > 0) setError(failures.join(' · '));
+      setImportUrl('');
+      await loadList();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Batch import failed.');
     } finally {
       setBusy('');
     }
@@ -239,21 +283,26 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
     let saved = 0;
     for (const file of Array.from(files)) {
       try {
-        if (file.size > MAX_INLINE_BYTES) {
-          failures.push(`${file.name}: exceeds the 2 MB text limit.`);
+        if (file.size > 25 * 1024 * 1024) {
+          failures.push(`${file.name}: exceeds the 25 MB upload limit.`);
           continue;
         }
-        const dot = file.name.lastIndexOf('.');
-        const extension = dot === -1 ? '' : file.name.slice(dot).toLowerCase();
-        if (!EDITABLE_EXTENSIONS.includes(extension)) {
-          failures.push(`${file.name}: .${extension.replace('.', '') || 'unknown'} is not a supported text document format.`);
-          continue;
-        }
-        const text = await file.text();
+        // Send the raw bytes: the server sniffs the real format and picks the
+        // right extractor, so any supported format works here.
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = String(reader.result || '');
+            const comma = result.indexOf(',');
+            resolve(comma === -1 ? result : result.slice(comma + 1));
+          };
+          reader.onerror = () => reject(new Error('Could not read the file.'));
+          reader.readAsDataURL(file);
+        });
         const response = await apiFetch('/api/documents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: `uploads/${file.name}`, text }),
+          body: JSON.stringify({ fileBase64: base64, filename: file.name, mimeType: file.type }),
         });
         if (!response.ok) throw new Error(await readErrorMessage(response));
         saved += 1;
@@ -261,7 +310,7 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
         failures.push(`${file.name}: ${err instanceof Error ? err.message : 'upload failed'}`);
       }
     }
-    if (saved > 0) setNotice(`Uploaded ${saved} document${saved === 1 ? '' : 's'}.`);
+    if (saved > 0) setNotice(`Imported ${saved} file${saved === 1 ? '' : 's'}.`);
     if (failures.length > 0) setError(failures.join(' · '));
     await loadList();
     setBusy('');
@@ -397,7 +446,7 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
           ref={fileInputRef}
           type="file"
           multiple
-          accept={EDITABLE_EXTENSIONS.join(',')}
+          accept="*/*"
           className="hidden"
           onChange={(event) => void uploadFiles(event.target.files)}
         />
@@ -412,7 +461,7 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
             type="text"
             value={importUrl}
             onChange={(event) => setImportUrl(event.target.value)}
-            placeholder="https://example.com/report"
+            placeholder="https://example.com/report.pdf"
             className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-lg px-2 py-1 text-[10px] focus:outline-none`}
           />
           <button
@@ -422,8 +471,15 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
           >
             {busy === 'import' ? 'Fetching…' : 'Fetch public page'}
           </button>
+          <button
+            onClick={() => void importManyUrls()}
+            disabled={busy === 'import-many' || importUrl.split(/[\n,]+/).filter((value) => value.trim()).length < 2}
+            className={`w-full py-1 rounded-lg ${t.cardSub} border ${t.cardBorder} text-[10px] font-medium disabled:opacity-40`}
+          >
+            {busy === 'import-many' ? 'Importing…' : 'Import all (one URL per line)'}
+          </button>
           <p className={`text-[9px] ${t.textDim} leading-tight`}>
-            HTTPS only, public pages only — private and local addresses are refused by the server.
+            HTTPS only, public pages only — private and local addresses are refused by the server. PDFs, articles, docs and media pages are detected from their real content.
           </p>
         </div>
 

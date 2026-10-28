@@ -67,6 +67,8 @@ import {
   Camera
 } from 'lucide-react';
 import { themes, ThemeKey, ThemeConfig } from './theme';
+import { DocumentsWorkspaceView } from './components/DocumentsWorkspaceView';
+import { ResearchWorkspaceView } from './components/ResearchWorkspaceView';
 
 import {
   safeFetch,
@@ -761,6 +763,8 @@ useEffect(() => {
   };
 
   const workspaceNavItems = [
+    { id: 'documents', label: 'Documents', icon: FileText, badge: 'Any format' },
+    { id: 'research', label: 'Research', icon: Compass, badge: 'Deep' },
     { id: 'projects', label: 'Projects', icon: Package, badge: 'APK • EXE • Web' },
     { id: 'scheduled', label: 'Scheduled', icon: Clock, badge: 'Alarms' },
     { id: 'plugins', label: 'Plugins', icon: Puzzle, badge: '8 Installed' },
@@ -1367,6 +1371,8 @@ useEffect(() => {
               onNavigate={setActiveTab}
             />
           )}
+          {activeTab === 'documents' && <DocumentsWorkspaceView t={t} />}
+          {activeTab === 'research' && <ResearchWorkspaceView t={t} onNavigate={setActiveTab} />}
           {activeTab === 'projects' && <CollaborativeBuildWorkspaceView t={t} />}
           {activeTab === 'scheduled' && <ScheduledWorkspaceView t={t} onNavigate={setActiveTab} />}
           {activeTab === 'plugins' && <PluginsDirectoryView t={t} onNavigate={setActiveTab} />}

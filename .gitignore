@@ -13,3 +13,6 @@ coverage/
 data/models_cache/
 .env*
 !.env.example
+
+# Build output — never commit; `npm start` rebuilds it.
+server-build/

@@ -14,6 +14,12 @@ import { DurableStateStore } from './src/server/storage/DurableStateStore.js';
 import { PersistentJsonStore } from './src/server/storage/PersistentJsonStore.js';
 import { DocumentStore } from './src/server/storage/DocumentStore.js';
 import { ResearchService } from './src/server/services/ResearchService.js';
+import { DocumentsService, DocumentPathError, normalizeDocumentPath } from './src/server/services/DocumentsService.js';
+import { DeepResearchEngine } from './src/server/services/DeepResearchEngine.js';
+import { listProviders as listResearchProviders } from './src/server/services/ResearchProviders.js';
+import { OwnerSearchIndexRegistry } from './src/server/content/SearchIndex.js';
+import { processBuffer, processUrl, describeResult } from './src/server/content/ContentEngine.js';
+import { listExtractors } from './src/server/content/Extractors.js';
 import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
 import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
@@ -102,6 +108,10 @@ const trajectoryStore = new TrajectoryStore();
 const updateStore = new UpdateStore();
 const documentStore = new DocumentStore(PROJECT_ROOT);
 const researchService = new ResearchService();
+const searchIndexes = new OwnerSearchIndexRegistry();
+const deepResearchEngine = new DeepResearchEngine();
+/** Documents service is constructed once storage is ready (see startServer). */
+let documentsService: DocumentsService | undefined;
 const toolExecutor = new ToolExecutor(memoryStore, checkpointStore, researchService);
 const providerRegistry = new ProviderRegistry(memoryStore, toolExecutor);
 const selfDevEngine = new SelfDevelopmentEngine(checkpointStore, trajectoryStore, toolExecutor);
@@ -3781,120 +3791,252 @@ app.post('/api/user-memory/forget', async (req, res) => {
   }
 });
 
-// Documents Management
-function normalizePrivateDocumentPath(value: unknown): string {
-  if (typeof value !== 'string' || !value.trim() || value.length > 500 || value.includes('\0') || path.isAbsolute(value) || /^[A-Za-z]:/.test(value)) throw new Error('Document path must be a valid relative path.');
-  const normalized = path.posix.normalize(value.replace(/\\/g, '/'));
-  if (normalized === '.' || normalized === '..' || normalized.startsWith('../') || normalized.split('/').includes('..')) throw new Error('Document path must stay inside your document space.');
-  if (!['.md', '.txt', '.text', '.json', '.html', '.htm', '.csv', '.xml', '.yaml', '.yml', '.log'].includes(path.posix.extname(normalized).toLowerCase())) throw new Error('Only text-based document formats are supported.');
-  return normalized;
+// =============================================================================
+// Documents — backed by the shared Universal Content Engine
+// =============================================================================
+function requireDocumentsService(): DocumentsService {
+  if (!documentsService) throw new Error('Document storage is not ready yet.');
+  return documentsService;
 }
 
-function parseCsvDocument(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = '';
-  let quoted = false;
-  const input = text.replace(/^\uFEFF/, '');
-  for (let index = 0; index < input.length; index += 1) {
-    const char = input[index];
-    if (quoted) {
-      if (char === '"' && input[index + 1] === '"') { field += '"'; index += 1; }
-      else if (char === '"') quoted = false;
-      else field += char;
-      continue;
-    }
-    if (char === '"' && field.length === 0) quoted = true;
-    else if (char === ',') { row.push(field); field = ''; }
-    else if (char === '\n' || char === '\r') {
-      if (char === '\r' && input[index + 1] === '\n') index += 1;
-      row.push(field); field = '';
-      if (row.some((cell) => cell.length > 0)) rows.push(row);
-      row = [];
-    } else field += char;
-  }
-  if (quoted) throw new Error('CSV contains an unterminated quoted field.');
-  row.push(field);
-  if (row.some((cell) => cell.length > 0)) rows.push(row);
-  return rows;
+function documentErrorStatus(error: unknown): number {
+  const message = error instanceof Error ? error.message : '';
+  if (message === 'RARE_GUEST_LIMIT') return 429;
+  if (error instanceof DocumentPathError) return 400;
+  if (/storage|database|private user state|not ready/i.test(message)) return 503;
+  return 400;
 }
 
-app.post('/api/documents/parse', (req, res) => {
-  const content = req.body?.content;
-  const format = typeof req.body?.format === 'string' ? req.body.format.toLowerCase() : '';
-  if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 2 * 1024 * 1024) {
-    return res.status(400).json({ error: { message: 'Document content must be text of at most 2 MB.' } });
+function sendDocumentError(res: express.Response, error: unknown, fallback: string): void {
+  const message = error instanceof Error ? error.message : fallback;
+  const status = documentErrorStatus(error);
+  if (status === 429) {
+    res.status(429).json({ error: { message: 'Guest document limit reached. Create an account to continue.' } });
+    return;
   }
-  if (format === 'csv') {
-    try {
-      const rows = parseCsvDocument(content);
-      const headers = rows.shift() || [];
-      return res.json({ format, headers, rows: rows.map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? '']))), rowCount: rows.length });
-    } catch (error) {
-      return res.status(400).json({ error: { message: error instanceof Error ? error.message : 'CSV could not be parsed.' } });
-    }
+  if (status === 503) {
+    console.error('[Documents] Storage failure:', error);
+    res.status(503).json({ error: { message: 'Private document storage is unavailable.' } });
+    return;
   }
-  if (format === 'markdown' || format === 'md') {
-    const headings = content.split(/\r?\n/).filter((line) => /^#{1,6}\s+/.test(line)).map((line) => line.replace(/^#{1,6}\s+/, '').trim());
-    const tableRows = content.split(/\r?\n/).filter((line) => /^\s*\|.*\|\s*$/.test(line)).map((line) => line.split('|').slice(1, -1).map((cell) => cell.trim()));
-    return res.json({ format: 'markdown', headings, tableRows, rowCount: tableRows.length });
-  }
-  return res.status(400).json({ error: { message: 'Supported parse formats are CSV and Markdown.' } });
-});
+  res.status(status).json({ error: { message } });
+}
+
+/** Parse a document body that may be text, a URL, or a base64 file upload. */
+function readDocumentPayload(body: any): { text?: string; url?: string; fileBase64?: string; filename?: string; mimeType?: string } {
+  return {
+    text: typeof body?.text === 'string' ? body.text : undefined,
+    url: typeof body?.url === 'string' ? body.url : undefined,
+    fileBase64: typeof body?.fileBase64 === 'string' ? body.fileBase64 : undefined,
+    filename: typeof body?.filename === 'string' ? body.filename : undefined,
+    mimeType: typeof body?.mimeType === 'string' ? body.mimeType : undefined,
+  };
+}
 
 app.get('/api/documents', async (_req, res) => {
   try {
-    const docs = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'documents', []);
-    res.json(docs.map((doc) => ({ path: doc.path, size: Buffer.byteLength(doc.content, 'utf8'), format: doc.format, updated_at: doc.updatedAt })));
+    res.json(await requireDocumentsService().list(res.locals.rareUserId));
   } catch (error) {
-    console.error('[Documents] Private document list failed:', error);
-    res.status(503).json({ error: { message: 'Private document storage is unavailable.' } });
+    sendDocumentError(res, error, 'Could not list documents.');
   }
+});
+
+// Capability discovery: what this deployment can actually read right now.
+app.get('/api/documents/capabilities', (_req, res) => {
+  res.json({
+    extractors: listExtractors(),
+    formats: {
+      documents: ['pdf', 'docx', 'doc', 'odt', 'rtf', 'epub', 'html', 'markdown', 'text'],
+      spreadsheets: ['xlsx', 'xls', 'ods', 'csv', 'tsv'],
+      presentations: ['pptx', 'ppt', 'odp'],
+      data: ['json', 'jsonl', 'yaml', 'xml'],
+      images: ['png', 'jpeg', 'gif', 'webp', 'tiff', 'bmp', 'svg'],
+      archives: ['zip', 'gzip', 'tar', '7z'],
+      email: ['eml', 'mbox'],
+      subtitles: ['srt', 'vtt'],
+      media: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'mp4', 'webm', 'mov'],
+    },
+    notes: [
+      'Content type is determined from the bytes, not the filename or Content-Type header.',
+      'Scanned PDFs and images fall back to OCR when no text layer exists.',
+      'Media requires a configured transcription provider.',
+    ],
+  });
 });
 
 app.get('/api/documents/*', async (req, res) => {
   try {
-    const docPath = normalizePrivateDocumentPath((req.params as any)[0]);
-    const docs = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'documents', []);
-    const document = docs.find((doc) => doc.path === docPath);
-    if (document) return res.json(document);
+    const document = await requireDocumentsService().read(res.locals.rareUserId, (req.params as any)[0]);
+    if (!document) {
+      res.status(404).json({ error: { message: 'Document not found' } });
+      return;
+    }
+    res.json(document);
   } catch (error) {
-    const status = error instanceof Error && /path|format/i.test(error.message) ? 400 : 503;
-    if (status === 503) console.error('[Documents] Private document read failed:', error);
-    return res.status(status).json({ error: { message: status === 400 ? (error as Error).message : 'Private document storage is unavailable.' } });
+    sendDocumentError(res, error, 'Could not open the document.');
   }
-  res.status(404).json({ error: { message: 'Document not found' } });
 });
 
 app.post('/api/documents', async (req, res) => {
-  const { path: requestedPath, text, url } = req.body || {};
+  const { path: requestedPath } = req.body || {};
+  const payload = readDocumentPayload(req.body);
   try {
-    let filename: string;
-    let content: string;
-    let sourceUrl: string | undefined;
-    if (url) {
-      const imported = await documentStore.importUrl(String(url));
-      filename = normalizePrivateDocumentPath(String(requestedPath || `imports/${Date.now()}.${imported.format}`));
-      content = imported.content;
-      sourceUrl = imported.sourceUrl;
-    } else {
-      if (!requestedPath) return res.status(400).json({ error: { message: 'Document path required' } });
-      filename = normalizePrivateDocumentPath(requestedPath);
-      if (typeof text !== 'string' || Buffer.byteLength(text, 'utf8') > 2 * 1024 * 1024) return res.status(400).json({ error: { message: 'Document text must be a string of at most 2 MB.' } });
-      content = text;
+    const service = requireDocumentsService();
+
+    // 1. URL import through the content engine.
+    if (payload.url) {
+      const outcome = await service.importUrl(res.locals.rareUserId, payload.url, {
+        isGuest: res.locals.rareIsGuest,
+        requestedPath: typeof requestedPath === 'string' ? requestedPath : undefined,
+      });
+      if (!outcome.ok) {
+        res.status(422).json({
+          error: {
+            message: outcome.error?.message || 'The source could not be read.',
+            code: outcome.error?.code,
+            nextStep: outcome.error?.nextStep,
+          },
+          kind: outcome.kind,
+          label: outcome.label,
+          warnings: outcome.warnings,
+        });
+        return;
+      }
+      res.status(201).json(outcome);
+      return;
     }
-    const saved = { path: filename, content, format: path.posix.extname(filename).slice(1).toLowerCase(), updatedAt: new Date().toISOString(), ...(sourceUrl ? { sourceUrl } : {}) };
-    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'documents', [], (docs) => {
-      if (res.locals.rareIsGuest && !docs.some((doc) => doc.path === filename) && docs.length >= 20) throw new Error('RARE_GUEST_LIMIT');
-      return [saved, ...docs.filter((doc) => doc.path !== filename)];
+
+    // 2. File upload through the content engine (any supported format).
+    if (payload.fileBase64) {
+      const buffer = Buffer.from(payload.fileBase64.replace(/^data:[^;]+;base64,/, ''), 'base64');
+      if (buffer.length === 0) {
+        res.status(400).json({ error: { message: 'The uploaded file was empty.' } });
+        return;
+      }
+      if (buffer.length > 25 * 1024 * 1024) {
+        res.status(413).json({ error: { message: 'Files must be 25 MB or smaller.' } });
+        return;
+      }
+      const outcome = await service.importBuffer(res.locals.rareUserId, buffer, payload.filename || 'upload', {
+        isGuest: res.locals.rareIsGuest,
+        mimeType: payload.mimeType,
+      });
+      if (!outcome.ok) {
+        res.status(422).json({
+          error: {
+            message: outcome.error?.message || 'The file could not be read.',
+            code: outcome.error?.code,
+            nextStep: outcome.error?.nextStep,
+          },
+          kind: outcome.kind,
+          label: outcome.label,
+          warnings: outcome.warnings,
+        });
+        return;
+      }
+      res.status(201).json(outcome);
+      return;
+    }
+
+    // 3. Plain text save.
+    if (!requestedPath) {
+      res.status(400).json({ error: { message: 'Document path required' } });
+      return;
+    }
+    if (typeof payload.text !== 'string') {
+      res.status(400).json({ error: { message: 'Document text must be a string.' } });
+      return;
+    }
+    const saved = await service.save(res.locals.rareUserId, requestedPath, payload.text, { isGuest: res.locals.rareIsGuest });
+    res.status(201).json({
+      path: saved.path,
+      size: Buffer.byteLength(saved.content, 'utf8'),
+      format: saved.format,
+      version: saved.version,
+      ...(saved.sourceUrl ? { sourceUrl: saved.sourceUrl } : {}),
     });
-    res.status(201).json({ path: filename, size: Buffer.byteLength(content, 'utf8'), ...(sourceUrl ? { sourceUrl } : {}), format: saved.format });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Document could not be saved.';
-    if (message === 'RARE_GUEST_LIMIT') return res.status(429).json({ error: { message: 'Guest document limit reached. Create an account to continue.' } });
-    const status = /storage|database|private user state/i.test(message) ? 503 : 400;
-    if (status === 503) console.error('[Documents] Private document write failed:', error);
-    res.status(status).json({ error: { message: status === 503 ? 'Private document storage is unavailable.' : message } });
+    sendDocumentError(res, error, 'Document could not be saved.');
+  }
+});
+
+// Multi-link import: per-item results, dedupe, partial-failure recovery.
+app.post('/api/documents/import-many', async (req, res) => {
+  const urls = Array.isArray(req.body?.urls) ? req.body.urls.filter((url: unknown) => typeof url === 'string') : [];
+  if (urls.length === 0) {
+    res.status(400).json({ error: { message: 'Provide at least one URL.' } });
+    return;
+  }
+  try {
+    const outcome = await requireDocumentsService().importMany(res.locals.rareUserId, urls, {
+      isGuest: res.locals.rareIsGuest,
+      limit: Number(req.body?.limit) || 8,
+    });
+    res.json(outcome);
+  } catch (error) {
+    sendDocumentError(res, error, 'The sources could not be imported.');
+  }
+});
+
+// Read a URL without saving it — used by the reader view and by chat.
+app.post('/api/documents/preview-url', async (req, res) => {
+  const url = typeof req.body?.url === 'string' ? req.body.url : '';
+  if (!url) {
+    res.status(400).json({ error: { message: 'A URL is required.' } });
+    return;
+  }
+  try {
+    const result = await processUrl(url, { maxBytes: 8 * 1024 * 1024 });
+    res.json({
+      ok: result.ok,
+      kind: result.kind,
+      label: result.label,
+      method: result.method,
+      ocr: result.ocr,
+      title: result.title,
+      sourceUrl: result.sourceUrl,
+      finalUrl: result.finalUrl,
+      redirectChain: result.redirectChain,
+      text: result.text,
+      pages: result.pages,
+      warnings: result.warnings,
+      attempts: result.attempts,
+      summary: describeResult(result),
+      error: result.error,
+    });
+  } catch (error) {
+    res.status(502).json({ error: { message: error instanceof Error ? error.message : 'The URL could not be read.' } });
+  }
+});
+
+// Rename / delete / reindex
+app.post('/api/documents/rename', async (req, res) => {
+  try {
+    const renamed = await requireDocumentsService().rename(res.locals.rareUserId, String(req.body?.path || ''), String(req.body?.newPath || ''));
+    res.json({ path: renamed.path, format: renamed.format });
+  } catch (error) {
+    sendDocumentError(res, error, 'The document could not be renamed.');
+  }
+});
+
+app.delete('/api/documents/*', async (req, res) => {
+  try {
+    const removed = await requireDocumentsService().remove(res.locals.rareUserId, (req.params as any)[0]);
+    if (!removed) {
+      res.status(404).json({ error: { message: 'Document not found' } });
+      return;
+    }
+    res.json({ success: true });
+  } catch (error) {
+    sendDocumentError(res, error, 'The document could not be deleted.');
+  }
+});
+
+app.post('/api/documents/reindex', async (req, res) => {
+  try {
+    res.json(await requireDocumentsService().reindex(res.locals.rareUserId));
+  } catch (error) {
+    sendDocumentError(res, error, 'The search index could not be rebuilt.');
   }
 });
 
@@ -3904,12 +4046,23 @@ app.post('/api/documents/transcribe', async (req, res) => {
   const dataUrl = rawAudio.match(/^data:([^;]+);base64,(.+)$/s);
   const audioBase64 = dataUrl ? dataUrl[2] : rawAudio;
   const mimeType = String(dataUrl?.[1] || req.body?.mimeType || 'audio/webm');
-  if (!audioBase64 || audioBase64.length > 14 * 1024 * 1024) return res.status(400).json({ error: { message: 'Audio data is required and must not exceed the upload limit.' } });
-  if (!/^audio\/(webm|ogg|wav|mpeg|mp3|aac|flac)$/i.test(mimeType)) {
-    return res.status(400).json({ error: { message: 'Unsupported audio format.' } });
+  if (!audioBase64 || audioBase64.length > 14 * 1024 * 1024) {
+    res.status(400).json({ error: { message: 'Audio data is required and must not exceed the upload limit.' } });
+    return;
+  }
+  if (!/^audio\/(webm|ogg|wav|mpeg|mp3|aac|flac|mp4|x-m4a)$/i.test(mimeType)) {
+    res.status(400).json({ error: { message: `Unsupported audio format: ${mimeType}.` } });
+    return;
   }
   if (!process.env.GEMINI_API_KEY?.trim()) {
-    return res.status(503).json({ error: { message: 'Audio transcription requires GEMINI_API_KEY to be configured on the server.' } });
+    res.status(503).json({
+      error: {
+        message: 'Audio transcription requires GEMINI_API_KEY to be configured on the server.',
+        code: 'TRANSCRIPTION_PROVIDER_UNAVAILABLE',
+        nextStep: 'Set GEMINI_API_KEY, or configure a local speech engine.',
+      },
+    });
+    return;
   }
   try {
     const transcription = await providerRegistry.getGeminiProvider().transcribeAudio(audioBase64, mimeType);
@@ -3917,9 +4070,11 @@ app.post('/api/documents/transcribe', async (req, res) => {
       .replace(/\.[^/.]+$/, '')
       .replace(/[^a-zA-Z0-9_-]+/g, '_')
       .slice(0, 80) || 'recording';
-    const transcriptPath = normalizePrivateDocumentPath(`transcripts/${basename}_transcript.txt`);
-    const saved = { path: transcriptPath, content: transcription.text.slice(0, 2 * 1024 * 1024), format: 'txt', updatedAt: new Date().toISOString() };
-    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'documents', [], (docs) => [saved, ...docs.filter((doc) => doc.path !== transcriptPath)]);
+    const transcriptPath = normalizeDocumentPath(`transcripts/${basename}_transcript.txt`);
+    const saved = await requireDocumentsService().save(res.locals.rareUserId, transcriptPath, transcription.text.slice(0, 2 * 1024 * 1024), {
+      isGuest: res.locals.rareIsGuest,
+      origin: 'transcript',
+    });
     res.json({
       success: true,
       path: saved.path,
@@ -3937,24 +4092,25 @@ app.post('/api/documents/transcribe', async (req, res) => {
 
 // Format Conversion
 app.post('/api/documents/convert', async (req, res) => {
-  const { path: docPath, targetFormat } = req.body;
   try {
-    const sourcePath = normalizePrivateDocumentPath(docPath);
-    const docs = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'documents', []);
-    const doc = docs.find((item) => item.path === sourcePath);
-    if (!doc) return res.status(404).json({ error: { message: 'Document not found' } });
-    const format = String(targetFormat || '').toLowerCase().replace(/^\./, '');
-    const newPath = normalizePrivateDocumentPath(doc.path.replace(/\.[^/.]+$/, `.${format}`));
-    const converted = documentStore.convert(doc.content, format);
-    const saved = { path: newPath, content: converted, format, updatedAt: new Date().toISOString() };
-    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'documents', [], (current) => [saved, ...current.filter((item) => item.path !== newPath)]);
-    res.json({ success: true, originalPath: doc.path, convertedPath: newPath, format });
+    const converted = await requireDocumentsService().convert(
+      res.locals.rareUserId,
+      String(req.body?.path || ''),
+      String(req.body?.targetFormat || ''),
+    );
+    res.json({ success: true, ...converted });
   } catch (error) {
-    res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Document conversion failed.' } });
+    sendDocumentError(res, error, 'Document conversion failed.');
   }
 });
 
-// Research Engine
+// =============================================================================
+// Research — deep, evidence-grounded, with saved projects
+// =============================================================================
+app.get('/api/research/providers', (_req, res) => {
+  res.json({ providers: listResearchProviders() });
+});
+
 app.get('/api/research/items', async (req, res) => {
   try {
     res.json(await persistentStorage!.getOwnedState<ResearchItem[]>(res.locals.rareUserId, 'research_items', []));
@@ -3964,36 +4120,126 @@ app.get('/api/research/items', async (req, res) => {
   }
 });
 
+app.get('/api/research/items/:id', async (req, res) => {
+  try {
+    const items = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'research_items', []);
+    const item = items.find((entry) => entry.id === req.params.id);
+    if (!item) {
+      res.status(404).json({ error: { message: 'Research project not found' } });
+      return;
+    }
+    res.json(item);
+  } catch (error) {
+    res.status(503).json({ error: { message: 'Private research storage is unavailable.' } });
+  }
+});
+
+app.delete('/api/research/items/:id', async (req, res) => {
+  try {
+    let removed = false;
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'research_items', [], (items) =>
+      items.filter((item) => {
+        if (item.id === req.params.id) {
+          removed = true;
+          return false;
+        }
+        return true;
+      }),
+    );
+    if (!removed) {
+      res.status(404).json({ error: { message: 'Research project not found' } });
+      return;
+    }
+    res.json({ success: true });
+  } catch (error) {
+    res.status(503).json({ error: { message: 'Private research storage is unavailable.' } });
+  }
+});
+
 app.post('/api/research/search', async (req, res) => {
   const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
-  if (!query) return res.status(400).json({ error: { message: 'A research query is required.' } });
+  if (!query) {
+    res.status(400).json({ error: { message: 'A research query is required.' } });
+    return;
+  }
+  const depth = ['quick', 'standard', 'deep'].includes(String(req.body?.depth)) ? String(req.body.depth) : 'standard';
+  const seedUrls = Array.isArray(req.body?.urls) ? req.body.urls.filter((url: unknown) => typeof url === 'string') : [];
+  const categories = Array.isArray(req.body?.categories) ? req.body.categories : undefined;
+  const projectId = `res_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+
   try {
-    const research = await researchService.search(query, Number(req.body?.maxResults) || 5);
-    const sources = research.findings.map((finding) => ({
-      name: finding.source,
-      url: finding.url,
-      credibility: finding.credibility,
-      date: finding.date,
-      quote: finding.snippet,
-      title: finding.title,
+    const report = await deepResearchEngine.research({
+      question: query,
+      depth: depth as any,
+      seedUrls,
+      categories,
+      maxSources: Number(req.body?.maxSources) || undefined,
+    });
+
+    const sources = report.sources.map((source) => ({
+      name: source.provider,
+      url: source.finalUrl || source.url,
+      credibility: source.credibility,
+      date: source.date || '',
+      quote: source.passages[0] || source.snippet,
+      title: source.title,
     }));
-    const newResearch: ResearchItem & { sourceErrors: string[] } = {
-      id: `res_${Date.now()}`,
+
+    const newResearch = {
+      id: projectId,
       query,
       subquestions: [],
-      findings: sources.map((source) => `${source.title}: ${source.quote}`).join('\n\n'),
+      findings: report.claims.map((claim) => claim.text).join('\n\n'),
       sources,
-      synthesis: research.totalHits
-        ? `Retrieved ${research.totalHits} source records. Summaries are source excerpts, not independently verified claims.`
-        : 'No source results were retrieved. Check network access and the source errors before drawing conclusions.',
-      confidence: 0,
-      sourceErrors: research.sourceErrors,
+      synthesis: report.report,
+      confidence: report.sources.length > 0 ? Math.min(0.95, 0.4 + report.sources.length * 0.05) : 0,
       timestamp: new Date().toISOString(),
+      depth: report.depth,
+      status: report.sources.length > 0 ? 'completed' : 'incomplete',
+      scope: report.scope,
+      queries: report.queries,
+      providersUsed: report.providersUsed,
+      providerErrors: report.providerErrors,
+      sourceErrors: report.providerErrors,
+      limitations: report.limitations,
+      unreadable: report.unreadable,
+      claims: report.claims,
+      stats: report.stats,
+      progress: report.progress,
     };
-    await persistentStorage!.updateOwnedState<ResearchItem[]>(res.locals.rareUserId, 'research_items', [], (items) => [newResearch, ...items].slice(0, 100));
+
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'research_items', [], (items) => [newResearch, ...items].slice(0, 100));
     res.json({ query, results: [newResearch] });
   } catch (error) {
+    console.error('[Research] Deep research failed:', error);
     res.status(502).json({ error: { message: error instanceof Error ? error.message : 'Research sources could not be reached.' } });
+  }
+});
+
+// =============================================================================
+// Unified search across documents, transcripts and research
+// =============================================================================
+app.get('/api/search', async (req, res) => {
+  const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (!query) {
+    res.status(400).json({ error: { message: 'A search query is required.' } });
+    return;
+  }
+  try {
+    const service = requireDocumentsService();
+    await service.ensureIndexed(res.locals.rareUserId);
+    const index = searchIndexes.forOwner(res.locals.rareUserId);
+    const origins = typeof req.query.origin === 'string'
+      ? (req.query.origin.split(',').filter(Boolean) as any[])
+      : undefined;
+    const hits = index.search(query, {
+      limit: Math.min(50, Number(req.query.limit) || 20),
+      phrase: typeof req.query.phrase === 'string' ? req.query.phrase : undefined,
+      origins,
+    });
+    res.json({ query, hits, indexedDocuments: index.size });
+  } catch (error) {
+    sendDocumentError(res, error, 'Search failed.');
   }
 });
 
@@ -4698,6 +4944,10 @@ async function startServer() {
 
     persistentStorage = new PersistentJsonStore();
   await persistentStorage.checkConnection();
+
+  // The Documents service shares the same owner-scoped store and the shared
+  // content engine, so Documents and Research never diverge.
+  documentsService = new DocumentsService(persistentStorage, searchIndexes);
 
   // Production must never start with local-only authentication sessions.
   if (isProduction) {

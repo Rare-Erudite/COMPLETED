@@ -44,6 +44,15 @@ interface ResearchItem {
   confidence?: number;
   timestamp: string;
   sourceErrors?: string[];
+  depth?: string;
+  status?: string;
+  scope?: string;
+  queries?: string[];
+  providersUsed?: string[];
+  limitations?: string[];
+  unreadable?: Array<{ url: string; reason: string }>;
+  claims?: Array<{ text: string; supportedBy: string[]; corroborated: boolean }>;
+  stats?: { discovered: number; retrieved: number; fullText: number; referencesFollowed: number; durationMs: number };
 }
 
 interface ResearchWorkspaceViewProps {
@@ -65,6 +74,8 @@ export function ResearchWorkspaceView({ t, onNavigate }: ResearchWorkspaceViewPr
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const [depth, setDepth] = useState<'quick' | 'standard' | 'deep'>('standard');
+  const [seedUrls, setSeedUrls] = useState('');
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true);
@@ -95,7 +106,11 @@ export function ResearchWorkspaceView({ t, onNavigate }: ResearchWorkspaceViewPr
       const response = await apiFetch('/api/research/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: trimmed, maxResults: 8 }),
+        body: JSON.stringify({
+          query: trimmed,
+          depth,
+          urls: seedUrls.split(/[\n,]+/).map((value) => value.trim()).filter(Boolean),
+        }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(data?.error?.message || `Research returned HTTP ${response.status}.`));
@@ -103,10 +118,11 @@ export function ResearchWorkspaceView({ t, onNavigate }: ResearchWorkspaceViewPr
       if (created.length > 0) {
         setSelectedId(created[0].id);
         const sourceErrors = created[0].sourceErrors || [];
+        const stats = created[0].stats;
         setNotice(
           created[0].sources.length > 0
-            ? `Retrieved ${created[0].sources.length} source record(s).${sourceErrors.length ? ` Some connectors failed: ${sourceErrors.join(' ')}` : ''}`
-            : `No sources were retrieved.${sourceErrors.length ? ` ${sourceErrors.join(' ')}` : ' Check outbound network access from the server.'}`
+            ? `Read ${created[0].sources.length} source(s) in full${stats ? ` of ${stats.discovered} discovered` : ''}.${sourceErrors.length ? ` Some providers failed: ${sourceErrors.join(' ')}` : ''}`
+            : `No sources could be read.${sourceErrors.length ? ` ${sourceErrors.join(' ')}` : ' Check outbound network access from the server.'}`
         );
       }
       await loadHistory();
@@ -204,6 +220,31 @@ export function ResearchWorkspaceView({ t, onNavigate }: ResearchWorkspaceViewPr
         </button>
       </form>
 
+      {/* Depth + optional seed sources */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className={`flex rounded-lg border ${t.cardBorder} overflow-hidden`}>
+          {(['quick', 'standard', 'deep'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setDepth(option)}
+              className={`px-2.5 py-1 text-[10px] font-semibold capitalize transition ${
+                depth === option ? `${t.accentBg} text-white` : `${t.cardSub} ${t.textDim}`
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          value={seedUrls}
+          onChange={(event) => setSeedUrls(event.target.value)}
+          placeholder="Optional: source URLs to read first (comma separated)"
+          className={`flex-1 min-w-[220px] ${t.inputBg} border ${t.inputBorder} rounded-lg px-2.5 py-1 text-[10px] focus:outline-none`}
+        />
+      </div>
+
       {(error || notice) && (
         <div className="space-y-1">
           {error && (
@@ -285,8 +326,51 @@ export function ResearchWorkspaceView({ t, onNavigate }: ResearchWorkspaceViewPr
 
               <div>
                 <div className={`text-[10px] uppercase font-semibold ${t.textDim} mb-1`}>Synthesis</div>
-                <p className={`text-xs leading-relaxed ${t.textPrimary}`}>{selected.synthesis}</p>
+                <p className={`text-xs leading-relaxed ${t.textPrimary} whitespace-pre-wrap`}>{selected.synthesis}</p>
               </div>
+
+              {(selected.scope || selected.stats) && (
+                <div className={`p-2 rounded-lg border ${t.cardBorder} ${t.cardSub} space-y-1`}>
+                  <div className={`text-[10px] uppercase font-semibold ${t.textDim}`}>Scope actually covered</div>
+                  {selected.scope && <p className={`text-[10px] ${t.textMuted}`}>{selected.scope}</p>}
+                  {selected.stats && (
+                    <p className={`text-[10px] ${t.textDim}`}>
+                      {selected.stats.discovered} discovered · {selected.stats.fullText} read in full ·{' '}
+                      {selected.stats.referencesFollowed} reference(s) followed ·{' '}
+                      {(selected.stats.durationMs / 1000).toFixed(1)}s
+                    </p>
+                  )}
+                  {selected.providersUsed && selected.providersUsed.length > 0 && (
+                    <p className={`text-[10px] ${t.textDim}`}>Providers: {selected.providersUsed.join(', ')}</p>
+                  )}
+                </div>
+              )}
+
+              {selected.limitations && selected.limitations.length > 0 && (
+                <div>
+                  <div className={`text-[10px] uppercase font-semibold ${t.textDim} mb-1`}>Limitations</div>
+                  <ul className={`text-[10px] ${t.textMuted} list-disc pl-4 space-y-0.5`}>
+                    {selected.limitations.map((limitation, index) => (
+                      <li key={index}>{limitation}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {selected.unreadable && selected.unreadable.length > 0 && (
+                <div>
+                  <div className={`text-[10px] uppercase font-semibold ${t.textDim} mb-1`}>
+                    Sources that could not be read ({selected.unreadable.length})
+                  </div>
+                  <ul className={`text-[10px] ${t.textDim} space-y-0.5`}>
+                    {selected.unreadable.slice(0, 8).map((entry, index) => (
+                      <li key={index} className="truncate">
+                        {entry.url} — {entry.reason}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {selected.findings && (
                 <div>
