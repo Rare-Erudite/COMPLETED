@@ -1,6 +1,17 @@
 import { GoogleGenAI } from '@google/genai';
 import { IModelProvider, ModelInfo, GenerationOptions, GenerationResult } from '../types.js';
 
+/**
+ * Gemini model ids, overridable per deployment.
+ *
+ * Google retires model ids on a schedule. A hardcoded id does not fail loudly
+ * at build time — it fails at request time with a 404 ("no longer available to
+ * new users"), which is exactly what happened to gemini-2.5-flash. Keeping the
+ * ids in env vars lets an operator move to a new model without a code change.
+ */
+const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
+const GEMINI_MODEL_LITE = process.env.GEMINI_MODEL_LITE?.trim() || 'gemini-3.8-flash-lite';
+
 export class GeminiCoprocessorProvider implements IModelProvider {
   private apiKey: string | null = null;
   private client: GoogleGenAI | null = null;
@@ -35,7 +46,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
     return {
       id: 'gemini-coprocessor',
       name: 'Gemini Coprocessor (External)',
-      version: 'gemini-2.5-flash / gemini-2.5-flash-lite',
+      version: `${GEMINI_MODEL} / ${GEMINI_MODEL_LITE}`,
       architecture: 'Remote Cloud Multimodal Transformer',
       type: 'gemini_coprocessor',
       requires_api_key: true,
@@ -67,7 +78,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
         const data = await response.json() as {
           models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
         };
-        const supportedModels = new Set(['models/gemini-2.5-flash', 'models/gemini-2.5-flash-lite']);
+        const supportedModels = new Set([`models/${GEMINI_MODEL}`, `models/${GEMINI_MODEL_LITE}`]);
         available = Boolean(data.models?.some((model) =>
           model.name && supportedModels.has(model.name) && model.supportedGenerationMethods?.includes('generateContent'),
         ));
@@ -102,7 +113,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
       'You are RARE, a standalone personal AI companion, researcher, and full-stack software builder.'
     }\n${personaTone}\n\nContext & Memory:\n${context || 'None'}`;
 
-    const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+    const candidateModels = [GEMINI_MODEL, GEMINI_MODEL_LITE];
     let lastError: any = null;
 
     const isDeepReasoning = options?.thinkHarder === true;
@@ -192,17 +203,31 @@ export class GeminiCoprocessorProvider implements IModelProvider {
       throw new Error('Audio data is missing or exceeds the 10 MB limit.');
     }
     const ai = this.getClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        { inlineData: { mimeType, data: audioBase64 } },
-        'Transcribe the supplied audio verbatim. Preserve speaker changes when clear. Mark uncertain or inaudible speech as [inaudible]; do not infer words from context.',
-      ],
-    });
-    const text = response.text;
-    if (typeof text !== 'string' || text.trim().length === 0) {
-      throw new Error('Gemini returned an empty audio transcription.');
+    // Model names are configurable: Google retires models on a schedule, and a
+    // hardcoded id silently breaks transcription the day it is withdrawn
+    // (gemini-2.5-flash now returns 404 "no longer available to new users").
+    let lastError: unknown = null;
+    for (const modelId of [GEMINI_MODEL, GEMINI_MODEL_LITE]) {
+      try {
+        const response = await ai.models.generateContent({
+          model: modelId,
+          contents: [
+            { inlineData: { mimeType, data: audioBase64 } },
+            'Transcribe the supplied audio verbatim. Preserve speaker changes when clear. Mark uncertain or inaudible speech as [inaudible]; do not infer words from context.',
+          ],
+        });
+        const text = response.text;
+        if (typeof text !== 'string' || text.trim().length === 0) {
+          throw new Error('Gemini returned an empty audio transcription.');
+        }
+        return { text, model: modelId };
+      } catch (error) {
+        lastError = error;
+        console.warn(`[GeminiCoprocessorProvider] Transcription model ${modelId} failed.`);
+      }
     }
-    return { text, model: 'gemini-2.5-flash' };
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('All configured Gemini transcription models failed.');
   }
 }
