@@ -4365,5 +4365,30 @@
     "importance": 5,
     "source": "user_stated",
     "verifiedByUser": true
+  },
+  {
+    "id": "mem_1793295058358_399fn",
+    "timestamp": "2026-10-29T17:30:58.358Z",
+    "kind": "fact",
+    "text": "Test tool memory statement",
+    "tags": [
+      "test_tool"
+    ],
+    "importance": 3,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1793295059420_hedor",
+    "timestamp": "2026-10-29T17:30:59.420Z",
+    "kind": "fact",
+    "text": "eval_fact_1793295059420: Deterministic test token: 02vequ",
+    "tags": [
+      "eval_suite",
+      "test_token"
+    ],
+    "importance": 5,
+    "source": "user_stated",
+    "verifiedByUser": true
   }
 ]
