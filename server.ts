@@ -26,6 +26,7 @@ import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
 import type { FilePatch } from './src/server/development/PatchEngine.js';
+import { runDiagnostics, runFaultInjectionTest } from './src/server/development/Diagnostics.js';
 import { BenchmarkSuite } from './src/server/evaluation/BenchmarkSuite.js';
 import { engine } from './src/engine/engine.ts';
 import { googleTtsProvider } from './src/server/providers/GoogleTtsProvider.js';
@@ -4362,7 +4363,55 @@ app.post('/api/updates/apply', (req, res) => {
 // Diagnostics Selftest Matrix
 app.get('/api/tools/selftest', async (req, res) => {
   if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
-  return res.status(501).json({ success: false, allPassed: false, error: { message: 'The legacy self-test endpoint returned fabricated results and has been disabled. Use the repository test suite for verified results.' } });
+
+  // Every check below executes a real operation and reports its real outcome.
+  // Nothing is pre-filled as passing.
+  try {
+    const report = await runDiagnostics({
+      root: path.resolve(process.env.RARE_APP_ROOT || process.cwd()),
+      frontendDir: path.resolve(process.env.RARE_APP_ROOT || process.cwd(), 'dist'),
+      runCommand: async (binary, args, timeoutMs) => {
+        const outcome = await toolExecutor.execute(
+          'RUN_COMMAND',
+          { command: binary, args },
+          { isDeveloperAuth: true },
+        );
+        if (!outcome.success) {
+          return { exitCode: 1, stdout: '', stderr: outcome.error || 'Command refused.' };
+        }
+        return {
+          exitCode: 0,
+          stdout: String(outcome.output?.stdout ?? ''),
+          stderr: String(outcome.output?.stderr ?? ''),
+        };
+      },
+    });
+    return res.status(200).json({ success: report.allPassed, ...report });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      allPassed: false,
+      error: { message: `Diagnostics could not run: ${error?.message || error}` },
+    });
+  }
+});
+
+// Harmless, deterministic fault-injection demo in an isolated temp workspace.
+// Deliberately separate from selftest so the UI can show the round-trip on its
+// own; it never touches the live application.
+app.get('/api/tools/fault-injection', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
+  try {
+    const result = await runFaultInjectionTest();
+    const allPassed =
+      result.faultInjected && result.detected && result.repaired && result.verified && result.cleanedUp;
+    return res.json({ success: allPassed, ...result });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: { message: `Fault injection could not run: ${error?.message || error}` },
+    });
+  }
 });
 
 // -----------------------------------------------------------------------------
