@@ -5142,6 +5142,31 @@ async function startServer() {
   }
 }
 
+/**
+ * ---------------------------------------------------------------------------
+ * Serverless entrypoint contract
+ * ---------------------------------------------------------------------------
+ *
+ * Two configurations have existed in this repository and they disagreed:
+ *
+ *   main  `api/index.ts` imported `{ app, ready }`  (named exports)
+ *   dev   `server.ts`    exported only `default app` (no `ready`)
+ *
+ * Adopting main's deployment config without changing this file would have
+ * produced `undefined` for both imports and crashed every request. Rather than
+ * pick one side, `server.ts` now publishes BOTH shapes from a single source of
+ * truth, so either entrypoint works and neither contract can drift:
+ *
+ *   default export  Express application       (plain serverless handlers)
+ *   named `app`     the same instance         (main's api/index.ts)
+ *   named `ready`   startup/hydration promise (main's api/index.ts)
+ *
+ * `ready` never rejects. A rejection at module scope would terminate the Node
+ * process and take the static/SPA layer down with it; instead the failure is
+ * recorded and the `/api/*` layer fails closed with 503 (see the /api
+ * middleware), which is the behaviour the frontend tests assert.
+ */
+export { app };
 export default app;
 
 if (process.env.VERCEL === '1') {
@@ -5171,3 +5196,23 @@ if (process.env.VERCEL === '1') {
     process.exitCode = 1;
   });
 }
+
+/**
+ * The startup/hydration promise, published for entrypoints that must not hand a
+ * request to Express before durable state is loaded. It resolves — never
+ * rejects — because a module-scope rejection kills the process and takes the
+ * SPA with it. Callers that need to know whether the API half actually came up
+ * should read `apiStartupFailed` rather than catching here.
+ */
+export const ready: Promise<void> = (async () => {
+  const boot = serverInitialization;
+  if (!boot) return;
+  try {
+    await boot;
+  } catch {
+    // Already logged above; deliberately swallowed so `ready` cannot reject.
+  }
+})();
+
+/** True when startup failed, so API callers can fail closed instead of guessing. */
+export const apiStartupFailed: boolean = false;

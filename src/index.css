@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/*
+ * Scope Tailwind v4's automatic content detection to the real source tree.
+ *
+ * Tailwind v4 scans the whole repository by default and ignores .gitignore
+ * entries it was not told about. RARE keeps workspace checkpoint mirrors under
+ * .rare/checkpoints/ (thousands of full copies of server.ts and src/App.tsx),
+ * and scanning those blew the build past the memory limit — `vite build` was
+ * killed after ~3s on a 2GB container. Declaring @source explicitly disables
+ * automatic detection, so only application source is scanned and the build is
+ * both faster and bounded.
+ */
+@source "./**/*.{ts,tsx,js,jsx,html}";
+@source "../index.html";
+
 @layer base {
   * {
     border-color: rgba(255, 255, 255, 0.08);

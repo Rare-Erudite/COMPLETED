@@ -17,3 +17,23 @@ data/models_cache/
 # Build output — never commit; `npm start` rebuilds it.
 server-build/
 .vercel
+
+# ---------------------------------------------------------------------------
+# RARE runtime state
+# ---------------------------------------------------------------------------
+# `.rare/` holds live workspace data, not source:
+#   .rare/checkpoints/  full file mirrors captured by CheckpointStore before
+#                       every self-build. ~2,600 files / ~345 MB, each a copy of
+#                       server.ts and src/App.tsx.
+#   .rare/state/        durable per-instance documents (may contain user
+#                       content — never publish it).
+# Both are per-environment and regenerated at runtime. Tracking them published
+# private state and made every Tailwind/Vite scan read thousands of duplicate
+# sources (which OOM-killed the production build).
+.rare/checkpoints/
+.rare/state/
+# Anything else RARE writes under .rare/ is runtime too; the directory is
+# created on demand and needs no tracked contents.
+.rare/*
+!.rare/.gitkeep
+
