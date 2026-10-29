@@ -5665,5 +5665,265 @@
       "Step 3: Created checkpoint chk_1791872025616_4ric",
       "Step 4: Blocked: Developer authorization missing."
     ]
+  },
+  {
+    "id": "sdev_1793290122593",
+    "task": "change the greeting in src/greeting.ts to \"pwned\"",
+    "plan": "Denied at the authorization gate.",
+    "actions": [
+      "authorization: denied"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-29T16:08:42.593Z",
+    "auditTrail": [
+      "1. Developer authorization: blocked"
+    ]
+  },
+  {
+    "id": "sdev_1793290122595",
+    "task": "change the greeting in src/greeting.ts to \"goodbye\"",
+    "plan": "Patch application refused.",
+    "actions": [
+      "1. Developer authorization: completed",
+      "2. Inspect repository: completed",
+      "3. Derive acceptance criteria: completed",
+      "4. Plan changes: completed",
+      "5. Read files in scope: completed",
+      "6. Create checkpoint: not_verified",
+      "7. Apply patches: failed"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-29T16:08:42.599Z",
+    "auditTrail": [
+      "1. Developer authorization: completed (verified)",
+      "2. Inspect repository: completed (verified)",
+      "3. Derive acceptance criteria: completed (verified)",
+      "4. Plan changes: completed (verified)",
+      "5. Read files in scope: completed (verified)",
+      "6. Create checkpoint: not_verified",
+      "7. Apply patches: failed"
+    ]
+  },
+  {
+    "id": "sdev_1793290122612",
+    "task": "set the greeting in src/greeting.ts to \"unreachable\"",
+    "plan": "Patch application refused.",
+    "actions": [
+      "1. Developer authorization: completed",
+      "2. Inspect repository: completed",
+      "3. Derive acceptance criteria: completed",
+      "4. Plan changes: completed",
+      "5. Read files in scope: completed",
+      "6. Create checkpoint: not_verified",
+      "7. Apply patches: failed"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-29T16:08:42.614Z",
+    "auditTrail": [
+      "1. Developer authorization: completed (verified)",
+      "2. Inspect repository: completed (verified)",
+      "3. Derive acceptance criteria: completed (verified)",
+      "4. Plan changes: completed (verified)",
+      "5. Read files in scope: completed (verified)",
+      "6. Create checkpoint: not_verified",
+      "7. Apply patches: failed"
+    ]
+  },
+  {
+    "id": "sdev_1793290122615",
+    "task": "make the app nicer",
+    "plan": "No patches produced.",
+    "actions": [
+      "1. Developer authorization: completed",
+      "2. Inspect repository: completed",
+      "3. Derive acceptance criteria: completed",
+      "4. Plan changes: failed"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-29T16:08:42.616Z",
+    "auditTrail": [
+      "1. Developer authorization: completed (verified)",
+      "2. Inspect repository: completed (verified)",
+      "3. Derive acceptance criteria: completed (verified)",
+      "4. Plan changes: failed"
+    ]
+  },
+  {
+    "id": "sdev_1793290122617",
+    "task": "change the greeting in src/greeting.ts",
+    "plan": "Patch application refused.",
+    "actions": [
+      "1. Developer authorization: completed",
+      "2. Inspect repository: completed",
+      "3. Derive acceptance criteria: completed",
+      "4. Plan changes: completed",
+      "5. Read files in scope: completed",
+      "6. Create checkpoint: not_verified",
+      "7. Apply patches: failed"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-29T16:08:42.619Z",
+    "auditTrail": [
+      "1. Developer authorization: completed (verified)",
+      "2. Inspect repository: completed (verified)",
+      "3. Derive acceptance criteria: completed (verified)",
+      "4. Plan changes: completed (verified)",
+      "5. Read files in scope: completed (verified)",
+      "6. Create checkpoint: not_verified",
+      "7. Apply patches: failed"
+    ]
+  },
+  {
+    "id": "sdev_1793290173512",
+    "task": "change the greeting in src/greeting.ts to \"pwned\"",
+    "plan": "Denied at the authorization gate.",
+    "actions": [
+      "authorization: denied"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-29T16:09:33.512Z",
+    "auditTrail": [
+      "1. Developer authorization: blocked"
+    ]
+  },
+  {
+    "id": "sdev_1793290173514",
+    "task": "change the greeting in src/greeting.ts to \"goodbye\"",
+    "plan": "1. Developer authorization -> 2. Inspect repository -> 3. Derive acceptance criteria -> 4. Plan changes -> 5. Read files in scope -> 6. Create checkpoint -> 7. Apply patches -> 8. Run verification -> 9. Accept changes",
+    "actions": [
+      "1. Developer authorization: completed",
+      "2. Inspect repository: completed",
+      "3. Derive acceptance criteria: completed",
+      "4. Plan changes: completed",
+      "5. Read files in scope: completed",
+      "6. Create checkpoint: completed",
+      "7. Apply patches: completed",
+      "8. Run verification: completed",
+      "9. Accept changes: completed"
+    ],
+    "changedFiles": [
+      "src/greeting.ts"
+    ],
+    "repairAttempts": 0,
+    "testOutcome": "passed",
+    "status": "VERIFIED_SUCCESS",
+    "timestamp": "2026-10-29T16:09:34.115Z",
+    "auditTrail": [
+      "1. Developer authorization: completed (verified)",
+      "2. Inspect repository: completed (verified)",
+      "3. Derive acceptance criteria: completed (verified)",
+      "4. Plan changes: completed (verified)",
+      "5. Read files in scope: completed (verified)",
+      "6. Create checkpoint: completed (verified)",
+      "7. Apply patches: completed (verified)",
+      "8. Run verification: completed (verified)",
+      "9. Accept changes: completed (verified)"
+    ]
+  },
+  {
+    "id": "sdev_1793290174116",
+    "task": "set the greeting in src/greeting.ts to \"unreachable\"",
+    "plan": "1. Developer authorization -> 2. Inspect repository -> 3. Derive acceptance criteria -> 4. Plan changes -> 5. Read files in scope -> 6. Create checkpoint -> 7. Apply patches -> 8. Run verification -> 9. Diagnose failure -> 10. Repair -> 11. Rollback",
+    "actions": [
+      "1. Developer authorization: completed",
+      "2. Inspect repository: completed",
+      "3. Derive acceptance criteria: completed",
+      "4. Plan changes: completed",
+      "5. Read files in scope: completed",
+      "6. Create checkpoint: completed",
+      "7. Apply patches: completed",
+      "8. Run verification: failed",
+      "9. Diagnose failure: completed",
+      "10. Repair: skipped",
+      "11. Rollback: reverted"
+    ],
+    "changedFiles": [],
+    "failureDiagnosed": "build_failure: content failed with exit code 1.",
+    "repairApplied": "Not repaired: No specific cause could be extracted; the verified checkpoint is the safe end state.",
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-29T16:09:34.272Z",
+    "auditTrail": [
+      "1. Developer authorization: completed (verified)",
+      "2. Inspect repository: completed (verified)",
+      "3. Derive acceptance criteria: completed (verified)",
+      "4. Plan changes: completed (verified)",
+      "5. Read files in scope: completed (verified)",
+      "6. Create checkpoint: completed (verified)",
+      "7. Apply patches: completed (verified)",
+      "8. Run verification: failed",
+      "9. Diagnose failure: completed",
+      "10. Repair: skipped",
+      "11. Rollback: reverted (verified)"
+    ]
+  },
+  {
+    "id": "sdev_1793290174273",
+    "task": "make the app nicer",
+    "plan": "No patches produced.",
+    "actions": [
+      "1. Developer authorization: completed",
+      "2. Inspect repository: completed",
+      "3. Derive acceptance criteria: not_verified",
+      "4. Plan changes: failed"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-29T16:09:34.273Z",
+    "auditTrail": [
+      "1. Developer authorization: completed (verified)",
+      "2. Inspect repository: completed (verified)",
+      "3. Derive acceptance criteria: not_verified",
+      "4. Plan changes: failed"
+    ]
+  },
+  {
+    "id": "sdev_1793290174275",
+    "task": "change the greeting in src/greeting.ts",
+    "plan": "Patch application refused.",
+    "actions": [
+      "1. Developer authorization: completed",
+      "2. Inspect repository: completed",
+      "3. Derive acceptance criteria: completed",
+      "4. Plan changes: completed",
+      "5. Read files in scope: completed",
+      "6. Create checkpoint: completed",
+      "7. Apply patches: failed"
+    ],
+    "changedFiles": [],
+    "repairAttempts": 0,
+    "testOutcome": "failed",
+    "status": "REVERTED_ON_FAILURE",
+    "timestamp": "2026-10-29T16:09:34.276Z",
+    "auditTrail": [
+      "1. Developer authorization: completed (verified)",
+      "2. Inspect repository: completed (verified)",
+      "3. Derive acceptance criteria: completed (verified)",
+      "4. Plan changes: completed (verified)",
+      "5. Read files in scope: completed (verified)",
+      "6. Create checkpoint: completed (verified)",
+      "7. Apply patches: failed"
+    ]
   }
 ]

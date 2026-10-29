@@ -25,6 +25,7 @@ import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
+import type { FilePatch } from './src/server/development/PatchEngine.js';
 import { BenchmarkSuite } from './src/server/evaluation/BenchmarkSuite.js';
 import { engine } from './src/engine/engine.ts';
 import { googleTtsProvider } from './src/server/providers/GoogleTtsProvider.js';
@@ -3244,6 +3245,53 @@ app.get('/api/developer/status', async (req, res) => {
 });
 
 // Privileged Self-Development Engine Dispatcher
+// -----------------------------------------------------------------------------
+// Developer Self-Development
+// -----------------------------------------------------------------------------
+
+/**
+ * Validate a client-supplied patch list. Returns `error` instead of throwing so
+ * the route can answer 400 without a partially-parsed batch. An absent list is
+ * valid: the engine will report that it has no concrete change to make rather
+ * than inventing one.
+ */
+function parsePatchPayload(input: unknown): { patches?: FilePatch[]; error?: string } {
+  if (input === undefined || input === null) return { patches: undefined };
+  if (!Array.isArray(input)) return { error: '`patches` must be an array.' };
+
+  const patches: FilePatch[] = [];
+  for (const [index, raw] of input.entries()) {
+    if (!raw || typeof raw !== 'object') {
+      return { error: `patches[${index}] must be an object.` };
+    }
+    const entry = raw as Record<string, unknown>;
+    const operation = entry.operation;
+    const filePath = entry.path;
+
+    if (operation !== 'create' && operation !== 'modify' && operation !== 'delete') {
+      return { error: `patches[${index}].operation must be create, modify or delete.` };
+    }
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      return { error: `patches[${index}].path must be a non-empty string.` };
+    }
+    if (operation === 'modify' && (typeof entry.search !== 'string' || entry.search === '')) {
+      return { error: `patches[${index}].search is required for a modify patch.` };
+    }
+    if (operation !== 'delete' && typeof entry.replace !== 'string') {
+      return { error: `patches[${index}].replace must be a string.` };
+    }
+
+    patches.push({
+      operation,
+      path: filePath,
+      search: typeof entry.search === 'string' ? entry.search : undefined,
+      replace: typeof entry.replace === 'string' ? entry.replace : undefined,
+    });
+  }
+
+  return { patches };
+}
+
 app.post('/api/developer/self-dev', async (req, res) => {
   const isAuth = await isDeveloperSessionAuthorized(req);
 
@@ -3253,7 +3301,7 @@ app.post('/api/developer/self-dev', async (req, res) => {
     });
   }
 
-  const { instruction } = req.body;
+  const { instruction, patches, targetFiles } = req.body;
 
   if (typeof instruction !== 'string' || !instruction.trim()) {
     return res.status(400).json({
@@ -3261,8 +3309,22 @@ app.post('/api/developer/self-dev', async (req, res) => {
     });
   }
 
+  // Patches are validated through PatchEngine's schema: an operation, a path,
+  // and (for modify) a unique search block. Anything malformed is rejected here
+  // rather than part-way through a write.
+  const parsedPatches = parsePatchPayload(patches);
+  if (parsedPatches.error) {
+    return res.status(400).json({ error: { message: parsedPatches.error } });
+  }
+
   const result = await selfDevEngine.executeCycle(
-    { instruction },
+    {
+      instruction,
+      patches: parsedPatches.patches,
+      targetFiles: Array.isArray(targetFiles)
+        ? targetFiles.filter((entry: unknown): entry is string => typeof entry === 'string')
+        : undefined,
+    },
     true
   );
 
@@ -3273,7 +3335,9 @@ app.post('/api/developer/self-dev', async (req, res) => {
     action: 'self_dev_executed',
     kind: 'dev_privileged',
     details: `Executed self-dev cycle for: "${instruction}". Status: ${result.status}`,
-    checkpointId: result.checkpointId,
+    // `checkpointId` is null when the run was blocked before a checkpoint could
+    // be taken; the audit record type expects undefined.
+    checkpointId: result.checkpointId ?? undefined,
   });
 
   return res.status(201).json(result);

@@ -12,7 +12,11 @@ import { OwnerSearchIndexRegistry } from '../content/SearchIndex.js';
 import { processUrl, describeResult } from '../content/ContentEngine.js';
 
 const execFileAsync = promisify(execFile);
-const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+//
+// Resolved per call rather than at module load: the self-development engine and
+// the tests retarget the workspace by setting RARE_APP_ROOT, and a constant
+// captured at import time silently ignored that and operated on the real repo.
+const projectRoot = (): string => path.resolve(process.env.RARE_APP_ROOT || process.cwd());
 
 // Allowlist from rare.config.json
 const COMMAND_ALLOWLIST = new Set([
@@ -334,10 +338,11 @@ export class ToolExecutor {
 
   public resolveSafePath(relPath: string): { fullPath: string; isSafe: boolean; isCoreProtected: boolean } {
     const cleaned = path.normalize(relPath).replace(/^(\.\.(\/|\\|$))+/, '');
-    const fullPath = path.resolve(PROJECT_ROOT, cleaned);
-    const isSafe = fullPath.startsWith(PROJECT_ROOT);
+    const root = projectRoot();
+    const fullPath = path.resolve(root, cleaned);
+    const isSafe = fullPath === root || fullPath.startsWith(`${root}${path.sep}`);
 
-    const relativeToRoot = path.relative(PROJECT_ROOT, fullPath);
+    const relativeToRoot = path.relative(root, fullPath);
     const isCoreProtected = PROTECTED_CORE_PATHS.some((p) =>
       relativeToRoot === p || relativeToRoot.startsWith(p + path.sep)
     );
@@ -444,7 +449,7 @@ export class ToolExecutor {
             // Search text in knowledge and docs
             const searchDirs = ['docs', 'knowledge', 'src'];
             for (const d of searchDirs) {
-              const fullDir = path.resolve(PROJECT_ROOT, d);
+              const fullDir = path.resolve(projectRoot(), d);
               if (fs.existsSync(fullDir)) {
                 const files = fs.readdirSync(fullDir);
                 for (const file of files) {
@@ -478,7 +483,7 @@ export class ToolExecutor {
           }
           // Sanitized execution via execFile
           const res = await execFileAsync(command, args, {
-            cwd: PROJECT_ROOT,
+            cwd: projectRoot(),
             timeout: 30000,
             maxBuffer: 1024 * 1024,
             env: {
@@ -509,7 +514,7 @@ export class ToolExecutor {
           }
           try {
             const res = await execFileAsync(testCmd, testArgs, {
-              cwd: PROJECT_ROOT,
+              cwd: projectRoot(),
               timeout: 120000,
               maxBuffer: 2 * 1024 * 1024,
               env: {
@@ -540,7 +545,7 @@ export class ToolExecutor {
         case 'BUILD_PROJECT': {
           try {
             const res = await execFileAsync('npx', ['vite', 'build'], {
-              cwd: PROJECT_ROOT,
+              cwd: projectRoot(),
               timeout: 60000,
               maxBuffer: 2 * 1024 * 1024,
               env: {

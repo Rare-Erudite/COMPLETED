@@ -4,9 +4,12 @@ import crypto from 'crypto';
 import { CheckpointRecord } from '../types.js';
 import type { PersistentJsonStore, StoredSnapshotFile } from './PersistentJsonStore.js';
 
-const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
-const CHECKPOINTS_DIR = path.resolve(PROJECT_ROOT, '.rare', 'checkpoints');
-const REGISTRY_FILE = path.resolve(CHECKPOINTS_DIR, 'checkpoints_registry.json');
+// Resolved per call, not at module load: RARE_APP_ROOT is what the self-build
+// engine and the test suite use to retarget a throwaway workspace, and a
+// constant captured at import time made that retargeting silently ineffective.
+const projectRoot = (): string => path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+const checkpointsDir = (): string => path.resolve(projectRoot(), '.rare', 'checkpoints');
+const registryFile = (): string => path.resolve(checkpointsDir(), 'checkpoints_registry.json');
 
 export class CheckpointStore {
   private registry: Map<string, CheckpointRecord> = new Map();
@@ -25,7 +28,7 @@ export class CheckpointStore {
     this.registry = new Map(records.map((record) => [record.id, record]));
 
     for (const record of records) {
-      const snapshotDir = path.resolve(PROJECT_ROOT, record.snapshotDir);
+      const snapshotDir = path.resolve(projectRoot(), record.snapshotDir);
       const storedFiles = await persistence.loadSnapshotFiles(record.id);
       if (storedFiles.length > 0) {
         for (const file of storedFiles) {
@@ -54,12 +57,12 @@ export class CheckpointStore {
 
   private init(): void {
     try {
-      if (!fs.existsSync(CHECKPOINTS_DIR)) {
-        fs.mkdirSync(CHECKPOINTS_DIR, { recursive: true });
+      if (!fs.existsSync(checkpointsDir())) {
+        fs.mkdirSync(checkpointsDir(), { recursive: true });
       }
 
-      if (fs.existsSync(REGISTRY_FILE)) {
-        const raw = fs.readFileSync(REGISTRY_FILE, 'utf-8');
+      if (fs.existsSync(registryFile())) {
+        const raw = fs.readFileSync(registryFile(), 'utf-8');
         const list = JSON.parse(raw);
         if (Array.isArray(list)) {
           for (const cp of list) {
@@ -78,9 +81,11 @@ export class CheckpointStore {
   private saveRegistry(): void {
     const arr = Array.from(this.registry.values());
     try {
-      const tempPath = `${REGISTRY_FILE}.tmp`;
+      const target = registryFile();
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      const tempPath = `${target}.tmp`;
       fs.writeFileSync(tempPath, JSON.stringify(arr, null, 2), 'utf-8');
-      fs.renameSync(tempPath, REGISTRY_FILE);
+      fs.renameSync(tempPath, target);
     } catch (err) {
       console.error('[CheckpointStore] Failed to write registry:', err);
     }
@@ -103,7 +108,7 @@ export class CheckpointStore {
     targetFiles?: string[]
   ): CheckpointRecord {
     const id = `chk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const snapshotDir = path.resolve(CHECKPOINTS_DIR, id);
+    const snapshotDir = path.resolve(checkpointsDir(), id);
     fs.mkdirSync(snapshotDir, { recursive: true });
 
     // Files to backup
@@ -116,7 +121,7 @@ export class CheckpointStore {
     const hashGenerator = crypto.createHash('sha256');
 
     for (const rel of filesToBackup) {
-      const fullPath = this.resolveSafePath(PROJECT_ROOT, rel);
+      const fullPath = this.resolveSafePath(projectRoot(), rel);
       if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
         const content = fs.readFileSync(fullPath);
         hashGenerator.update(content);
@@ -135,7 +140,7 @@ export class CheckpointStore {
       status,
       filesCount: backedUp.length,
       filesList: backedUp,
-      snapshotDir: path.relative(PROJECT_ROOT, snapshotDir),
+      snapshotDir: path.relative(projectRoot(), snapshotDir),
       hash: hashGenerator.digest('hex'),
     };
 
@@ -151,7 +156,7 @@ export class CheckpointStore {
       return { success: false, restoredFiles: [], error: `Checkpoint not found: ${id}` };
     }
 
-    const snapshotDir = path.resolve(PROJECT_ROOT, cp.snapshotDir);
+    const snapshotDir = path.resolve(projectRoot(), cp.snapshotDir);
     if (!fs.existsSync(snapshotDir)) {
       return { success: false, restoredFiles: [], error: `Snapshot directory missing on disk: ${cp.snapshotDir}` };
     }
@@ -159,7 +164,7 @@ export class CheckpointStore {
     const restored: string[] = [];
     for (const rel of cp.filesList) {
       const backupFile = this.resolveSafePath(snapshotDir, rel);
-      const targetFile = this.resolveSafePath(PROJECT_ROOT, rel);
+      const targetFile = this.resolveSafePath(projectRoot(), rel);
       if (fs.existsSync(backupFile)) {
         fs.mkdirSync(path.dirname(targetFile), { recursive: true });
         fs.copyFileSync(backupFile, targetFile);

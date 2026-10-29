@@ -14,26 +14,32 @@ export async function runDevelopmentTests() {
   const toolExecutor = new ToolExecutor(memoryStore, checkpointStore);
   const engine = new SelfDevelopmentEngine(checkpointStore, trajectoryStore, toolExecutor);
 
-  // 1. Unauthenticated self-development attempt must be safely blocked
+  // 1. Unauthenticated self-development attempt must be safely blocked and must
+  //    not have created a checkpoint or touched a file.
   const unauthRes = await engine.executeCycle(
     { instruction: 'Modify core engine loop without authorization' },
     false // not developer authenticated
   );
-  assert.strictEqual(unauthRes.status, 'REVERTED_ON_FAILURE');
-  assert.ok(unauthRes.steps.some((s) => s.outcome === 'Blocked'));
+  assert.strictEqual(unauthRes.status, 'BLOCKED_UNAUTHORIZED');
+  assert.ok(unauthRes.steps.some((s) => s.outcome === 'blocked'));
+  assert.strictEqual(unauthRes.checkpointId, null, 'A blocked run may not take a checkpoint');
+  assert.strictEqual(unauthRes.changedFiles.length, 0, 'A blocked run may not change files');
 
-  // 2. Authenticated self-development cycle executes full 10 steps
-  const authRes = await engine.executeCycle(
+  // 2. An authorized cycle that has no derivable file change must NOT be
+  //    reported as success. (Reporting 10 green steps for a no-op was the
+  //    original defect this suite used to enforce.)
+  const noChangeRes = await engine.executeCycle(
     { instruction: 'Verify system integrity and baseline check' },
     true // developer authenticated
   );
-  assert.strictEqual(authRes.steps.length, 10, 'Must execute all 10 development steps');
-  assert.ok(authRes.checkpointId, 'Must create a checkpoint before mutations');
+  assert.notStrictEqual(noChangeRes.status, 'VERIFIED_SUCCESS', 'A no-op must not claim success');
+  assert.ok(noChangeRes.steps.length > 0, 'Steps must be reported');
+  assert.strictEqual(noChangeRes.changedFiles.length, 0, 'No files changed without patches');
 
-  // 3. Verify trajectory is stored in TrajectoryStore
+  // 3. Verify trajectory is stored in TrajectoryStore for both runs
   const recorded = trajectoryStore.getAll();
   assert.ok(recorded.length > 0, 'Trajectory must be persisted');
   assert.ok(recorded.some((t) => t.task.includes('Verify system integrity')));
 
-  console.log('✓ 10-Step Self-Development & Checkpointing tests passed.');
+  console.log('✓ Self-development authorization, no-op honesty and trajectory tests passed.');
 }
