@@ -23,6 +23,7 @@ import { runMemoryTests } from './test_memory.js';
 import { runDevelopmentTests } from './test_development.js';
 import { runRealSelfDevelopmentTests } from './test_real_self_development.js';
 import { runDiagnosticsTests } from './test_diagnostics.js';
+import { runToolchainTests } from './test_toolchain.js';
 import { runEvaluationTests } from './test_evaluation.js';
 import { runApiConfigurationTests } from './test_api_configuration.js';
 import { runRareIntelligenceBridgeTests } from './test_rare_intelligence_bridge.js';
@@ -130,6 +131,8 @@ async function main() {
     await runRealSelfDevelopmentTests();
     console.log();
     await runDiagnosticsTests();
+    console.log();
+    await runToolchainTests();
     console.log();
     await runEvaluationTests();
     console.log();

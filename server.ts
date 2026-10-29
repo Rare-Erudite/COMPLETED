@@ -8,6 +8,13 @@ import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 import { MemoryStore, ConversationStore } from './src/server/storage/MemoryStore.js';
 import { CheckpointStore } from './src/server/storage/CheckpointStore.js';
+import {
+  assessProject,
+  buildPlan,
+  detectProject,
+  ToolchainManager,
+} from './src/server/builder/ToolchainManager.js';
+import { detectToolchains } from './src/server/builder/ToolchainRegistry.js';
 import { TrajectoryStore } from './src/server/storage/TrajectoryStore.js';
 import { UpdateStore, UpdateChannel, AppUpdate } from './src/server/storage/UpdateStore.js';
 import { DurableStateStore } from './src/server/storage/DurableStateStore.js';
@@ -808,14 +815,17 @@ activeAgentRuns.splice(0, activeAgentRuns.length);
 activeAgentRuns = durableStateStore.trackArray('agent_runs', activeAgentRuns);
 
 // Toolchains Environment Matrix
-const toolchains = [
-  { id: 'node_ts', name: 'Node.js 22 & TypeScript', detected: true, version: 'Node 22.13.5 / TS 5.7', status: 'ready', domains: ['Web', 'Backend', 'CLI'] },
-  { id: 'vite_bundler', name: 'Vite Production Engine', detected: true, version: 'Vite 6.2.0', status: 'ready', domains: ['Web SPA', 'Electron'] },
-  { id: 'python_runtime', name: 'Python 3.13 Runtime', detected: true, version: 'Python 3.13.2', status: 'ready', domains: ['AI Engine', 'Automation', 'CLI'] },
-  { id: 'android_gradle', name: 'Android SDK & Gradle', detected: true, version: 'Gradle 8.7.3 / SDK 34', status: 'platform_configured', domains: ['Android APK', 'Mobile'] },
-  { id: 'windows_toolchain', name: 'Windows C++/Win32 Toolchain', detected: true, version: 'MSVC 2022 / CMake 3.28', status: 'platform_configured', domains: ['Windows EXE', 'Desktop'] },
-  { id: 'rust_cargo', name: 'Rust Toolchain', detected: true, version: 'Cargo / rustc 1.84.0', status: 'ready', domains: ['High-Performance', 'Native Libs'] },
-];
+//
+// This used to be a literal array asserting `detected: true` with invented
+// version strings ("Node 22.13.5", "Gradle 8.7.3", "MSVC 2022") for toolchains
+// that were never probed — and it was the source of the capability counts shown
+// in Settings. It is now the real probe result, cached by detectToolchains().
+const toolchains = await detectToolchains();
+
+// Managed toolchain cache. Adapters are registered explicitly; without one a
+// capability reports `unavailable` with its real reason rather than installing
+// something unverified.
+const toolchainManager = new ToolchainManager();
 
 // Conversations
 interface ChatMessage {
@@ -3707,6 +3717,74 @@ app.get('/api/checkpoints', async (req, res) => {
 // Toolchains
 app.get('/api/builder/toolchains', (req, res) => {
   res.json(toolchains);
+});
+
+/**
+ * Environment assessment for a project: what stack is this, which capabilities
+ * does it need, which are actually present, and can it be built here.
+ *
+ * `node` reports the probed executables (existing behaviour). The new fields
+ * answer the question the build executor actually asks, and distinguish
+ * "unknown" from "satisfied" so a Dart or .NET project is not silently treated
+ * as ready just because no probe covers it.
+ */
+app.get('/api/builder/environment', async (req, res) => {
+  try {
+    const root = typeof req.query.projectRoot === 'string' && req.query.projectRoot
+      ? path.resolve(process.env.RARE_APP_ROOT || process.cwd(), req.query.projectRoot)
+      : path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+
+    const profile = detectProject(root);
+    const [assessments, probed] = await Promise.all([assessProject(profile), detectToolchains()]);
+    const plan = buildPlan(profile, assessments);
+
+    return res.json({
+      projectRoot: root,
+      profile,
+      requirements: assessments,
+      plan,
+      executable: plan.executable,
+      // Kept for the existing ToolchainMatrix UI.
+      node: probed,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      error: { message: `Environment assessment failed: ${error?.message || error}` },
+    });
+  }
+});
+
+/**
+ * Provision a capability into the RARE cache. Developer-only: installing a
+ * runtime changes the execution environment for every project that shares it.
+ * The response is the real provision record, including the honest case where
+ * no adapter exists and nothing was installed.
+ */
+app.post('/api/builder/environment/provision', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) {
+    return res.status(403).json({ error: { message: 'Developer authorization required.' } });
+  }
+
+  const { capability, projectRoot } = req.body || {};
+  if (typeof capability !== 'string' || !capability.trim()) {
+    return res.status(400).json({ error: { message: 'capability is required.' } });
+  }
+
+  try {
+    const root = typeof projectRoot === 'string' && projectRoot
+      ? path.resolve(process.env.RARE_APP_ROOT || process.cwd(), projectRoot)
+      : path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+
+    const record = await toolchainManager.provision(capability, { projectRoot: root });
+    return res.status(record.status === 'installed' || record.status === 'already_present' ? 200 : 409).json({
+      success: record.status === 'installed' || record.status === 'already_present',
+      record,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      error: { message: `Provisioning failed: ${error?.message || error}` },
+    });
+  }
 });
 
 app.post('/api/user/verify-email-otp', async (req, res) => {
