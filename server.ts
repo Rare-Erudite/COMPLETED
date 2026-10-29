@@ -17,6 +17,7 @@ import {
 import { detectToolchains } from './src/server/builder/ToolchainRegistry.js';
 import { TrajectoryStore } from './src/server/storage/TrajectoryStore.js';
 import { UpdateStore, UpdateChannel, AppUpdate } from './src/server/storage/UpdateStore.js';
+import { activate, downloadAndVerify } from './src/server/updates/UpdateActivation.js';
 import { DurableStateStore } from './src/server/storage/DurableStateStore.js';
 import { PersistentJsonStore } from './src/server/storage/PersistentJsonStore.js';
 import { DocumentStore } from './src/server/storage/DocumentStore.js';
@@ -4429,13 +4430,86 @@ app.get('/api/search', async (req, res) => {
 });
 
 // Updates Apply Endpoint
-app.post('/api/updates/apply', (req, res) => {
-  return res.status(501).json({
-    success: false,
-    error: {
-      message: 'This endpoint cannot install or activate an application update. Use the platform-specific updater and report its verified result.',
-    },
-  });
+/**
+ * Download, verify and (where the platform allows it) activate a release.
+ *
+ * Developer-only: publishing and moving channels is privileged, and so is
+ * fetching an arbitrary release artifact into the server's filesystem.
+ *
+ * The response always distinguishes the four states the client must not
+ * conflate: downloaded, verified, pending, activated. `activated` is only true
+ * when the running version is demonstrably the target version.
+ */
+app.post('/api/updates/apply', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) {
+    return res.status(403).json({
+      success: false,
+      error: { message: 'Developer authorization required to apply an update.' },
+    });
+  }
+
+  const { updateId, runningVersion, platform } = req.body || {};
+  if (typeof updateId !== 'string' || !updateId.trim()) {
+    return res.status(400).json({ success: false, error: { message: 'updateId is required.' } });
+  }
+
+  // Channel isolation: a public session can never resolve a developer release.
+  const requestedChannel: UpdateChannel =
+    typeof req.body?.channel === 'string' && req.body.channel === 'developer' ? 'developer' : 'public';
+  const candidates = updateStore.getAll(requestedChannel);
+  const update = candidates.find((entry) => entry.id === updateId.trim());
+
+  if (!update) {
+    return res.status(404).json({
+      success: false,
+      error: {
+        message: requestedChannel === 'developer'
+          ? 'Release not found.'
+          : 'Release not found on the public channel.',
+      },
+    });
+  }
+
+  const downloadDir = path.resolve(
+    process.env.RARE_APP_ROOT || process.cwd(),
+    '.rare',
+    'updates',
+  );
+
+  try {
+    const verified = await downloadAndVerify(update, { downloadDir });
+
+    if (verified.stage !== 'verified') {
+      // A rejected download must leave the current release state unchanged.
+      return res.status(422).json({ success: false, ...verified });
+    }
+
+    const activation = await activate(update, verified, {
+      platform: (platform || update.platform || 'web') as 'web' | 'android' | 'windows',
+      running: {
+        version: typeof runningVersion === 'string' && runningVersion ? runningVersion : '0.0.0',
+      },
+    });
+
+    return res.status(activation.stage === 'failed' ? 422 : 200).json({
+      success: activation.stage !== 'failed',
+      updateId: update.id,
+      version: update.version,
+      channel: update.channel,
+      platform: activation.platform,
+      stage: activation.stage,
+      action: activation.action,
+      activated: activation.activated,
+      checksumVerified: activation.checksumVerified,
+      message: activation.message,
+      details: activation.details,
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: { message: `Update could not be applied: ${error?.message || error}` },
+    });
+  }
 });
 
 // Diagnostics Selftest Matrix

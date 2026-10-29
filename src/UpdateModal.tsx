@@ -52,6 +52,14 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   const [completed, setCompleted] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  // Activation is a separate, explicit outcome. A verified download is not an
+  // installed update, and the UI must never imply otherwise.
+  const [activation, setActivation] = useState<{
+    stage: string;
+    action: string;
+    activated: boolean;
+    message: string;
+  } | null>(null);
 
   if (!isOpen || !update) return null;
 
@@ -104,6 +112,40 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
       setProgressStep(100);
+
+      // ---------------------------------------------------------------------
+      // Activation. The download above is verified, but nothing has been
+      // installed — for Android and Windows the OS needs the user's consent,
+      // and for web the running bundle is the deployment.
+      //
+      // This used to just call onApplyUpdate, which no caller wired up, so the
+      // flow ended with a file in the Downloads folder and a screen that said
+      // "complete". Each platform now reports exactly what still has to happen.
+      // ---------------------------------------------------------------------
+      const platform = update.platform || 'web';
+      if (platform === 'web') {
+        setActivation({
+          stage: 'activation_pending',
+          action: 'reload_required',
+          activated: false,
+          message: `Version ${update.version} verified. Reload the page to load the deployed bundle — RARE cannot confirm the new version until the reload happens.`,
+        });
+      } else if (platform === 'android') {
+        setActivation({
+          stage: 'activation_pending',
+          action: 'user_install_required',
+          activated: false,
+          message: `Version ${update.version} verified and saved. Open the file to run Android's package installer — the install completes only after you allow it.`,
+        });
+      } else {
+        setActivation({
+          stage: 'activation_pending',
+          action: 'user_elevation_required',
+          activated: false,
+          message: `Version ${update.version} verified and saved. Run the installer and accept the elevation prompt to complete the update.`,
+        });
+      }
+
       setCompleted(true);
     } catch (error) {
       setDownloadError(error instanceof Error ? error.message : 'The release download could not be verified.');
@@ -234,7 +276,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             </div>
           )}
 
-          {/* Completed Banner */}
+          {/* Completed Banner — states the verified fact and the outstanding step */}
           {completed && (
             <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 space-y-1 animate-in fade-in">
               <div className="flex items-center space-x-1.5 font-bold text-xs">
@@ -242,8 +284,28 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 <span>Download verified for v{update.version}</span>
               </div>
               <p className="text-[11px] text-slate-300">
-                The file was saved to your device. Installation or activation is a separate platform step and has not been confirmed here.
+                {activation?.message
+                  || 'The file was saved to your device. Installation or activation is a separate platform step and has not been confirmed here.'}
               </p>
+              {activation && (
+                <div className="flex items-center space-x-1.5 pt-1">
+                  <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    {activation.stage.replace(/_/g, ' ')}
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {activation.action.replace(/_/g, ' ')}
+                  </span>
+                </div>
+              )}
+              {activation?.action === 'reload_required' && (
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="mt-1 text-[11px] font-semibold underline text-emerald-300 hover:text-emerald-200"
+                >
+                  Reload now to load v{update.version}
+                </button>
+              )}
             </div>
           )}
         </div>
