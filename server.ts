@@ -53,6 +53,14 @@ process.env.RARE_INTELLIGENCE_URL = process.env.RARE_INTELLIGENCE_URL || `http:/
 const durableStateStore = new DurableStateStore();
 let persistentStorage: PersistentJsonStore | undefined;
 let serverInitialization: Promise<void> | undefined;
+/**
+ * The real startup failure, if one occurred.
+ *
+ * This used to be a hardcoded `false`, which made the documented contract a
+ * lie: callers were told startup had succeeded even when it had thrown. It is
+ * now set by the catch handlers below and read by `apiStartupFailed`.
+ */
+let startupFailure: Error | undefined;
 
 const developmentOrigins = [
   'http://localhost:3000', 'http://localhost:5173',
@@ -486,8 +494,15 @@ app.use('/api', async (req, res, next) => {
   if (process.env.VERCEL === '1' && serverInitialization) {
     try {
       await serverInitialization;
-    } catch {
-      return res.status(503).json({ error: { message: 'RARE server initialization failed.' } });
+    } catch (error: any) {
+      // Report the real cause. A generic "initialization failed" made a
+      // misconfigured preview indistinguishable from a broken deployment.
+      return res.status(503).json({
+        error: {
+          message: 'RARE server initialization failed.',
+          detail: error?.message || String(error),
+        },
+      });
     }
   }
   const origin = req.headers.origin;
@@ -5515,10 +5530,12 @@ if (process.env.VERCEL === '1') {
   // await this promise and turn the rejection into a 503 (fail closed).
   serverInitialization = startServer();
   serverInitialization.catch((error) => {
+    startupFailure = error instanceof Error ? error : new Error(String(error));
     console.error('[RARE] Startup failed:', error?.message || error);
   });
 } else {
   startServer().catch((error) => {
+    startupFailure = error instanceof Error ? error : new Error(String(error));
     console.error('[RARE] Startup failed:', error?.message || error);
     process.exitCode = 1;
   });
@@ -5542,4 +5559,7 @@ export const ready: Promise<void> = (async () => {
 })();
 
 /** True when startup failed, so API callers can fail closed instead of guessing. */
-export const apiStartupFailed: boolean = false;
+export const apiStartupFailed: boolean = startupFailure !== undefined;
+
+/** The startup error message, when there is one. Never includes credentials. */
+export const apiStartupError: string | undefined = startupFailure?.message;
