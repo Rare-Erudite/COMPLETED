@@ -33,6 +33,10 @@ process.env.RARE_INTELLIGENCE_URL = process.env.RARE_INTELLIGENCE_URL || `http:/
 const durableStateStore = new DurableStateStore();
 let persistentStorage: PersistentJsonStore | undefined;
 
+// The Express app is exported so serverless platforms (Vercel) can wrap it
+// without starting a long-lived listener.
+export { app };
+
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
 app.use((req, res, next) => {
@@ -3385,6 +3389,12 @@ async function startServer() {
     updateStore.initializePersistence(persistentStorage),
   ]);
 
+  if (process.env.VERCEL) {
+    // On serverless, Vercel serves the built SPA itself; this process only
+    // handles /api/* routes and must not bind a listener or mount static files.
+    return;
+  }
+
   const httpServer = http.createServer(app);
   let vite: import('vite').ViteDevServer | undefined;
 
@@ -3464,7 +3474,9 @@ async function startServer() {
   }
 }
 
-startServer().catch((error) => {
+// Exported so the serverless entry point can wait for stores to hydrate
+// before handing the first request to Express.
+export const ready: Promise<void> = startServer().catch((error) => {
   console.error('[RARE] Startup failed:', error?.message || error);
   process.exitCode = 1;
 });
