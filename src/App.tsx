@@ -68,6 +68,7 @@ import {
 } from 'lucide-react';
 import { themes, ThemeKey, ThemeConfig } from './theme';
 import { DocumentsWorkspaceView } from './components/DocumentsWorkspaceView';
+import { AssistantStudioView } from './components/AssistantStudioView';
 import { ResearchWorkspaceView } from './components/ResearchWorkspaceView';
 
 import {
@@ -764,6 +765,7 @@ useEffect(() => {
 
   const workspaceNavItems = [
     { id: 'documents', label: 'Documents', icon: FileText, badge: 'Any format' },
+    { id: 'assistant', label: 'Assistant', icon: Sparkles, badge: 'Rae' },
     { id: 'research', label: 'Research', icon: Compass, badge: 'Deep' },
     { id: 'projects', label: 'Projects', icon: Package, badge: 'APK • EXE • Web' },
     { id: 'scheduled', label: 'Scheduled', icon: Clock, badge: 'Alarms' },
@@ -1372,6 +1374,9 @@ useEffect(() => {
             />
           )}
           {activeTab === 'documents' && <DocumentsWorkspaceView t={t} />}
+          {activeTab === 'assistant' && (
+            <AssistantStudioView t={t} onNavigate={setActiveTab} assistantName={assistantName} />
+          )}
           {activeTab === 'research' && <ResearchWorkspaceView t={t} onNavigate={setActiveTab} />}
           {activeTab === 'projects' && <CollaborativeBuildWorkspaceView t={t} />}
           {activeTab === 'scheduled' && <ScheduledWorkspaceView t={t} onNavigate={setActiveTab} />}

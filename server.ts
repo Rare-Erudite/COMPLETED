@@ -36,6 +36,8 @@ import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentE
 import { RunStateStore } from './src/server/development/RunStateStore.js';
 import type { FilePatch } from './src/server/development/PatchEngine.js';
 import { runDiagnostics, runFaultInjectionTest } from './src/server/development/Diagnostics.js';
+import { routeRequest } from './src/server/orchestrator/IntentRouter.js';
+import { planPatches } from './src/server/orchestrator/PatchPlanner.js';
 import { BenchmarkSuite } from './src/server/evaluation/BenchmarkSuite.js';
 import { engine } from './src/engine/engine.ts';
 import { googleTtsProvider } from './src/server/providers/GoogleTtsProvider.js';
@@ -3347,6 +3349,18 @@ app.post('/api/developer/self-dev', async (req, res) => {
     {
       instruction,
       patches: parsedPatches.patches,
+      // When the developer describes the change in words instead of supplying
+      // patches, ground a plan in the real files. Without this the engine had
+      // nothing to apply and every natural-language request was refused.
+      planPatches: parsedPatches.patches && parsedPatches.patches.length > 0
+        ? undefined
+        : async (text: string) => {
+            const plan = planPatches(text);
+            if (plan.patches.length === 0) {
+              throw new Error(plan.blocker || 'No grounded change could be derived from the request.');
+            }
+            return plan.patches;
+          },
       targetFiles: Array.isArray(targetFiles)
         ? targetFiles.filter((entry: unknown): entry is string => typeof entry === 'string')
         : undefined,
@@ -3367,6 +3381,40 @@ app.post('/api/developer/self-dev', async (req, res) => {
   });
 
   return res.status(201).json(result);
+});
+
+// ---------------------------------------------------------------------------
+// Canonical orchestration
+// ---------------------------------------------------------------------------
+// One entry point that decides *which* capability a natural-language request
+// belongs to, and enforces the permission boundary for it. Chat, the Assistant
+// and any future surface call this instead of each re-implementing routing.
+//
+// It deliberately does NOT execute privileged work itself: for `self_build` it
+// returns `requiresDeveloper: true` and the client must obtain a developer
+// session, then call /api/developer/self-dev. That keeps the authorization
+// check on the route that actually mutates source.
+app.post('/api/orchestrator/route', async (req, res) => {
+  const { request } = req.body || {};
+  if (typeof request !== 'string' || !request.trim()) {
+    return res.status(400).json({ error: { message: '`request` must be a non-empty string.' } });
+  }
+
+  const decision = routeRequest(request);
+
+  // Report the developer session state so the client knows whether it can
+  // proceed or must open the protected sign-in first. This is informational;
+  // the privileged route re-checks independently.
+  const developerAuthorized = decision.requiresDeveloper
+    ? await isDeveloperSessionAuthorized(req)
+    : false;
+
+  return res.json({
+    ...decision,
+    developerAuthorized,
+    // A privileged capability is only actionable once the session is authorized.
+    actionable: decision.requiresDeveloper ? developerAuthorized : true,
+  });
 });
 
 // Rollback Checkpoint

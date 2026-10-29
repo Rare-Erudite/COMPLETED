@@ -4290,5 +4290,55 @@
     "importance": 5,
     "source": "user_stated",
     "verifiedByUser": true
+  },
+  {
+    "id": "mem_1793293639420_yza5z",
+    "timestamp": "2026-10-29T17:07:19.420Z",
+    "kind": "fact",
+    "text": "Test tool memory statement",
+    "tags": [
+      "test_tool"
+    ],
+    "importance": 3,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1793293640144_7imhr",
+    "timestamp": "2026-10-29T17:07:20.144Z",
+    "kind": "fact",
+    "text": "eval_fact_1793293640144: Deterministic test token: nr96of",
+    "tags": [
+      "eval_suite",
+      "test_token"
+    ],
+    "importance": 5,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1793293662164_6luix",
+    "timestamp": "2026-10-29T17:07:42.164Z",
+    "kind": "fact",
+    "text": "Test tool memory statement",
+    "tags": [
+      "test_tool"
+    ],
+    "importance": 3,
+    "source": "user_stated",
+    "verifiedByUser": true
+  },
+  {
+    "id": "mem_1793293662732_6hs0n",
+    "timestamp": "2026-10-29T17:07:42.732Z",
+    "kind": "fact",
+    "text": "eval_fact_1793293662732: Deterministic test token: 50ccy7",
+    "tags": [
+      "eval_suite",
+      "test_token"
+    ],
+    "importance": 5,
+    "source": "user_stated",
+    "verifiedByUser": true
   }
 ]

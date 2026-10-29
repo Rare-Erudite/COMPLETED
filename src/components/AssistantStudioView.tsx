@@ -21,6 +21,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../api.js';
 import { ThemeConfig } from '../theme';
+import { DeveloperAuthModal } from '../DeveloperAuthModal.js';
 import {
   Bot,
   FileText,
@@ -162,8 +163,16 @@ type CommandIntent =
   | { kind: 'research'; query: string }
   | { kind: 'build'; objective: string }
   | { kind: 'read_url'; url: string }
+  | { kind: 'self_build'; objective: string }
   | { kind: 'unknown' };
 
+/**
+ * Local pre-classification, kept only for the URL case (which needs the URL
+ * extracted before any request is made). Everything else is decided by the
+ * server-side orchestrator so the Assistant and Chat cannot disagree about
+ * what a request means, and so the permission boundary is enforced where the
+ * privileged work actually happens.
+ */
 function interpretCommand(raw: string): CommandIntent {
   const text = raw.trim();
   if (!text) return { kind: 'unknown' };
@@ -171,18 +180,6 @@ function interpretCommand(raw: string): CommandIntent {
   const urlMatch = text.match(/https?:\/\/[^\s]+/i);
   if (urlMatch && /(read|open|fetch|summar|investigat|check|analys|analyze)/i.test(text)) {
     return { kind: 'read_url', url: urlMatch[0] };
-  }
-
-  if (/(document|file|docx|pdf|note|transcript)/i.test(text)) {
-    return { kind: 'documents', query: text.replace(/^(find|search|open|look up|locate)\s+(a\s+|an\s+|the\s+)?(document|file)s?\s*(about|for)?\s*/i, '').trim() || text };
-  }
-
-  if (/(research|investigate|compare|find out|look up|sources?|evidence)/i.test(text)) {
-    return { kind: 'research', query: text.replace(/^(research|investigate|compare|find out about|look up)\s+/i, '').trim() || text };
-  }
-
-  if (/(build|create an app|scaffold|implement|make an application|develop)/i.test(text)) {
-    return { kind: 'build', objective: text };
   }
 
   return { kind: 'unknown' };
@@ -204,7 +201,7 @@ interface ActionLogEntry {
   at: string;
 }
 
-export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: AssistantStudioViewProps) {
+export function AssistantStudioView({ t, onNavigate, assistantName = 'Rare' }: AssistantStudioViewProps) {
   const platform = useMemo<AssistantPlatform>(() => detectPlatform(), []);
   const capabilities = useMemo<AssistantCapability[]>(() => buildCapabilities(platform), [platform]);
   const speechRecognitionSupported = capabilities.find((c) => c.id === 'voice_input')?.available ?? false;
@@ -217,6 +214,11 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
   const [reply, setReply] = useState('');
   const [log, setLog] = useState<ActionLogEntry[]>([]);
   const [micError, setMicError] = useState('');
+  // Set when a privileged request is waiting on the developer passkey. The
+  // request text is held here so the same task continues after sign-in instead
+  // of asking the developer to retype it in another workspace.
+  const [pendingSelfBuild, setPendingSelfBuild] = useState<string | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
@@ -292,80 +294,132 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
   }, [stopListening]);
 
   const runCommand = useCallback(async () => {
-    const intent = interpretCommand(command);
-    if (intent.kind === 'unknown') {
-      const message =
-        'I could not map that to an action I can actually perform. I can search your documents, research a topic across sources, inspect a URL, or hand a build request to the task engine.';
-      setReply(message);
-      record('interpret', false, 'No matching capability for the request');
-      speak(message);
-      return;
-    }
+    const text = command.trim();
+    if (!text) return;
 
     setBusy(true);
     setReply('');
     try {
-      if (intent.kind === 'documents') {
+      // The URL reader needs the URL before any request, so it is handled here.
+      const local = interpretCommand(text);
+      if (local.kind === 'read_url') {
+        const res = await apiFetch('/api/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: local.url, path: `imports/rae-${Date.now()}.txt` }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error?.message || `Import returned HTTP ${res.status}.`);
+        const message = `Imported ${local.url} into your documents as ${data.path} (${data.size} bytes).`;
+        setReply(message);
+        record('read_url', true, `Saved as ${data.path}`);
+        speak(message);
+        return;
+      }
+
+      // Everything else is classified by the canonical server-side router, so
+      // the Assistant and Chat share one definition of what a request means.
+      const routeRes = await apiFetch('/api/orchestrator/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ request: text }),
+      });
+      if (!routeRes.ok) throw new Error(`Router returned HTTP ${routeRes.status}.`);
+      const decision: {
+        capability: string;
+        requiresDeveloper: boolean;
+        developerAuthorized: boolean;
+        actionable: boolean;
+        reason: string;
+      } = await routeRes.json();
+
+      if (decision.capability === 'documents') {
         const res = await apiFetch('/api/documents');
         if (!res.ok) throw new Error(`Documents service returned HTTP ${res.status}.`);
         const docs: Array<{ path: string; format: string; size: number }> = await res.json();
-        const needle = intent.query.toLowerCase();
-        const matches = docs.filter((doc) => doc.path.toLowerCase().includes(needle)).slice(0, 8);
+        const needle = text.toLowerCase();
+        const matches = docs.filter((doc) => needle.includes(doc.path.toLowerCase().split('/').pop() || '\u0000')).slice(0, 8);
         const message = matches.length
-          ? `Found ${matches.length} document${matches.length === 1 ? '' : 's'} matching "${intent.query}": ${matches.map((doc) => doc.path).join(', ')}.`
-          : `No documents matched "${intent.query}". Your document store currently holds ${docs.length} file${docs.length === 1 ? '' : 's'}.`;
+          ? `Found ${matches.length} document${matches.length === 1 ? '' : 's'}: ${matches.map((doc) => doc.path).join(', ')}.`
+          : `No document name in that request matched your ${docs.length} stored file${docs.length === 1 ? '' : 's'}.`;
         setReply(message);
-        record('documents', true, `${matches.length} match(es) of ${docs.length} document(s)`);
+        record('documents', matches.length > 0, `${matches.length} match(es) of ${docs.length}`);
         speak(message);
-      } else if (intent.kind === 'research') {
+        return;
+      }
+
+      if (decision.capability === 'research') {
         const res = await apiFetch('/api/research/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: intent.query }),
+          body: JSON.stringify({ query: text }),
         });
         if (!res.ok) throw new Error(`Research service returned HTTP ${res.status}.`);
         const data = await res.json();
         const item = data?.results?.[0];
         const sources: Array<{ name: string; url: string }> = item?.sources || [];
         const message = sources.length
-          ? `Research on "${intent.query}" returned ${sources.length} source${sources.length === 1 ? '' : 's'}: ${sources.slice(0, 4).map((s) => s.name).join(', ')}. ${item?.synthesis || ''}`.trim()
-          : `Research on "${intent.query}" returned no sources. ${(item?.sourceErrors || []).join(' ') || 'Check outbound network access from the server.'}`;
+          ? `Research returned ${sources.length} source${sources.length === 1 ? '' : 's'}: ${sources.slice(0, 4).map((s) => s.name).join(', ')}. ${item?.synthesis || ''}`.trim()
+          : `Research returned no sources. ${(item?.sourceErrors || []).join(' ') || 'Check outbound network access from the server.'}`;
         setReply(message);
         record('research', sources.length > 0, `${sources.length} source(s) retrieved`);
         speak(message);
-      } else if (intent.kind === 'read_url') {
-        const res = await apiFetch('/api/documents', {
+        return;
+      }
+
+      // Privileged capabilities: ask for the developer passkey in the protected
+      // modal, never in the conversation, then continue the same request.
+      if (decision.requiresDeveloper && !decision.developerAuthorized) {
+        setPendingSelfBuild(text);
+        setAuthOpen(true);
+        const message =
+          'That request changes RARE\u2019s own source, so it needs developer authorization. ' +
+          'Enter the developer passkey in the secure prompt and I will continue.';
+        setReply(message);
+        record('self_build', false, 'Developer authorization required');
+        speak(message);
+        return;
+      }
+
+      if (decision.capability === 'self_build') {
+        const res = await apiFetch('/api/developer/self-dev', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: intent.url, path: `imports/rae-${Date.now()}.txt` }),
+          body: JSON.stringify({ instruction: text }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error?.message || `Import returned HTTP ${res.status}.`);
-        const message = `Imported ${intent.url} into your documents as ${data.path} (${data.size} bytes).`;
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error?.message || `Self-build returned HTTP ${res.status}.`);
+        const changed: Array<{ path: string }> = data?.changedFiles || [];
+        const message =
+          data?.status === 'VERIFIED_SUCCESS'
+            ? `Self-build verified. Changed ${changed.length} file${changed.length === 1 ? '' : 's'}: ${changed.map((c) => c.path).join(', ') || 'none'}.`
+            : `Self-build finished with status ${data?.status || 'unknown'}. ${data?.blockedReason || ''}`.trim();
         setReply(message);
-        record('read_url', true, `Saved as ${data.path}`);
+        record('self_build', data?.status === 'VERIFIED_SUCCESS', String(data?.status || 'unknown'));
         speak(message);
-      } else {
+        return;
+      }
+
+      if (decision.capability === 'project_build') {
         const res = await apiFetch('/api/v1/tasks/execute', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ objective: intent.objective, prompt: intent.objective }),
+          body: JSON.stringify({ objective: text, prompt: text }),
         });
         const data = await res.json().catch(() => ({}));
-        if (res.status === 403) {
-          const message =
-            'Build execution is restricted to an authorised developer session, so I cannot start a build task from here. Open Project & Build to create or import a project instead.';
-          setReply(message);
-          record('build', false, 'Developer session required');
-          speak(message);
-          return;
-        }
         if (!res.ok) throw new Error(data?.error?.message || `Task engine returned HTTP ${res.status}.`);
         const message = `Task engine accepted the build request${data?.taskId || data?.id ? ` as ${data.taskId || data.id}` : ''}. It reports: ${data?.status || data?.message || 'accepted'}.`;
         setReply(message);
         record('build', true, String(data?.status || 'accepted'));
         speak(message);
+        return;
       }
+
+      // Conversation and anything else: answer through the normal chat path.
+      const message = decision.reason;
+      setReply(message);
+      record(decision.capability, true, decision.reason);
+      speak(message);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The action could not be completed.';
       setReply(`The action could not be completed: ${message}`);
@@ -375,6 +429,45 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
       setBusy(false);
     }
   }, [command, record, speak]);
+
+  /**
+   * Continue the request that was waiting on developer authorization.
+   *
+   * The passkey was typed into the protected modal, so by the time this runs the
+   * session carries a developer grant. The privileged route re-checks that grant
+   * server-side; this handler only resumes the same instruction.
+   */
+  const continuePendingSelfBuild = useCallback(async () => {
+    const instruction = pendingSelfBuild;
+    setPendingSelfBuild(null);
+    if (!instruction) return;
+
+    setBusy(true);
+    try {
+      const res = await apiFetch('/api/developer/self-dev', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error?.message || `Self-build returned HTTP ${res.status}.`);
+
+      const changed: Array<{ path: string }> = data?.changedFiles || [];
+      const message =
+        data?.status === 'VERIFIED_SUCCESS'
+          ? `Self-build verified. Changed ${changed.length} file${changed.length === 1 ? '' : 's'}: ${changed.map((c) => c.path).join(', ') || 'none'}.`
+          : `Self-build finished with status ${data?.status || 'unknown'}. ${data?.blockedReason || ''}`.trim();
+      setReply(message);
+      record('self_build', data?.status === 'VERIFIED_SUCCESS', String(data?.status || 'unknown'));
+      speak(message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The self-build could not be completed.';
+      setReply(`The self-build could not be completed: ${message}`);
+      record('self_build', false, message);
+    } finally {
+      setBusy(false);
+    }
+  }, [pendingSelfBuild, record, speak]);
 
   // The legacy RARE-INTELLIGENCE tools remain reachable from the same page.
   const [researchQuery, setResearchQuery] = useState('Compare file-persistent multi-collection JSON storage against SQLite in a zero-budget architecture');
@@ -439,6 +532,20 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
 
   return (
     <div className="space-y-6">
+      {/* Protected developer sign-in. The passkey is typed here, never into the
+          conversation, and is never stored in the action log or memory. */}
+      <DeveloperAuthModal
+        t={t as ThemeConfig}
+        isOpen={authOpen}
+        onSuccess={() => {
+          setAuthOpen(false);
+          void continuePendingSelfBuild();
+        }}
+        onClose={() => {
+          setAuthOpen(false);
+          setPendingSelfBuild(null);
+        }}
+      />
       {/* Header + platform */}
       <div className="border border-slate-800 rounded-xl bg-slate-900/40 p-6 backdrop-blur">
         <div className="flex flex-wrap items-center justify-between gap-4">
