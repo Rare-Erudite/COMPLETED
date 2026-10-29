@@ -33,6 +33,7 @@ import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
+import { RunStateStore } from './src/server/development/RunStateStore.js';
 import type { FilePatch } from './src/server/development/PatchEngine.js';
 import { runDiagnostics, runFaultInjectionTest } from './src/server/development/Diagnostics.js';
 import { BenchmarkSuite } from './src/server/evaluation/BenchmarkSuite.js';
@@ -124,7 +125,13 @@ const deepResearchEngine = new DeepResearchEngine();
 let documentsService: DocumentsService | undefined;
 const toolExecutor = new ToolExecutor(memoryStore, checkpointStore, researchService);
 const providerRegistry = new ProviderRegistry(memoryStore, toolExecutor);
-const selfDevEngine = new SelfDevelopmentEngine(checkpointStore, trajectoryStore, toolExecutor);
+const runStateStore = new RunStateStore();
+const selfDevEngine = new SelfDevelopmentEngine({
+  checkpointStore,
+  trajectoryStore,
+  toolExecutor,
+  runStateStore,
+});
 const benchmarkSuite = new BenchmarkSuite(toolExecutor, memoryStore, checkpointStore);
 
 // -----------------------------------------------------------------------------

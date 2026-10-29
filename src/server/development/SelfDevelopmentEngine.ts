@@ -53,6 +53,7 @@ import {
   verifyCriteria,
 } from './AcceptanceCriteria.js';
 import { diagnoseFailure, Diagnosis } from './Diagnosis.js';
+import { RunStateStore } from './RunStateStore.js';
 
 // Resolved per call: the engine is retargeted at a throwaway workspace by the
 // test suite (and by future isolated-branch runs) through RARE_APP_ROOT.
@@ -106,6 +107,8 @@ export interface SelfDevDeps {
   trajectoryStore: TrajectoryStore;
   toolExecutor: ToolExecutor;
   /** Persist run state so an interrupted task can resume. */
+  runStateStore?: RunStateStore;
+  /** Legacy callback; kept for callers that prefer to supply their own sink. */
   saveRunState?: (state: PersistedRunState) => Promise<void>;
 }
 
@@ -207,6 +210,57 @@ export class SelfDevelopmentEngine {
       };
     }
     nextStep('Developer authorization', 'completed', 'Authorized developer session verified server-side.', true);
+
+    // ---------------------------------------------------------------------
+    // Step 0b — resume an interrupted run.
+    //
+    // A run interrupted after its patches were applied leaves the workspace in
+    // a state its checkpoint describes but nobody remembers. Resuming must not
+    // jump to "verify and call it done": the interrupted run never verified, so
+    // the only safe continuation is to restore the checkpoint and start the
+    // change again from a known-good tree.
+    // ---------------------------------------------------------------------
+    if (req.resumeRunId) {
+      const previous = this.deps.runStateStore?.load(req.resumeRunId);
+      if (!previous) {
+        nextStep(
+          'Resume interrupted run',
+          'not_verified',
+          `No run state found for ${req.resumeRunId}; starting a fresh cycle.`,
+          false,
+        );
+      } else if (previous.status === 'running' && previous.checkpointId) {
+        const restored = this.restore(previous.checkpointId);
+        nextStep(
+          'Resume interrupted run',
+          'completed',
+          `Found interrupted run ${previous.runId} from ${previous.startedAt} (${previous.appliedPaths.length} file(s) had been changed). ` +
+            `Restored checkpoint ${previous.checkpointId}${restored.length ? `: ${restored.join(', ')}` : ' (nothing differed on disk)'}. ` +
+            `Re-running the change from a known-good tree rather than reporting the interrupted run as complete.`,
+          true,
+        );
+        this.deps.runStateStore?.clear(previous.runId);
+        this.deps.trajectoryStore.record({
+          id: `resume_${runId}`,
+          task: `Resume of ${previous.runId}`,
+          plan: 'Restore checkpoint, then re-execute.',
+          actions: ['resume: checkpoint restored', 'resume: re-executing from clean tree'],
+          changedFiles: [],
+          repairAttempts: 0,
+          testOutcome: 'failed',
+          status: 'REVERTED_ON_FAILURE',
+          timestamp: new Date().toISOString(),
+          auditTrail: [`Resumed interrupted run ${previous.runId}`],
+        } as any);
+      } else if (previous.status !== 'running') {
+        nextStep(
+          'Resume interrupted run',
+          'not_verified',
+          `Run ${previous.runId} already finished with status "${previous.status}"; nothing to resume.`,
+          false,
+        );
+      }
+    }
 
     // ---------------------------------------------------------------------
     // Step 1 — real inspection of the project, not of the instruction string.
@@ -355,17 +409,15 @@ export class SelfDevelopmentEngine {
       };
     }
 
-    if (this.deps.saveRunState) {
-      await this.deps.saveRunState({
-        runId,
-        instruction: req.instruction,
-        checkpointId,
-        appliedPaths: [],
-        status: 'running',
-        startedAt: new Date(startedAt).toISOString(),
-        lastStep: stepNo,
-      });
-    }
+    await this.persistRun({
+      runId,
+      instruction: req.instruction,
+      checkpointId,
+      appliedPaths: [],
+      status: 'running',
+      startedAt: new Date(startedAt).toISOString(),
+      lastStep: stepNo,
+    });
 
     // ---------------------------------------------------------------------
     // Step 6 — apply the real patches through the tool layer.
@@ -436,17 +488,15 @@ export class SelfDevelopmentEngine {
       changedFiles.map((c) => `${c.path}: ${c.diff.split('\n')[0]}`).join('\n'),
     );
 
-    if (this.deps.saveRunState) {
-      await this.deps.saveRunState({
-        runId,
-        instruction: req.instruction,
-        checkpointId,
-        appliedPaths: changedFiles.map((c) => c.path),
-        status: 'running',
-        startedAt: new Date(startedAt).toISOString(),
-        lastStep: stepNo,
-      });
-    }
+    await this.persistRun({
+      runId,
+      instruction: req.instruction,
+      checkpointId,
+      appliedPaths: changedFiles.map((c) => c.path),
+      status: 'running',
+      startedAt: new Date(startedAt).toISOString(),
+      lastStep: stepNo,
+    });
 
     // ---------------------------------------------------------------------
     // Step 7 — verify against the criteria, using real command output.
@@ -544,17 +594,15 @@ export class SelfDevelopmentEngine {
       auditTrail,
     });
 
-    if (this.deps.saveRunState) {
-      await this.deps.saveRunState({
-        runId,
-        instruction: req.instruction,
-        checkpointId,
-        appliedPaths: finalPass ? changedFiles.map((c) => c.path) : [],
-        status: finalPass ? 'completed' : 'reverted',
-        startedAt: new Date(startedAt).toISOString(),
-        lastStep: stepNo,
-      });
-    }
+    await this.persistRun({
+      runId,
+      instruction: req.instruction,
+      checkpointId,
+      appliedPaths: finalPass ? changedFiles.map((c) => c.path) : [],
+      status: finalPass ? 'completed' : 'reverted',
+      startedAt: new Date(startedAt).toISOString(),
+      lastStep: stepNo,
+    });
 
     return {
       runId,
@@ -570,6 +618,23 @@ export class SelfDevelopmentEngine {
       })),
       durationMs: Date.now() - startedAt,
     };
+  }
+
+  /**
+   * Record run state to every sink the caller configured. Both are written so
+   * a deployment that only wires the legacy callback still gets durability.
+   */
+  private async persistRun(state: PersistedRunState): Promise<void> {
+    if (this.deps.runStateStore) {
+      this.deps.runStateStore.save(state);
+    }
+    if (this.deps.saveRunState) {
+      try {
+        await this.deps.saveRunState(state);
+      } catch {
+        // A failed supplementary sink must not abort the build.
+      }
+    }
   }
 
   private restore(checkpointId: string | null): string[] {

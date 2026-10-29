@@ -233,7 +233,97 @@ export async function runRealSelfDevelopmentTests() {
   });
 
   // ---------------------------------------------------------------------
-  // 12. Every completed step is backed by a real operation.
+  // 12. Resume of an interrupted run restores the checkpoint and does NOT
+  //     report the interrupted work as complete.
+  // ---------------------------------------------------------------------
+  await check('an interrupted run resumes by restoring, not by claiming success', async () => {
+    const { RunStateStore } = await import('../src/server/development/RunStateStore.js');
+    const runStates = new RunStateStore(root);
+    const engineWithResume = new SelfDevelopmentEngine({
+      checkpointStore,
+      trajectoryStore,
+      toolExecutor,
+      runStateStore: runStates,
+    });
+
+    // A verified run to produce a real checkpoint.
+    fs.writeFileSync(target, 'export const greeting = "hello";\n');
+    const done = await engineWithResume.executeCycle(
+      {
+        instruction: 'set the greeting in src/greeting.ts to "resumed-value"',
+        patches: [{
+          path: 'src/greeting.ts', operation: 'modify',
+          search: 'export const greeting = "hello";',
+          replace: 'export const greeting = "resumed-value";',
+        }],
+      },
+      true,
+    );
+    assert.strictEqual(done.status, 'VERIFIED_SUCCESS', `${done.status}`);
+    assert.ok(done.checkpointId, 'a checkpoint must exist');
+
+    // Simulate an interruption: the run state says 'running' and the file has
+    // been mutated, but nothing was verified.
+    fs.writeFileSync(target, 'export const greeting = "half applied";\n');
+    runStates.save({
+      runId: 'sdev_interrupted',
+      instruction: 'set the greeting in src/greeting.ts to "resumed-value"',
+      checkpointId: done.checkpointId,
+      appliedPaths: ['src/greeting.ts'],
+      status: 'running',
+      startedAt: new Date().toISOString(),
+      lastStep: 6,
+    });
+
+    const resumed = await engineWithResume.executeCycle(
+      {
+        instruction: 'set the greeting in src/greeting.ts to "resumed-value"',
+        resumeRunId: 'sdev_interrupted',
+        patches: [{
+          path: 'src/greeting.ts', operation: 'modify',
+          search: 'export const greeting = "hello";',
+          replace: 'export const greeting = "resumed-value";',
+        }],
+      },
+      true,
+    );
+
+    const resumeStep = resumed.steps.find((s) => s.title === 'Resume interrupted run');
+    assert.ok(resumeStep, 'must report the resume');
+    assert.ok(/Restored checkpoint/.test(resumeStep!.details), resumeStep!.details);
+    // The half-applied patch must be gone, and the real change applied.
+    assert.strictEqual(fs.readFileSync(target, 'utf-8'), 'export const greeting = "resumed-value";\n');
+    // The record is closed out under the same run id — it must no longer be
+    // listed as interrupted, or a later resume would try to restore it again.
+    const leftover = runStates.load('sdev_interrupted');
+    assert.ok(!leftover || leftover.status !== 'running',
+      `resumed run left as 'running': ${JSON.stringify(leftover)}`);
+    assert.strictEqual(
+      runStates.listInterrupted().filter((r) => r.runId === 'sdev_interrupted').length, 0,
+      'a resumed run must not remain in the interrupted list',
+    );
+  });
+
+  await check('the engine records run state so a crash leaves a trace', async () => {
+    const { RunStateStore } = await import('../src/server/development/RunStateStore.js');
+    const runStates = new RunStateStore(root);
+    const engineWithResume = new SelfDevelopmentEngine({
+      checkpointStore, trajectoryStore, toolExecutor, runStateStore: runStates,
+    });
+    fs.writeFileSync(target, 'export const greeting = "hello";\n');
+    await engineWithResume.executeCycle(
+      { instruction: 'set the greeting in src/greeting.ts to "traced"',
+        patches: [{ path: 'src/greeting.ts', operation: 'modify',
+          search: 'export const greeting = "hello";', replace: 'export const greeting = "traced";' }] },
+      true,
+    );
+    // A completed run must be closed out, not left as 'running'.
+    const interrupted = runStates.listInterrupted();
+    assert.strictEqual(interrupted.length, 0, `completed runs left as interrupted: ${interrupted.map(i=>i.runId)}`);
+  });
+
+  // ---------------------------------------------------------------------
+  // 13. Every completed step is backed by a real operation.
   // ---------------------------------------------------------------------
   await check('steps with outcome=completed are all marked verified or explicitly not', async () => {
     for (const step of authorizedResult.steps) {
