@@ -687,18 +687,41 @@ export async function generateDynamicBrainReply(options: {
       lower
     );
 
+  // 8. Honest fallback. No language model is connected, so never fake an answer.
+  const plain = lower.replace(/[^a-z0-9\s']/g, ' ').replace(/\s+/g, ' ').trim();
+
+  if (/\b(have you eaten|did you eat|have you had (breakfast|lunch|dinner)|are you hungry)\b/.test(plain)) {
+    return {
+      content: isVoiceCall
+        ? "I'm an AI, so I don't eat, but I hope you've had something good. Have you eaten?"
+        : "I'm an AI, so I don't eat, but I hope you've had something good today. Have you eaten?",
+    };
+  }
+
+  if (/\b(how was your day|how is your day|how's your day|what are you doing|what's up with you)\b/.test(plain)) {
+    return {
+      content: isVoiceCall
+        ? "All good on my side. I'm here and ready to help. How's your day going?"
+        : "All good on my side, I'm here and ready to help. How's your day going?",
+    };
+  }
+
+  if (plain.split(' ').length <= 3 && /^(yes|yeah|yep|yup|ok|okay|alright|sure|fine|no|nope|nah|cool|nice|hmm)\b/.test(plain)) {
+    return {
+      content: 'Alright. What would you like to talk about or work on?',
+    };
+  }
+
+  // Anything requiring genuine generation is refused explicitly rather than
+  // answered with a generic paragraph that looks like a real reply.
   const fallbackReply = looksLikeCodeRequest
     ? 'I can see that you need task-specific code. However, the fallback currently handling this request cannot reliably generate and verify that implementation. I will not give you placeholder code and pretend it solves your problem. Restore a working model provider or load the local neural model, then try this request again.'
-    : 'I could not produce a sufficiently reliable answer with the current fallback. It can handle certain specific operations, but it is not a substitute for a capable generative language model. I do not want to fill the gap with a generic explanation that may not answer your question. Restore a working model provider or load the local neural model, then try again.';
+    : "I'm in basic offline mode right now, so I can't answer that properly yet.\n\nI can still help with greetings, the time and weather, quick math, saving memories, alarms, and starting build projects. Once my main language model is connected, I'll be able to chat about anything.";
 
   return {
-    content: isVoiceCall
-      ? looksLikeCodeRequest
-        ? 'I understand you need working code, but my current fallback cannot reliably build and verify it. I do not want to guess. We can retry when the model is available.'
-        : 'I could not work out a reliable answer just now. I do not want to guess or give you a generic response that misses your question. We can try again when the model is available.'
-      : fallbackReply,
+    content: fallbackReply,
     thought: thinkHarder
-      ? 'Fallback disclosure: no model-backed answer was produced for this request.'
+      ? `Offline fallback: no language model available • Local Time: ${env.localTimeFormatted}`
       : undefined,
   };
 }

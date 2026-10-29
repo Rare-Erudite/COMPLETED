@@ -1073,7 +1073,14 @@ const allMessages = recentMessages || [];
     isVoiceCall: Boolean(isVoiceCall),
     systemPrompt: buildRareSystemPrompt(appSettings.assistantName || 'RARE', Boolean(isVoiceCall)),
     conversationHistory: context.history,
-  });
+    // Reconciled from main: providers now read `history`/`memoryContext` as
+    // well as the shared prompt contract, so both context shapes are supplied.
+    history: context.history,
+    memoryContext: userMemories
+      .slice(0, 3)
+      .map((m: any) => String(m?.text || ''))
+      .filter(Boolean),
+  } as any);
 
   // ProviderRegistry retains an offline engine for intentional local workflows,
   // but its heuristic output must never be presented as an online AI response.

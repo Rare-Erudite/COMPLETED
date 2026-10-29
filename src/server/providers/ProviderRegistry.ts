@@ -14,6 +14,8 @@ export class ProviderRegistry {
   private geminiProvider: GeminiCoprocessorProvider;
   private rareIntelligenceProvider: RareIntelligenceProvider;
   private preferredProviderId: string = 'local-transformers';
+  private lastUsed: { id: string; at: string; usedOfflineFallback: boolean; error?: string } | null = null;
+  private lastLoggedProviderId = '';
 
   constructor(memoryStore: MemoryStore, toolExecutor: ToolExecutor) {
     this.offlineEngine = new OfflineCognitiveEngine(memoryStore, toolExecutor);
@@ -21,9 +23,13 @@ export class ProviderRegistry {
     this.ollamaProvider = new OllamaProvider();
     this.geminiProvider = new GeminiCoprocessorProvider();
     // Optional bridge to the companion RARE-INTELLIGENCE engine. Inert unless
-    // RARE_INTELLIGENCE_URL is configured AND the engine is reachable, so it
-    // never changes existing behaviour when unset.
+    // RARE_INTELLIGENCE_URL is configured AND the engine is reachable.
     this.rareIntelligenceProvider = new RareIntelligenceProvider();
+
+    // Opt-in: set RARE_AUTOLOAD_LOCAL=1 to download/load the free local model at startup.
+    if (process.env.RARE_AUTOLOAD_LOCAL === '1') {
+      this.localTransformersProvider.preload();
+    }
   }
 
   public setPreferredProvider(id: string): void {
@@ -32,6 +38,11 @@ export class ProviderRegistry {
 
   public getPreferredProvider(): string {
     return this.preferredProviderId;
+  }
+
+  /** Which brain answered the most recent chat request (for status/debugging). */
+  public getLastUsed() {
+    return this.lastUsed;
   }
 
   public async getAllProviders(): Promise<ModelInfo[]> {
@@ -110,11 +121,40 @@ export class ProviderRegistry {
       };
     }
 
-    // 7. Default: RARE Native Offline Cognitive Engine (Zero External API Key required)
+    // 7. Last resort: rule-based offline engine (not a language model).
     return {
       provider: this.offlineEngine,
       info: await this.offlineEngine.getInfo(),
     };
+  }
+
+  /** Other genuine language models to try (in order) if the first choice errors out. */
+  private async getRealFallbacks(exclude: IModelProvider): Promise<IModelProvider[]> {
+    const out: IModelProvider[] = [];
+    const candidates: IModelProvider[] = [
+      this.geminiProvider,
+      this.localTransformersProvider,
+      this.ollamaProvider,
+    ];
+    for (const candidate of candidates) {
+      if (candidate === exclude) continue;
+      try {
+        if (await candidate.isAvailable()) out.push(candidate);
+      } catch {
+        // ignore availability errors
+      }
+    }
+    if (
+      (this.rareIntelligenceProvider as IModelProvider) !== exclude &&
+      this.rareIntelligenceProvider.isConfigured()
+    ) {
+      try {
+        if (await this.rareIntelligenceProvider.isAvailable()) out.push(this.rareIntelligenceProvider);
+      } catch {
+        // ignore
+      }
+    }
+    return out;
   }
 
   public async generate(
@@ -122,22 +162,45 @@ export class ProviderRegistry {
     context?: string,
     options?: GenerationOptions
   ): Promise<GenerationResult> {
-    // Attempt with active provider, with guaranteed fallback to offline engine
-    const { provider } = await this.getActiveProvider();
-    try {
-      return await provider.generate(prompt, context, options);
-    } catch (err: any) {
-      // Keep the fallback available for explicitly offline callers, but never
-      // log provider exception details that may contain URLs or credentials.
-      console.warn('[ProviderRegistry] Configured provider failed; using the offline engine fallback.');
-      const fallbackResult = await this.offlineEngine.generate(prompt, context, options);
-      return {
-        ...fallbackResult,
-        thought: `[Online provider failed; fell back to OfflineCognitiveEngine] ${fallbackResult.thought || ''}`.trim(),
-        modelUsed: 'offline-cognitive-engine / RARE Native Cognitive Engine',
-        providerType: 'offline_cognitive',
-      };
+    const { provider, info } = await this.getActiveProvider();
+
+    if (this.lastLoggedProviderId !== info.id) {
+      console.log(`[ProviderRegistry] Chat is now answered by: ${info.id} (${info.name})`);
+      this.lastLoggedProviderId = info.id;
     }
+
+    let firstError = '';
+    try {
+      const result = await provider.generate(prompt, context, options);
+      this.lastUsed = { id: info.id, at: new Date().toISOString(), usedOfflineFallback: info.id === 'rare-offline-cognitive' };
+      return result;
+    } catch (err: any) {
+      firstError = err?.message || String(err);
+      console.error(`[ProviderRegistry] Provider "${info.id}" failed: ${firstError}`);
+    }
+
+    // Try any other real language model before giving up on genuine AI.
+    for (const alt of await this.getRealFallbacks(provider)) {
+      try {
+        const result = await alt.generate(prompt, context, options);
+        const altInfo = await alt.getInfo();
+        console.warn(`[ProviderRegistry] Recovered using "${altInfo.id}" after "${info.id}" failed.`);
+        this.lastUsed = { id: altInfo.id, at: new Date().toISOString(), usedOfflineFallback: false, error: firstError };
+        return result;
+      } catch (altErr: any) {
+        console.error(`[ProviderRegistry] Fallback provider failed: ${altErr?.message || altErr}`);
+      }
+    }
+
+    console.warn('[ProviderRegistry] No language model could answer. Using the rule-based offline engine.');
+    const fallbackResult = await this.offlineEngine.generate(prompt, context, options);
+    this.lastUsed = { id: 'rare-offline-cognitive', at: new Date().toISOString(), usedOfflineFallback: true, error: firstError };
+    return {
+      ...fallbackResult,
+      thought: `[Primary provider failed (${firstError || 'Error'}); fell back to OfflineCognitiveEngine] ${fallbackResult.thought || ''}`.trim(),
+      modelUsed: 'offline-cognitive-engine / RARE Native Cognitive Engine',
+      providerType: 'offline_cognitive',
+    };
   }
 
   /** Generate only from a real, reachable model provider. HTTP callers use this
