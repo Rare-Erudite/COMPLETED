@@ -71,17 +71,20 @@ export async function runToolchainTests() {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
-  await check('detects a Dart project without claiming it can build one', async () => {
+  await check('detects a Dart project and reports the SDK as installable, never as satisfied', async () => {
     const root = tmpProject({ 'pubspec.yaml': 'name: app\n', 'pubspec.lock': 'packages: {}\n' });
     const profile = detectProject(root);
     assert.ok(profile.ecosystems.includes('dart'), JSON.stringify(profile.ecosystems));
     const assessments = await assessProject(profile, { platform: 'linux' });
     const dart = assessments.find((a) => a.capability === 'dart_sdk');
     assert.ok(dart, 'dart capability should be assessed');
-    // No probe exists for dart → unknown, never "satisfied".
-    assert.strictEqual(dart!.state, 'unknown', `${dart!.state}: ${dart!.reason}`);
-    assert.strictEqual(dart!.provisionable, false);
-    assert.ok(dart!.reason && /no probe/i.test(dart!.reason), dart!.reason);
+    // There is still no *probe* for Dart, so RARE must not claim it is present.
+    // What changed is that RARE now ships a real installer for it, so the honest
+    // state is `missing` + provisionable — not `unknown`.
+    assert.notStrictEqual(dart!.state, 'satisfied', 'never satisfied without probing or installing');
+    assert.strictEqual(dart!.state, 'missing', `${dart!.state}: ${dart!.reason}`);
+    assert.strictEqual(dart!.provisionable, true, 'a real Dart adapter exists');
+    assert.ok(dart!.reason && /provision|probe/i.test(dart!.reason), dart!.reason);
     fs.rmSync(root, { recursive: true, force: true });
   });
 
@@ -130,6 +133,12 @@ export async function runToolchainTests() {
     assert.strictEqual(provisionability('java_toolchain', 'linux').ok, false, 'JDK needs a licence decision');
     assert.strictEqual(provisionability('python_runtime', 'win32').ok, false, 'no Windows adapter');
     assert.strictEqual(provisionability('python_runtime', 'linux').ok, true);
+    // The capabilities with a real adapter must be offered, and the ones that
+    // are merely planned must not be.
+    assert.strictEqual(provisionability('node_runtime', 'linux').ok, true);
+    assert.strictEqual(provisionability('dart_sdk', 'linux').ok, true);
+    assert.strictEqual(provisionability('rust_cargo', 'linux').ok, false, 'rustup is planned, not implemented');
+    assert.strictEqual(provisionability('dotnet_sdk', 'linux').ok, false);
   });
 
   await check('provisioning without an adapter reports unavailable with a reason', async () => {
@@ -242,6 +251,34 @@ export async function runToolchainTests() {
     assert.ok(fs.existsSync(path.join(projectRoot, 'keep.txt')), 'project data must be untouched');
     fs.rmSync(cache, { recursive: true, force: true });
     fs.rmSync(projectRoot, { recursive: true, force: true });
+  });
+
+  await check('platform placement refuses a local capability from the hosted backend', async () => {
+    const { canExecuteHere, placementFor, currentExecutionSite, platformCaveat } = await import(
+      '../src/server/builder/PlatformExecution.js'
+    );
+
+    // An APK/EXE build is a local-native capability; a Vercel container must
+    // never claim it can produce one.
+    const native = canExecuteHere('build_native_artifact');
+    if (currentExecutionSite() === 'serverless') {
+      assert.strictEqual(native.ok, false, 'the hosted backend must not claim a native build');
+      assert.ok(/device|local-native/i.test(native.reason), native.reason);
+      assert.ok(platformCaveat().length > 0, 'a serverless host must carry the caveat');
+    } else {
+      assert.strictEqual(native.ok, true, native.reason);
+      assert.strictEqual(platformCaveat(), '', 'a local host needs no caveat');
+    }
+
+    // Reading device files happens in the browser, never on the server.
+    assert.strictEqual(canExecuteHere('read_device_files').ok, false);
+    // OS control is unavailable everywhere from a web page.
+    assert.strictEqual(canExecuteHere('control_os').ok, false);
+    // An unknown capability fails closed rather than being assumed to work.
+    assert.strictEqual(placementFor('something_invented').site, 'unavailable');
+    assert.strictEqual(canExecuteHere('something_invented').ok, false);
+    // Provisioning a runtime is genuinely possible on the serverless host.
+    assert.strictEqual(canExecuteHere('provision_runtime').ok, true);
   });
 
   await check('the real registry probes this repository and reports real versions', async () => {

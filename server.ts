@@ -11,10 +11,19 @@ import { CheckpointStore } from './src/server/storage/CheckpointStore.js';
 import {
   assessProject,
   buildPlan,
+  createToolchainManager,
   detectProject,
   ToolchainManager,
 } from './src/server/builder/ToolchainManager.js';
 import { detectToolchains } from './src/server/builder/ToolchainRegistry.js';
+import {
+  CAPABILITY_PLACEMENTS,
+  canExecuteHere,
+  currentExecutionSite,
+  isServerless,
+  placementFor,
+  platformCaveat,
+} from './src/server/builder/PlatformExecution.js';
 import { TrajectoryStore } from './src/server/storage/TrajectoryStore.js';
 import { UpdateStore, UpdateChannel, AppUpdate } from './src/server/storage/UpdateStore.js';
 import { activate, downloadAndVerify } from './src/server/updates/UpdateActivation.js';
@@ -50,6 +59,13 @@ const PORT = process.argv.includes('--port')
   ? Number(process.argv[process.argv.indexOf('--port') + 1])
   : (Number(process.env.PORT) || 3000);
 process.env.RARE_INTELLIGENCE_URL = process.env.RARE_INTELLIGENCE_URL || `http://127.0.0.1:${PORT}`;
+/**
+ * The application version this build reports.
+ *
+ * Single source of truth for the client's version reconciliation and the
+ * `/api/health` payload.
+ */
+const APP_VERSION = process.env.RARE_APP_VERSION || '1.0.0';
 const durableStateStore = new DurableStateStore();
 let persistentStorage: PersistentJsonStore | undefined;
 let serverInitialization: Promise<void> | undefined;
@@ -847,10 +863,30 @@ activeAgentRuns = durableStateStore.trackArray('agent_runs', activeAgentRuns);
 // in Settings. It is now the real probe result, cached by detectToolchains().
 const toolchains = await detectToolchains();
 
-// Managed toolchain cache. Adapters are registered explicitly; without one a
-// capability reports `unavailable` with its real reason rather than installing
-// something unverified.
-const toolchainManager = new ToolchainManager();
+// Managed toolchain cache.
+//
+// This was previously `new ToolchainManager()` — no adapters — so *every*
+// provisioning attempt reported `unavailable` no matter what, and the real
+// installers were unreachable from the running app. It is now constructed with
+// the real, checksum-verifying adapters (Node.js, CPython, Dart SDK) and a disk
+// budget, so RARE can actually provision a runtime it is missing.
+//
+// Construction is guarded: if the adapter module cannot load, the manager still
+// exists in assessment-only mode rather than taking the whole server down.
+let toolchainManager = new ToolchainManager();
+try {
+  toolchainManager = await createToolchainManager({
+    diskBudgetBytes: Number(process.env.RARE_TOOLCHAIN_BUDGET_BYTES || 900 * 1024 * 1024),
+  });
+  console.log(
+    `[Toolchain] Managed provisioning available for: ${toolchainManager.installedAdapterCapabilities().join(', ')}`,
+  );
+} catch (error: any) {
+  console.warn(
+    '[Toolchain] Real provisioning adapters could not be loaded; assessment-only mode.',
+    error?.message || error,
+  );
+}
 
 // Conversations
 interface ChatMessage {
@@ -1284,6 +1320,11 @@ app.get('/api/health', (_req, res) => {
     timestamp: new Date().toISOString(),
     uptimeSeconds: Math.floor(process.uptime()),
     release: '045',
+    // The app version the *server* is running. The client reconciles its stored
+    // version against this on boot, which is how a completed web update is
+    // confirmed honestly: the reload loads this bundle, and the version then
+    // matches instead of the client assuming success.
+    version: APP_VERSION,
     status: 'healthy',
     autonomy: appSettings.autonomyLevel,
     assistant_name: appSettings.assistantName,
@@ -3798,6 +3839,47 @@ app.get('/api/builder/toolchains', (req, res) => {
 });
 
 /**
+ * Platform reality: which host these probes describe, and where each capability
+ * can actually run.
+ *
+ * The probe list above describes the *host process* — on the hosted backend that
+ * is a Vercel container, not the user's machine. Exposing the placement table
+ * lets the UI and the Assistant answer "can this run here?" truthfully instead
+ * of inferring it from a probe that never saw the user's device.
+ */
+app.get('/api/builder/execution-sites', (_req, res) => {
+  res.json({
+    host: currentExecutionSite(),
+    isServerless: isServerless(),
+    // Empty when not serverless, so the caveat is only shown when it is true.
+    caveat: platformCaveat(),
+    placements: CAPABILITY_PLACEMENTS,
+    // What RARE can genuinely install here, and over what budget.
+    provisionable: toolchainManager.installedAdapterCapabilities(),
+    cacheBytes: toolchainManager.cacheBytes(),
+    diskBudgetBytes: toolchainManager.getDiskBudgetBytes(),
+    // Real, measured separation of the package budget. App binaries are not
+    // measured here (they are the build output); this reports what RARE has
+    // actually provisioned, so a size claim is never invented.
+    budget: {
+      appBinariesBytes: null,
+      modelsBytes: null,
+      runtimesBytes: toolchainManager.cacheBytes(),
+      cacheRoot: toolchainManager.getCacheRoot(),
+    },
+  });
+});
+
+/** Can `capability` run where this server is running? Answer, with the reason. */
+app.get('/api/builder/can-run', (req, res) => {
+  const capability = String(req.query.capability || '').trim();
+  if (!capability) {
+    return res.status(400).json({ error: { message: 'capability is required.' } });
+  }
+  res.json({ capability, ...canExecuteHere(capability), placement: placementFor(capability) });
+});
+
+/**
  * Environment assessment for a project: what stack is this, which capabilities
  * does it need, which are actually present, and can it be built here.
  *
@@ -4510,29 +4592,38 @@ app.get('/api/search', async (req, res) => {
 /**
  * Download, verify and (where the platform allows it) activate a release.
  *
- * Developer-only: publishing and moving channels is privileged, and so is
- * fetching an arbitrary release artifact into the server's filesystem.
+ * Not developer-only. Requiring a developer session here contradicted the whole
+ * point of a public release channel: every signed-in user must be able to apply
+ * a *public* update. What is privileged is resolving and applying a
+ * **developer** release, and that check is applied per-request below — so a
+ * public user gets the public channel and can never reach a developer artifact.
  *
  * The response always distinguishes the four states the client must not
  * conflate: downloaded, verified, pending, activated. `activated` is only true
  * when the running version is demonstrably the target version.
  */
 app.post('/api/updates/apply', async (req, res) => {
-  if (!(await isDeveloperSessionAuthorized(req))) {
-    return res.status(403).json({
-      success: false,
-      error: { message: 'Developer authorization required to apply an update.' },
-    });
-  }
-
   const { updateId, runningVersion, platform } = req.body || {};
   if (typeof updateId !== 'string' || !updateId.trim()) {
     return res.status(400).json({ success: false, error: { message: 'updateId is required.' } });
   }
 
-  // Channel isolation: a public session can never resolve a developer release.
-  const requestedChannel: UpdateChannel =
-    typeof req.body?.channel === 'string' && req.body.channel === 'developer' ? 'developer' : 'public';
+  // Channel selection is a permission decision, not a preference: asking for
+  // `developer` without a developer session must 403 rather than silently
+  // downgrade, because a silent downgrade would make the UI report "not found"
+  // for a release the user is legitimately testing access to.
+  const wantsDeveloper = req.body?.channel === 'developer';
+  const isDeveloper = await isDeveloperSessionAuthorized(req);
+  if (wantsDeveloper && !isDeveloper) {
+    return res.status(403).json({
+      success: false,
+      error: { message: 'Developer authorization required to apply a developer release.' },
+    });
+  }
+  const requestedChannel: UpdateChannel = wantsDeveloper ? 'developer' : 'public';
+
+  // Resolution is confined to the requested channel, so a public request can
+  // never find — let alone download — a developer build.
   const candidates = updateStore.getAll(requestedChannel);
   const update = candidates.find((entry) => entry.id === updateId.trim());
 
@@ -4568,6 +4659,17 @@ app.post('/api/updates/apply', async (req, res) => {
       },
     });
 
+    // Applying a release is consequential, so it is audited. Developer-channel
+    // applications are flagged distinctly; public ones record the acting user.
+    auditLog.unshift({
+      id: `aud_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      actor: isDeveloper && requestedChannel === 'developer' ? 'developer' : res.locals.rareUserId || 'unknown',
+      action: 'update_applied',
+      kind: requestedChannel === 'developer' ? 'dev_privileged' : 'user',
+      details: `Applied ${update.version} (${requestedChannel}/${activation.platform}) → stage ${activation.stage}, action ${activation.action}.`,
+    });
+
     return res.status(activation.stage === 'failed' ? 422 : 200).json({
       success: activation.stage !== 'failed',
       updateId: update.id,
@@ -4587,6 +4689,36 @@ app.post('/api/updates/apply', async (req, res) => {
       error: { message: `Update could not be applied: ${error?.message || error}` },
     });
   }
+});
+
+/**
+ * Confirm whether the running client is now on `version`.
+ *
+ * This is what converts `activation_pending` into `activated`. It is a separate
+ * call because activation for web *is* the reload — the server cannot observe
+ * the client's new bundle, so the client must come back and say which version it
+ * is actually running. Without this, the UI would have no way to move past
+ * "reload required" honestly, and would be tempted to assert success.
+ */
+app.get('/api/updates/confirm', (req, res) => {
+  const version = String(req.query.version || '').trim();
+  if (!version) {
+    return res.status(400).json({ success: false, error: { message: 'version is required.' } });
+  }
+  const release = updateStore
+    .getAll('developer')
+    .find((entry) => entry.version === version);
+
+  return res.json({
+    success: true,
+    version,
+    knownRelease: Boolean(release),
+    channel: release?.channel || null,
+    activated: Boolean(release),
+    message: release
+      ? `Running ${version}; this matches a published release.`
+      : `Running ${version}, which matches no published release.`,
+  });
 });
 
 // Diagnostics Selftest Matrix
@@ -5509,6 +5641,7 @@ async function startServer() {
  *   default export  Express application       (plain serverless handlers)
  *   named `app`     the same instance         (main's api/index.ts)
  *   named `ready`   startup/hydration promise (main's api/index.ts)
+ *   `apiReadiness()` authoritative readiness/failure result, post-hydration
  *
  * `ready` never rejects. A rejection at module scope would terminate the Node
  * process and take the static/SPA layer down with it; instead the failure is
@@ -5541,7 +5674,10 @@ if (process.env.VERCEL === '1') {
     console.error('[RARE] Startup failed:', error?.message || error);
   });
 } else {
-  startServer().catch((error) => {
+  // Same promise, same handler: `apiReadiness()` must be able to observe a local
+  // boot failure too, not only a serverless one. Only the exit code differs.
+  serverInitialization = startServer();
+  serverInitialization.catch((error) => {
     startupFailure = error instanceof Error ? error : new Error(String(error));
     console.error('[RARE] Startup failed:', error?.message || error);
     process.exitCode = 1;
@@ -5553,7 +5689,7 @@ if (process.env.VERCEL === '1') {
  * request to Express before durable state is loaded. It resolves — never
  * rejects — because a module-scope rejection kills the process and takes the
  * SPA with it. Callers that need to know whether the API half actually came up
- * should read `apiStartupFailed` rather than catching here.
+ * should await {@link apiReadiness} rather than catching here.
  */
 export const ready: Promise<void> = (async () => {
   const boot = serverInitialization;
@@ -5565,8 +5701,61 @@ export const ready: Promise<void> = (async () => {
   }
 })();
 
-/** True when startup failed, so API callers can fail closed instead of guessing. */
-export const apiStartupFailed: boolean = startupFailure !== undefined;
+/**
+ * The authoritative readiness/failure result for the API half of the server.
+ *
+ * Replaces the previous `export const apiStartupFailed = startupFailure !== undefined`,
+ * which was evaluated once at module load — so it read `false` for the entire
+ * window before `ready` had settled, reporting "startup succeeded" while the
+ * database connection was still being established or was failing outright.
+ *
+ * This awaits the same promise the `/api` middleware awaits, so a caller cannot
+ * observe a state the middleware would not act on. It never throws.
+ */
+export async function apiReadiness(): Promise<{
+  ready: boolean;
+  state: 'ready' | 'failed';
+  storageReady: boolean;
+  error?: string;
+}> {
+  const boot = serverInitialization;
+  if (boot) {
+    try {
+      await boot;
+    } catch {
+      // Recorded by the catch handlers; surfaced below via `startupFailure`.
+    }
+  }
+  const failed = startupFailure !== undefined;
+  return {
+    ready: !failed,
+    state: failed ? 'failed' : 'ready',
+    // Storage is only "ready" when the boot actually completed. With no
+    // initialization at all (unit imports) it is not claimed either way.
+    storageReady: !failed && boot !== undefined,
+    error: failed ? startupFailure?.message : undefined,
+  };
+}
+
+/**
+ * Synchronous snapshot of the same contract, for callers that cannot await.
+ *
+ * Prefer {@link apiReadiness}. This exists because re-reading the live failure
+ * state on every access is the minimum fix for the staleness bug — the previous
+ * frozen boolean was captured at module load and never updated.
+ */
+export function getApiStartupFailed(): boolean {
+  return startupFailure !== undefined;
+}
+
+/**
+ * @deprecated Use {@link apiReadiness} (async) or {@link getApiStartupFailed}
+ * (sync snapshot). A value captured at import time is stale before hydration
+ * completes; this alias exists only so older callers keep compiling.
+ */
+export const apiStartupFailed: boolean = getApiStartupFailed();
 
 /** The startup error message, when there is one. Never includes credentials. */
-export const apiStartupError: string | undefined = startupFailure?.message;
+export function getApiStartupError(): string | undefined {
+  return startupFailure?.message;
+}

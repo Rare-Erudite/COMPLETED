@@ -36,6 +36,10 @@ import { runToolchainRegistryTests, runAssistantCommandTests } from './test_buil
 import { runServerlessFrontendAvailabilityTests } from './test_serverless_frontend.js';
 import { runOrchestratorTests } from './test_orchestrator.js';
 import { runContentEngineTests } from './test_content_engine.js';
+import { runRealToolchainTests } from './test_real_toolchain.js';
+import { runUpdateContractTests } from './test_update_contract.js';
+import { runStartupReadinessTests } from './test_startup_readiness.js';
+import { runBrowserE2ETests } from './test_browser_e2e.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -110,9 +114,24 @@ async function main() {
 
     await runApiConfigurationTests();
     console.log();
-    await runStandaloneResearchTests();
-    console.log();
+    // HTTP-level suites run FIRST, while the spawned server is freshly booted and
+    // nothing heavy has competed for memory. These talk to the live process, so
+    // they are the ones a resource-starved or externally-killed server turns into
+    // a wall of "fetch failed" — a false positive that looks like an app bug.
     await runAuthenticationSecurityTests();
+    console.log();
+    // The HTTP contract the UpdateModal actually talks to, plus channel
+    // isolation. Distinct from the activation-service suite below, which never
+    // exercised the endpoint the UI was supposed to call.
+    await runUpdateContractTests();
+    console.log();
+    await runServerlessFrontendAvailabilityTests();
+    await runOrchestratorTests();
+    console.log();
+    // Real Chromium against the live server: the UI actually renders, routes
+    // resolve and the console is clean. Run while the server is fresh and the
+    // suite has not yet competed with it for memory.
+    await runBrowserE2ETests();
     console.log();
     await runPersistentWorkflowTests();
     console.log();
@@ -144,10 +163,26 @@ async function main() {
     console.log();
     await runAssistantCommandTests();
     console.log();
-    await runServerlessFrontendAvailabilityTests();
-    await runOrchestratorTests();
+    await runStandaloneResearchTests();
+    console.log();
+    // Truthful startup status: the previous accessor was frozen at module load,
+    // so a hard failure read as success before hydration settled.
+    await runStartupReadinessTests();
     console.log();
     await runContentEngineTests();
+    console.log();
+    // HEAVIEST LAST: this downloads and unpacks a ~214 MB runtime. Running it
+    // earlier starves the spawned server, which dies and makes the live-endpoint
+    // suites report "fetch failed" — masking a real app bug behind an OOM.
+    // Distinct from the mocked-adapter suite above: a mocked downloader proves
+    // the manager's state machine, not that RARE can install a toolchain.
+    // Set RARE_SKIP_REAL_TOOLCHAIN=1 to omit (the suite then says so loudly).
+    if (process.env.RARE_SKIP_REAL_TOOLCHAIN === '1') {
+      console.log('[Test Group] REAL toolchain provisioning — SKIPPED by RARE_SKIP_REAL_TOOLCHAIN=1');
+      console.log('  → real installs were NOT performed in this run\n');
+    } else {
+      await runRealToolchainTests();
+    }
     console.log();
     console.log('=====================================================');
     console.log('  ALL AUTOMATED VERIFICATION TESTS PASSED SUCCESSFULLY');

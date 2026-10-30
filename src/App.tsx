@@ -502,6 +502,9 @@ useEffect(() => {
     localStorage.setItem('rare_client_version', newVersion);
     setAvailableUpdate(null);
   };
+  // Kept for callers that still notify the shell that a version changed. The
+  // activation itself is performed by the backend via /api/updates/apply.
+  void handleApplyUpdate;
 
   const fetchHealthAndSettings = async () => {
     const [hData, sData] = await Promise.all([
@@ -512,6 +515,18 @@ useEffect(() => {
       setHealth(hData);
       if (hData.assistant_name) setAssistantName(hData.assistant_name);
       if (hData.autonomy) setAutonomyLevel(hData.autonomy);
+      // Reconcile the stored version with the version the server is actually
+      // serving. This is what makes a completed web update verifiable rather
+      // than assumed: after the reload, the versions agree — and if the reload
+      // has not happened yet, the client still reports the OLD version instead
+      // of optimistically claiming the new one.
+      if (typeof hData.version === 'string' && hData.version) {
+        const stored = localStorage.getItem('rare_client_version');
+        if (stored !== hData.version) {
+          setClientVersion(hData.version);
+          localStorage.setItem('rare_client_version', hData.version);
+        }
+      }
     }
     if (sData && sData.developer_authenticated !== undefined) {
       setIsDeveloperAuthed(sData.developer_authenticated);
@@ -1433,7 +1448,6 @@ useEffect(() => {
           setUpdateModalOpen(false);
         }}
         update={availableUpdate}
-        onApplyUpdate={handleApplyUpdate}
         isDeveloper={isDeveloperAuthed}
       />
 

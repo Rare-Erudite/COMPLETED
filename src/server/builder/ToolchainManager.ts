@@ -19,14 +19,22 @@
  *   buildPlan()       — the ordered steps that would build this project, with
  *                       the capability each step needs.
  *
+ * Provisioning is real for the ecosystems that have a portable, checksum-
+ * verifiable runtime (see RuntimeAdapters.ts): Node.js, CPython and the Dart
+ * SDK. Each install downloads from the publisher, verifies SHA-256 against the
+ * publisher's own manifest, unpacks into an isolated prefix and then *runs* the
+ * binary before anything is reported as installed.
+ *
  * Deliberate limits, stated rather than hidden:
- *   - Nothing here downloads a compiler. Provisioning is driven by an adapter
- *     that reports `unavailable` with the real reason (no network in the
- *     sandbox, no package manager, platform restriction). RARE reports the
- *     restriction instead of pretending a toolchain exists.
- *   - The cache records what *would* be installed so a future adapter can reuse
- *     it; it never marks an installation as successful without verifying the
- *     binary afterwards.
+ *   - A capability with no adapter is reported `unavailable` **with the real
+ *     reason** (licence, root, multi-GB bundle, not-yet-written adapter) rather
+ *     than silently succeeding or silently doing nothing.
+ *   - The cache is never trusted on existence alone: a cached prefix is
+ *     re-verified by executing the binary, so a corrupt or half-extracted
+ *     toolchain triggers a reinstall instead of a confusing later failure.
+ *   - Provisioning is opt-in. `new ToolchainManager({...})` without adapters
+ *     assesses only and never touches the network; `ToolchainManager.create()`
+ *     wires the real adapters for actual builds.
  */
 
 import fs from 'node:fs';
@@ -206,6 +214,7 @@ export interface RequirementAssessment {
 
 const CAPABILITY_PURPOSE: Record<string, string> = {
   node_ts: 'Run and type-check JavaScript/TypeScript',
+  node_runtime: "Build against the project's pinned Node.js version",
   vite_bundler: 'Bundle the frontend',
   python_runtime: 'Run Python services and scripts',
   dart_sdk: 'Build Dart/Flutter applications',
@@ -237,12 +246,19 @@ export async function assessProject(
     const purpose = CAPABILITY_PURPOSE[capability] || capability;
 
     if (UNPROBED_CAPABILITIES.has(capability)) {
+      // No probe exists for this capability. If RARE can install it, that is the
+      // honest answer: "we cannot confirm it is present, but we can make it so".
+      // Only when it is neither probeable nor installable is it genuinely
+      // `unknown`.
+      const installable = REAL_PROVISIONABLE_CAPABILITIES.includes(capability);
       return {
         capability,
         purpose,
-        state: 'unknown' as RequirementState,
-        reason: `RARE has no probe for ${capability}, so its presence is unknown rather than assumed.`,
-        provisionable: false,
+        state: (installable ? 'missing' : 'unknown') as RequirementState,
+        reason: installable
+          ? `RARE has no probe for ${capability}, but can provision a verified runtime for it.`
+          : `RARE has no probe for ${capability}, so its presence is unknown rather than assumed.`,
+        provisionable: installable,
       };
     }
 
@@ -311,13 +327,22 @@ export function provisionability(
     };
   }
   if (capability === 'python_runtime') {
-    return { ok: true, reason: 'A portable Python can be unpacked into the RARE cache.' };
+    return { ok: true, reason: 'python-build-standalone ships a self-contained CPython that unpacks into the RARE cache.' };
+  }
+  if (capability === 'node_runtime') {
+    return { ok: true, reason: 'The official Node.js dist tarball unpacks into the RARE cache without touching the host runtime.' };
+  }
+  if (capability === 'dart_sdk') {
+    return { ok: true, reason: 'The Dart SDK archive unpacks into the RARE cache.' };
   }
   if (capability === 'rust_cargo') {
-    return { ok: true, reason: 'rustup can install a pinned toolchain into the RARE cache.' };
+    // rustup is deliberately NOT wired up: it has its own network trust root and
+    // installs a mutable toolchain, which is a different security model from a
+    // single checksum-verified archive.
+    return { ok: false, reason: 'rustup provisioning is not implemented; the adapter is planned, not present.' };
   }
   if (capability === 'go_toolchain') {
-    return { ok: true, reason: 'A Go distribution can be unpacked into the RARE cache.' };
+    return { ok: false, reason: 'The Go adapter is planned but not implemented in this build.' };
   }
   return { ok: false, reason: `No provisioning adapter exists for ${capability}.` };
 }
@@ -334,33 +359,91 @@ export interface ProvisionRecord {
   detail: string;
   at: string;
   projectRoot: string;
+  /** `real` for a genuine upstream install, `simulated` for a test double. */
+  adapterKind?: 'real' | 'simulated';
+  /** Upstream project the artifact came from, when known. */
+  upstream?: string;
+  /** Installed runtime version, read from the binary that was verified. */
+  version?: string;
+  /** Bytes written to the prefix, when the adapter could measure it. */
+  bytes?: number;
 }
 
 export interface ToolchainAdapter {
   capability: string;
   /** Human label, e.g. "Portable Python 3". */
   label: string;
+  /**
+   * `real` when the adapter genuinely downloads and installs an upstream
+   * artifact; `simulated` when it only exists for unit tests. Callers and the UI
+   * must not present the two as equivalent.
+   */
+  kind?: 'real' | 'simulated';
+  /** Upstream project the artifact comes from, for the provenance record. */
+  upstream?: string;
   /** Probe the tool at `prefix` (not on PATH). */
   verify: (prefix: string) => Promise<{ ok: boolean; detail: string }>;
   /** Perform the install. Must resolve only when the binary verifies. */
   install: (prefix: string) => Promise<{ ok: boolean; detail: string }>;
 }
 
+/**
+ * Capabilities RARE ships a real, checksum-verifying installer for. Kept here
+ * (rather than importing RuntimeAdapters, which would be a cycle) so
+ * `assessProject` can report a missing tool as *provisionable* instead of
+ * unknown. RuntimeAdapters asserts its set matches this one.
+ */
+export const REAL_PROVISIONABLE_CAPABILITIES: readonly string[] = [
+  'node_runtime',
+  'python_runtime',
+  'dart_sdk',
+];
+
 export class ToolchainManager {
   private readonly cacheRoot: string;
   private readonly manifestPath: string;
   private readonly adapters: Map<string, ToolchainAdapter>;
+  /** Total bytes provisioning may occupy across all prefixes. */
+  private readonly diskBudgetBytes: number;
 
-  constructor(options: { cacheRoot?: string; adapters?: ToolchainAdapter[] } = {}) {
+  constructor(options: {
+    cacheRoot?: string;
+    adapters?: ToolchainAdapter[];
+    diskBudgetBytes?: number;
+  } = {}) {
     this.cacheRoot = options.cacheRoot
       || process.env.RARE_TOOLCHAIN_CACHE
       || path.join(os.tmpdir(), 'rare-toolchain-cache');
     this.manifestPath = path.join(this.cacheRoot, 'provisioned.json');
     this.adapters = new Map((options.adapters || []).map((adapter) => [adapter.capability, adapter]));
+    // The base app must stay small, so provisioned runtimes are budgeted. The
+    // default is generous for one or two runtimes but far below "bundle every
+    // SDK": a Node tarball is ~50 MB unpacked, CPython ~60 MB, Dart ~200 MB.
+    this.diskBudgetBytes = options.diskBudgetBytes
+      ?? Number(process.env.RARE_TOOLCHAIN_BUDGET_BYTES || 900 * 1024 * 1024);
   }
 
   public getCacheRoot(): string {
     return this.cacheRoot;
+  }
+
+  /** The capabilities this manager can genuinely install. */
+  public installedAdapterCapabilities(): string[] {
+    return Array.from(this.adapters.keys());
+  }
+
+  /** Byte size of a prefix on disk, or 0 when absent. */
+  public prefixBytes(capability: string): number {
+    return directorySize(this.prefixFor(capability));
+  }
+
+  /** Total bytes currently held across every provisioned prefix. */
+  public cacheBytes(): number {
+    return directorySize(this.cacheRoot);
+  }
+
+  public getDiskBudgetBytes(): number {
+    return this.diskBudgetBytes;
   }
 
   /** Every provisioning this environment knows about. */
@@ -391,7 +474,7 @@ export class ToolchainManager {
    */
   public async provision(
     capability: string,
-    context: { projectRoot: string; platform?: NodeJS.Platform },
+    context: { projectRoot: string; platform?: NodeJS.Platform; signal?: AbortSignal },
   ): Promise<ProvisionRecord> {
     const platform = context.platform || process.platform;
     const at = new Date().toISOString();
@@ -410,7 +493,8 @@ export class ToolchainManager {
       };
     }
 
-    // 1. Reuse only if the cached tool still verifies.
+    // 1. Reuse only if the cached tool still verifies. A prefix that exists but
+    //    whose binary will not run is a broken toolchain, not a cached one.
     if (fs.existsSync(targetDir)) {
       const verification = await adapter.verify(targetDir).catch((error: any) => ({
         ok: false,
@@ -424,11 +508,33 @@ export class ToolchainManager {
           detail: `Reused verified cache: ${verification.detail}`,
           at,
           projectRoot: context.projectRoot,
+          adapterKind: adapter.kind,
+          upstream: adapter.upstream,
+          version: extractVersion(verification.detail),
+          bytes: this.prefixBytes(capability),
         };
       }
     }
 
-    // 2. Install through the adapter, then verify before reporting success.
+    // 2. Refuse before downloading if the cache budget is already exhausted.
+    //    Checking after the download would waste the bandwidth and could fill
+    //    the disk the app itself lives on.
+    const budget = this.checkBudget(capability);
+    if (!budget.ok) {
+      const record: ProvisionRecord = {
+        capability,
+        targetDir,
+        status: 'unavailable',
+        detail: budget.reason,
+        at,
+        projectRoot: context.projectRoot,
+        adapterKind: adapter.kind,
+      };
+      this.recordProvision(record);
+      return record;
+    }
+
+    // 3. Install through the adapter, then verify before reporting success.
     let installed: { ok: boolean; detail: string };
     try {
       fs.mkdirSync(targetDir, { recursive: true });
@@ -438,20 +544,30 @@ export class ToolchainManager {
     }
 
     if (!installed.ok) {
-      return {
+      // A failed install must not leave a half-written prefix behind, or the
+      // next run would "reuse" it. Remove only that capability's directory —
+      // never the cache root, which may hold other working runtimes.
+      this.removePrefix(capability);
+      const record: ProvisionRecord = {
         capability,
         targetDir,
         status: 'unavailable',
         detail: installed.detail,
         at,
         projectRoot: context.projectRoot,
+        adapterKind: adapter.kind,
+        upstream: adapter.upstream,
       };
+      this.recordProvision(record);
+      return record;
     }
 
     const verification = await adapter.verify(targetDir).catch((error: any) => ({
       ok: false,
       detail: error?.message || String(error),
     }));
+
+    if (!verification.ok) this.removePrefix(capability);
 
     const record: ProvisionRecord = {
       capability,
@@ -462,17 +578,53 @@ export class ToolchainManager {
         : `Install reported success but verification failed: ${verification.detail}`,
       at,
       projectRoot: context.projectRoot,
+      adapterKind: adapter.kind,
+      upstream: adapter.upstream,
+      version: verification.ok ? extractVersion(verification.detail) : undefined,
+      bytes: verification.ok ? this.prefixBytes(capability) : undefined,
     };
 
-    // 3. Record it. A failed verification is recorded as failed, never as
+    // 4. Record it. A failed verification is recorded as failed, never as
     //    installed — the manifest is what later runs trust.
+    this.recordProvision(record);
+    return record;
+  }
+
+  /** Append-or-replace this capability's record for this project. */
+  private recordProvision(record: ProvisionRecord): void {
     const records = this.readManifest().filter(
-      (entry) => !(entry.capability === capability && entry.projectRoot === context.projectRoot),
+      (entry) => !(entry.capability === record.capability && entry.projectRoot === record.projectRoot),
     );
     records.push(record);
     this.writeManifest(records);
+  }
 
-    return record;
+  private removePrefix(capability: string): void {
+    try {
+      fs.rmSync(this.prefixFor(capability), { recursive: true, force: true });
+    } catch {
+      // Best effort; the manifest still records the failure.
+    }
+  }
+
+  /**
+   * Would installing `capability` push the cache over its budget?
+   *
+   * An already-satisfied capability is exempt: we are not adding bytes by
+   * reusing something already on disk.
+   */
+  public checkBudget(capability: string): { ok: boolean; reason: string } {
+    if (fs.existsSync(this.prefixFor(capability))) return { ok: true, reason: 'already on disk' };
+    const used = this.cacheBytes();
+    if (this.diskBudgetBytes <= 0 || used >= this.diskBudgetBytes) {
+      return {
+        ok: false,
+        reason: `The toolchain cache is at ${Math.round(used / 1024 / 1024)} MB of its ${Math.round(
+          this.diskBudgetBytes / 1024 / 1024,
+        )} MB budget. Remove unused environments before provisioning ${capability}.`,
+      };
+    }
+    return { ok: true, reason: 'within budget' };
   }
 
   /** Remove a project's cached environments. Never touches project files. */
@@ -490,6 +642,70 @@ export class ToolchainManager {
     }
     return removed;
   }
+}
+
+/**
+ * A manager wired with the real, checksum-verifying adapters.
+ *
+ * `new ToolchainManager()` deliberately has no adapters so tests and pure
+ * assessment never touch the network. This factory is the way to get a manager
+ * that can actually install a runtime, and it is what the build executor uses.
+ */
+export async function createToolchainManager(options: {
+  cacheRoot?: string;
+  diskBudgetBytes?: number;
+  nodeVersion?: string;
+  pythonVersion?: string;
+  include?: string[];
+} = {}): Promise<ToolchainManager> {
+  // Imported lazily so importing ToolchainManager for pure assessment does not
+  // pull the downloader (and its `fetch`) into every consumer.
+  const { realAdapters } = await import('./RuntimeAdapters.js');
+  return new ToolchainManager({
+    cacheRoot: options.cacheRoot,
+    diskBudgetBytes: options.diskBudgetBytes,
+    adapters: realAdapters({
+      nodeVersion: options.nodeVersion,
+      pythonVersion: options.pythonVersion,
+      include: options.include,
+    }),
+  });
+}
+
+/** Recursive on-disk size of `dir`, or 0 when it does not exist. */
+export function directorySize(dir: string): number {
+  let total = 0;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      total += directorySize(full);
+    } else if (entry.isFile()) {
+      try {
+        total += fs.statSync(full).size;
+      } catch {
+        // A file removed mid-walk contributes nothing.
+      }
+    }
+  }
+  return total;
+}
+
+/**
+ * Pull a version out of a `--version` banner.
+ *
+ * `v20.20.2`, `Python 3.12.16` and `Dart SDK version: 3.5.4 (stable) …` all
+ * reduce to their numeric core; an unrecognised banner yields `undefined` rather
+ * than a guessed version.
+ */
+export function extractVersion(banner: string): string | undefined {
+  const match = banner.match(/(\d+\.\d+(?:\.\d+)?)/);
+  return match ? match[1] : undefined;
 }
 
 // -----------------------------------------------------------------------------

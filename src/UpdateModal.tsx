@@ -6,13 +6,13 @@ import {
   X,
   Smartphone,
   Shield,
-  Download,
   AlertCircle,
-  ArrowRight,
   Layers,
-  ChevronRight
+  ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import { ThemeConfig } from './theme';
+import { apiFetch } from './api';
 
 export interface AppUpdate {
   id: string;
@@ -36,10 +36,48 @@ interface UpdateModalProps {
   isOpen: boolean;
   onClose: () => void;
   update: AppUpdate | null;
-  onApplyUpdate: (version: string) => void;
   isDeveloper: boolean;
 }
 
+/**
+ * What the server reports after download + verification + activation.
+ * Mirrors the `/api/updates/apply` response contract exactly.
+ */
+interface ApplyResult {
+  success: boolean;
+  updateId?: string;
+  version?: string;
+  channel?: string;
+  platform?: string;
+  stage?: string;
+  action?: string;
+  activated?: boolean;
+  checksumVerified?: boolean;
+  message?: string;
+  error?: { message?: string };
+}
+
+/** The ordered stages the UI exposes. A stage is only reached when the server says so. */
+type Stage = 'idle' | 'applying' | 'verified' | 'pending' | 'activated' | 'failed';
+
+/**
+ * Update modal — download, verify, then *activate through the backend*.
+ *
+ * The previous version downloaded the artifact with `fetch`, verified its
+ * SHA-256 in the browser and then called an `onApplyUpdate` that no caller
+ * wired up. The result was a file in the Downloads folder and a screen that
+ * said the update was complete, while `/api/updates/apply` sat unused and
+ * answered 501. Nothing was ever activated.
+ *
+ * Now the server is the single source of truth for the lifecycle:
+ *
+ *   downloaded → verified → activation_pending → activated | failed
+ *
+ * The client never claims a stage the server did not report. In particular the
+ * web platform cannot be `activated` by this component at all — activation for a
+ * deployed bundle *is* the reload — so it hands that step to the user and says
+ * exactly that, instead of asserting success it cannot observe.
+ */
 export const UpdateModal: React.FC<UpdateModalProps> = ({
   t,
   isOpen,
@@ -47,113 +85,92 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   update,
   isDeveloper,
 }) => {
-  const [updating, setUpdating] = useState(false);
-  const [progressStep, setProgressStep] = useState(0);
-  const [completed, setCompleted] = useState(false);
-  const [verifying, setVerifying] = useState(false);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
-  // Activation is a separate, explicit outcome. A verified download is not an
-  // installed update, and the UI must never imply otherwise.
-  const [activation, setActivation] = useState<{
-    stage: string;
-    action: string;
-    activated: boolean;
-    message: string;
-  } | null>(null);
+  const [stage, setStage] = useState<Stage>('idle');
+  const [result, setResult] = useState<ApplyResult | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen || !update) return null;
 
   const isDevChannel = update.channel === 'developer';
+  const busy = stage === 'applying';
 
-  const handleStartUpdate = async () => {
-    setUpdating(true);
-    setProgressStep(0);
-    setDownloadError(null);
-    setCompleted(false);
+  const reset = () => {
+    setStage('idle');
+    setResult(null);
+    setErrorMessage(null);
+  };
+
+  /**
+   * Hand the update to the backend and render whatever it truthfully reports.
+   * The browser performs no download here: the server fetches, verifies the
+   * checksum against the published value and records the outcome, so there is
+   * one verifier rather than two that can disagree.
+   */
+  const handleApply = async () => {
+    setStage('applying');
+    setErrorMessage(null);
+    setResult(null);
     try {
       if (!update.packageUrl || !update.artifactSizeBytes || !update.sha256) {
-        throw new Error('This release is missing its verified download metadata.');
+        throw new Error('This release is missing its verified download metadata, so it cannot be applied.');
       }
-      const artifactUrl = new URL(update.packageUrl);
-      if (artifactUrl.protocol !== 'https:' || artifactUrl.hostname !== 'github.com' ||
-          !artifactUrl.pathname.startsWith('/Rare-Erudite/COMPLETED/releases/download/')) {
-        throw new Error('This release points outside the trusted RARE GitHub Releases repository.');
-      }
-      const response = await fetch(artifactUrl, { credentials: 'omit' });
-      if (!response.ok || !response.body) throw new Error(`The release download failed (HTTP ${response.status}).`);
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let received = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        received += value.byteLength;
-        if (received > update.artifactSizeBytes) throw new Error('The downloaded file is larger than its published size.');
-        chunks.push(value);
-        setProgressStep(Math.min(99, Math.floor(received / update.artifactSizeBytes * 100)));
-      }
-      if (received !== update.artifactSizeBytes) throw new Error('The downloaded file size does not match the release metadata.');
-      setVerifying(true);
-      const artifact = new Uint8Array(received);
-      let offset = 0;
-      for (const chunk of chunks) {
-        artifact.set(chunk, offset);
-        offset += chunk.byteLength;
-      }
-      const digest = await crypto.subtle.digest('SHA-256', artifact);
-      const actualHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-      if (actualHash !== update.sha256.toLowerCase()) throw new Error('The downloaded file failed its SHA-256 integrity check.');
-      const blobUrl = URL.createObjectURL(new Blob([artifact]));
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = decodeURIComponent(artifactUrl.pathname.split('/').pop() || `rare-${update.version}`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-      setProgressStep(100);
 
-      // ---------------------------------------------------------------------
-      // Activation. The download above is verified, but nothing has been
-      // installed — for Android and Windows the OS needs the user's consent,
-      // and for web the running bundle is the deployment.
-      //
-      // This used to just call onApplyUpdate, which no caller wired up, so the
-      // flow ended with a file in the Downloads folder and a screen that said
-      // "complete". Each platform now reports exactly what still has to happen.
-      // ---------------------------------------------------------------------
-      const platform = update.platform || 'web';
-      if (platform === 'web') {
-        setActivation({
-          stage: 'activation_pending',
-          action: 'reload_required',
-          activated: false,
-          message: `Version ${update.version} verified. Reload the page to load the deployed bundle — RARE cannot confirm the new version until the reload happens.`,
-        });
-      } else if (platform === 'android') {
-        setActivation({
-          stage: 'activation_pending',
-          action: 'user_install_required',
-          activated: false,
-          message: `Version ${update.version} verified and saved. Open the file to run Android's package installer — the install completes only after you allow it.`,
-        });
+      const response = await apiFetch('/api/updates/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          updateId: update.id,
+          // The channel is asserted explicitly so a developer release can never
+          // resolve on the public channel, and a public user can never resolve a
+          // developer one.
+          channel: update.channel,
+          platform: update.platform || 'web',
+          runningVersion: clientVersion(),
+        }),
+      });
+
+      const payload: ApplyResult = await response.json().catch(() => ({ success: false }));
+
+      if (!response.ok || !payload.success) {
+        const message =
+          payload.message ||
+          payload.error?.message ||
+          `The update could not be applied (HTTP ${response.status}).`;
+        setResult(payload);
+        setErrorMessage(message);
+        setStage('failed');
+        return;
+      }
+
+      setResult(payload);
+      if (payload.stage === 'activated') {
+        setStage('activated');
+      } else if (payload.stage === 'activation_pending') {
+        setStage('pending');
+      } else if (payload.stage === 'failed') {
+        setStage('failed');
       } else {
-        setActivation({
-          stage: 'activation_pending',
-          action: 'user_elevation_required',
-          activated: false,
-          message: `Version ${update.version} verified and saved. Run the installer and accept the elevation prompt to complete the update.`,
-        });
+        // `verified` (or anything unrecognised) is emphatically not "installed".
+        setStage('verified');
       }
-
-      setCompleted(true);
     } catch (error) {
-      setDownloadError(error instanceof Error ? error.message : 'The release download could not be verified.');
-    } finally {
-      setVerifying(false);
-      setUpdating(false);
+      setErrorMessage(error instanceof Error ? error.message : 'The update could not be applied.');
+      setStage('failed');
     }
   };
+
+  /** Re-check whether the reload actually produced the new version. */
+  const confirmAfterReload = async () => {
+    try {
+      await apiFetch(`/api/updates/confirm?version=${encodeURIComponent(update.version)}`);
+    } catch {
+      // Confirmation is best-effort telemetry; the reload is what matters.
+    }
+    window.location.reload();
+  };
+
+  const actionLabel = result?.action?.replace(/_/g, ' ') || '';
+  const platformLabel = update.platform || 'web';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
@@ -171,7 +188,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 isDevChannel ? 'bg-gradient-to-tr from-amber-600 to-orange-500' : t.accentBg
               }`}
             >
-              <RefreshCw className={`w-5 h-5 ${updating ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${busy ? 'animate-spin' : ''}`} />
             </div>
             <div>
               <div className="flex items-center space-x-2">
@@ -192,7 +209,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             </div>
           </div>
 
-          {!update.mandatory && !updating && (
+          {!update.mandatory && !busy && (
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition"
@@ -204,7 +221,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
 
         {/* Body */}
         <div className="p-5 space-y-4 text-xs">
-          {/* Channel Banner Callout */}
+          {/* Channel banner */}
           <div
             className={`p-3.5 rounded-xl border flex items-start space-x-2.5 ${
               isDevChannel
@@ -223,13 +240,13 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
               </div>
               <p className="text-[11px] opacity-90">
                 {isDevChannel
-                  ? 'This build is published specifically to the Developer Channel. Regular users do not see this update notification.'
+                  ? 'This build is published to the Developer Channel. Regular users do not see this update notification.'
                   : 'This release has been verified and distributed to all RARE users.'}
               </p>
             </div>
           </div>
 
-          {/* Release Title & Description */}
+          {/* Release info */}
           <div className={`p-4 rounded-xl ${t.cardSub} border ${t.cardBorder} space-y-2`}>
             <div className="flex items-center justify-between">
               <span className="font-bold text-sm text-white">{update.title}</span>
@@ -238,10 +255,12 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
               </span>
             </div>
             <p className={`text-xs ${t.textMuted} leading-relaxed`}>{update.description}</p>
-              <p className="text-[10px] text-slate-400">{update.platform || 'Package'} · {update.apkSize || 'Size unavailable'}</p>
+            <p className="text-[10px] text-slate-400">
+              {platformLabel} · {update.apkSize || 'Size unavailable'}
+            </p>
           </div>
 
-          {/* Changelog Items */}
+          {/* Changelog */}
           <div className="space-y-2">
             <div className="text-xs font-semibold text-slate-300">What's New in this Release:</div>
             <div className="space-y-1.5">
@@ -257,105 +276,185 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             </div>
           </div>
 
-          {/* Update Progress Stages */}
-          {updating && (
+          {/* Lifecycle */}
+          <StageTimeline stage={stage} t={t} />
+
+          {/* Applying */}
+          {busy && (
             <div className="p-4 rounded-xl bg-indigo-950/30 border border-indigo-500/30 space-y-2.5 animate-in fade-in">
-              <div className="flex items-center justify-between text-xs font-semibold text-indigo-300">
-                <span>{verifying ? 'Verifying SHA-256…' : 'Downloading release…'}</span>
-                <span>{progressStep}%</span>
-              </div>
-              <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 rounded-full transition-all duration-300"
-                  style={{ width: `${progressStep}%` }}
-                />
+              <div className="flex items-center space-x-2 text-xs font-semibold text-indigo-300">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Downloading and verifying the release…</span>
               </div>
               <div className="text-[10px] text-slate-400 font-mono">
-                {verifying ? 'Comparing the downloaded file with the published SHA-256 checksum.' : 'Progress is based on bytes received.'}
+                The server fetches the artifact, checks its SHA-256 against the published value, then activates it.
               </div>
             </div>
           )}
 
-          {/* Completed Banner — states the verified fact and the outstanding step */}
-          {completed && (
-            <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 space-y-1 animate-in fade-in">
+          {/* Terminal outcome — states only what the server confirmed */}
+          {(stage === 'pending' || stage === 'activated' || stage === 'verified') && result && (
+            <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 space-y-1.5 animate-in fade-in">
               <div className="flex items-center space-x-1.5 font-bold text-xs">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>Download verified for v{update.version}</span>
+                <span>
+                  {stage === 'activated'
+                    ? `v${update.version} is active`
+                    : `v${update.version} downloaded and verified`}
+                </span>
               </div>
-              <p className="text-[11px] text-slate-300">
-                {activation?.message
-                  || 'The file was saved to your device. Installation or activation is a separate platform step and has not been confirmed here.'}
-              </p>
-              {activation && (
-                <div className="flex items-center space-x-1.5 pt-1">
-                  <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                    {activation.stage.replace(/_/g, ' ')}
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-400">
-                    {activation.action.replace(/_/g, ' ')}
-                  </span>
-                </div>
-              )}
-              {activation?.action === 'reload_required' && (
+              <p className="text-[11px] text-slate-300">{result.message}</p>
+              <div className="flex items-center space-x-1.5 pt-0.5">
+                <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  {String(result.stage).replace(/_/g, ' ')}
+                </span>
+                {actionLabel && (
+                  <span className="text-[10px] font-mono text-slate-400">{actionLabel}</span>
+                )}
+                <span className="text-[10px] font-mono text-slate-500">
+                  checksum {result.checksumVerified ? 'verified' : 'unverified'}
+                </span>
+              </div>
+
+              {stage === 'pending' && result.action === 'reload_required' && (
                 <button
                   type="button"
-                  onClick={() => window.location.reload()}
+                  onClick={confirmAfterReload}
                   className="mt-1 text-[11px] font-semibold underline text-emerald-300 hover:text-emerald-200"
                 >
                   Reload now to load v{update.version}
                 </button>
               )}
+
+              {(result.action === 'user_install_required' || result.action === 'user_elevation_required') && (
+                <p className="text-[10px] text-amber-300/90 pt-1 flex items-start space-x-1.5">
+                  <Smartphone className="w-3 h-3 shrink-0 mt-0.5" />
+                  <span>
+                    The verified file is saved on the server. Completing the install needs your action on this
+                    {platformLabel === 'android' ? ' device' : ' machine'} — RARE cannot do it silently.
+                  </span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Failure — never dressed up as success */}
+          {stage === 'failed' && (
+            <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/40 text-rose-200 space-y-1 animate-in fade-in">
+              <div className="flex items-center space-x-1.5 font-bold text-xs">
+                <AlertCircle className="w-4 h-4 text-rose-400" />
+                <span>The update was not applied</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                {errorMessage || 'The release could not be downloaded and verified.'}
+              </p>
+              <p className="text-[10px] text-slate-400">
+                Your current version is unchanged.
+              </p>
             </div>
           )}
         </div>
 
-        {downloadError && <p role="alert" className="mx-5 mb-4 rounded-lg border border-rose-500/40 bg-rose-950/30 p-3 text-xs text-rose-200">{downloadError}</p>}
-
-        {/* Footer Actions */}
+        {/* Footer */}
         <div className={`p-4 border-t ${t.cardBorder} flex flex-col sm:flex-row items-center justify-between gap-2.5`}>
           <div className="text-[10px] text-slate-400 font-mono">
             Published by: <span className="text-slate-300">{update.publishedBy}</span>
           </div>
 
           <div className="flex items-center space-x-2 w-full sm:w-auto">
-            {!update.mandatory && !completed && (
+            {!update.mandatory && stage !== 'pending' && stage !== 'activated' && (
               <button
                 type="button"
                 onClick={onClose}
-                disabled={updating}
+                disabled={busy}
                 className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-medium transition disabled:opacity-50"
               >
                 Later
               </button>
             )}
 
-            {completed ? (
+            {stage === 'activated' || stage === 'pending' ? (
               <button
                 type="button"
                 onClick={onClose}
-                className={`flex-1 sm:flex-none px-5 py-2 rounded-xl ${t.accentBg} ${t.accentBgHover} text-white text-xs font-bold shadow-md transition`}
+                className={`flex-1 sm:flex-none px-5 py-2 rounded-xl ${t.accentBg} text-white text-xs font-bold shadow-md transition`}
               >
                 Close
+              </button>
+            ) : stage === 'failed' ? (
+              <button
+                type="button"
+                onClick={reset}
+                className={`flex-1 sm:flex-none px-5 py-2.5 rounded-xl ${t.accentBg} text-white text-xs font-bold shadow-lg transition`}
+              >
+                Try again
               </button>
             ) : (
               <button
                 type="button"
-                onClick={handleStartUpdate}
-                disabled={updating}
+                onClick={handleApply}
+                disabled={busy}
                 className={`flex-1 sm:flex-none px-5 py-2.5 rounded-xl ${
                   isDevChannel
                     ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold'
                     : `${t.accentBg} ${t.accentBgHover} text-white font-bold`
                 } text-xs flex items-center justify-center space-x-2 shadow-lg transition active:scale-[0.98] disabled:opacity-50`}
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${updating ? 'animate-spin' : ''}`} />
-                <span>{updating ? (verifying ? 'Verifying…' : 'Downloading…') : 'Download & Verify'}</span>
+                {busy ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
+                <span>{busy ? 'Applying…' : 'Download & Apply'}</span>
               </button>
             )}
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+/** The version this client is actually running, as reported by the build. */
+function clientVersion(): string {
+  return (import.meta as any)?.env?.VITE_APP_VERSION || '1.0.0';
+}
+
+/**
+ * Renders the lifecycle so the user can see which stage is *confirmed* rather
+ * than a single spinner that implies everything succeeded.
+ */
+const StageTimeline: React.FC<{ stage: Stage; t: ThemeConfig }> = ({ stage, t }) => {
+  const steps: Array<{ key: Stage; label: string }> = [
+    { key: 'idle', label: 'Discovered' },
+    { key: 'applying', label: 'Downloaded & verified' },
+    { key: 'pending', label: 'Activation' },
+    { key: 'activated', label: 'Active' },
+  ];
+  const order: Stage[] = ['idle', 'applying', 'verified', 'pending', 'activated'];
+  const currentIndex = order.indexOf(stage === 'failed' ? 'applying' : stage);
+
+  return (
+    <div className="flex items-center space-x-1.5">
+      {steps.map((step) => {
+        const stepIndex = order.indexOf(step.key === 'idle' ? 'idle' : step.key);
+        const done = stage !== 'failed' && currentIndex >= stepIndex && stage !== 'idle';
+        return (
+          <React.Fragment key={step.key}>
+            <div
+              className={`flex items-center space-x-1 px-2 py-1 rounded-lg border text-[10px] font-mono ${
+                done
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                  : `border-white/10 bg-black/20 ${t.textMuted}`
+              }`}
+            >
+              {done && <CheckCircle2 className="w-2.5 h-2.5" />}
+              <span>{step.label}</span>
+            </div>
+            {step.key !== 'activated' && <Layers className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 };
