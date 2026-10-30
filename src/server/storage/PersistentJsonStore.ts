@@ -22,6 +22,15 @@ export function resolveWritableAppRoot(): string {
 }
 
 /**
+ * Directory holding the deployed code and static assets. Always the deployment
+ * tree, never os.tmpdir(): the built SPA ships inside the bundle, so resolving
+ * assets against the writable data root would make them look missing.
+ */
+export function resolveAppRoot(): string {
+  return path.resolve(process.env.RARE_APP_ROOT?.trim() || process.cwd());
+}
+
+/**
  * True only when the operator has EXPLICITLY opted in to ephemeral local storage.
  *
  * Deliberately independent of NODE_ENV: managed platforms (Vercel, Render, Fly)

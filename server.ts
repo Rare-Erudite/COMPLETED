@@ -46,8 +46,10 @@ import { oAuthVerificationService } from './src/server/providers/OAuthVerificati
 import { resolveWritableAppRoot } from './src/server/storage/PersistentJsonStore.js';
 
 const app = express();
-// resolveWritableAppRoot() keeps the deployment tree untouched on serverless
-// hosts, where only os.tmpdir() is writable.
+// Two roots, deliberately distinct: the deployment tree holds the bundle and
+// static assets (read-only at runtime on serverless), while persistent data
+// must go somewhere writable.
+const APP_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
 const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAppRoot());
 const PORT = process.argv.includes('--port')
   ? Number(process.argv[process.argv.indexOf('--port') + 1])
@@ -6062,8 +6064,8 @@ async function startServer() {
     // The SPA must be served even when the API half of this process failed to
     // initialise. Otherwise every route 404s ("Cannot GET /") and the whole
     // deployment looks broken when only the backend is misconfigured.
-    const frontendDist = path.resolve(PROJECT_ROOT, 'dist');
-    const vercelFrontend = path.resolve(PROJECT_ROOT, 'public');
+    const frontendDist = path.resolve(APP_ROOT, 'dist');
+    const vercelFrontend = path.resolve(APP_ROOT, 'public');
     const frontendRoot = process.env.VERCEL === '1' ? vercelFrontend : frontendDist;
     if (!fs.existsSync(path.join(frontendRoot, 'index.html'))) {
       throw new Error('Production frontend build is missing. Run "npm run build" before "npm start".');
