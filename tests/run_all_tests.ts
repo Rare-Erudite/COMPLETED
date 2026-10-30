@@ -31,6 +31,7 @@ import { runStandaloneResearchTests } from './test_standalone_research.js';
 import { runToolchainRegistryTests, runAssistantCommandTests } from './test_builder_and_assistant.js';
 import { runServerlessFrontendAvailabilityTests } from './test_serverless_frontend.js';
 import { runContentEngineTests } from './test_content_engine.js';
+import { runChatPipelineTests } from './test_chat_pipeline.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -132,6 +133,8 @@ async function main() {
     await runServerlessFrontendAvailabilityTests();
     console.log();
     await runContentEngineTests();
+    console.log();
+    await runChatPipelineTests();
     console.log();
     console.log('=====================================================');
     console.log('  ALL AUTOMATED VERIFICATION TESTS PASSED SUCCESSFULLY');

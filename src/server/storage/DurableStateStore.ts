@@ -43,7 +43,11 @@ export class DurableStateStore {
       snapshot: () => target,
       restore: (value) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return;
-        for (const property of Object.keys(target)) delete target[property];
+        // Merge the persisted document ON TOP OF the in-memory defaults rather
+        // than clearing the object first. Deleting every key before assigning
+        // meant a stored document missing a newer default (e.g. a settings
+        // object written before `assistantName` existed) silently wiped that
+        // default to undefined — the cause of "Hello! I am undefined".
         Object.assign(target, value);
       },
     });

@@ -198,6 +198,73 @@ export class GeminiCoprocessorProvider implements IModelProvider {
     throw lastError || new Error('All Gemini neural models failed or timed out.');
   }
 
+  /**
+   * Stream a reply token-by-token. Returns the concatenated text as well so the
+   * caller can persist exactly what was streamed. Throws if every model fails,
+   * so a caller can fall back to a non-streamed call rather than emit nothing.
+   */
+  public async *generateStream(
+    prompt: string,
+    context?: string,
+    options?: GenerationOptions & { thinkHarder?: boolean; persona?: string }
+  ): AsyncGenerator<string, string, void> {
+    const ai = this.getClient();
+    const personaTone =
+      options?.persona === 'professional'
+        ? 'Adopt a rigorous, professional, and technically precise tone.'
+        : options?.persona === 'creative'
+        ? 'Adopt an imaginative, expressive, and creative tone.'
+        : options?.persona === 'concise'
+        ? 'Be extremely concise, direct, and to the point.'
+        : 'Be warm, natural, friendly, and conversational.';
+
+    const systemInstruction = `${
+      options?.systemPrompt ||
+      'You are RARE, a standalone personal AI companion, researcher, and full-stack software builder.'
+    }\n${personaTone}\n\nContext & Memory:\n${context || 'None'}`;
+
+    const contentsPayload: any = options?.conversationHistory?.length
+      ? [
+          ...options.conversationHistory.map((message) => ({
+            role: message.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: message.content }],
+          })),
+          { role: 'user', parts: [{ text: prompt }] },
+        ]
+      : prompt;
+
+    let lastError: any = null;
+    for (const modelId of [GEMINI_MODEL, GEMINI_MODEL_LITE]) {
+      // Once any token has been yielded, a retry would duplicate text the caller
+      // has already rendered, so the fallback is only safe before the first token.
+      let emitted = false;
+      try {
+        const stream = await ai.models.generateContentStream({
+          model: modelId,
+          contents: contentsPayload,
+          config: { systemInstruction, temperature: options?.temperature ?? 0.7 },
+        });
+        let full = '';
+        for await (const chunk of stream) {
+          const piece = typeof chunk.text === 'string' ? chunk.text : '';
+          if (piece) {
+            full += piece;
+            emitted = true;
+            yield piece;
+          }
+        }
+        if (!full.trim()) throw new Error(`Gemini streamed an empty response for ${modelId}.`);
+        return full;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[GeminiCoprocessorProvider] Streaming model ${modelId} failed.`);
+        if (emitted) throw err;
+        continue;
+      }
+    }
+    throw lastError || new Error('All Gemini neural models failed to stream.');
+  }
+
   public async transcribeAudio(audioBase64: string, mimeType: string): Promise<{ text: string; model: string }> {
     if (!audioBase64 || audioBase64.length > 14_000_000) {
       throw new Error('Audio data is missing or exceeds the 10 MB limit.');

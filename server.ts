@@ -24,6 +24,7 @@ import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
 import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
+import { extractMemories } from './src/server/chat/MemoryExtractor.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
 import { BenchmarkSuite } from './src/server/evaluation/BenchmarkSuite.js';
 import { engine } from './src/engine/engine.ts';
@@ -1224,11 +1225,135 @@ app.post('/api/conversations/:id', async (req, res) => {
       return updated;
     }));
     if (!updated) return res.status(404).json({ error: { message: 'Conversation not found' } });
-    return res.json({ user_message: userMessage, assistant_message: assistantMessage, reply: assistantMessage, conversationTitle: updated.title, conversation: updated });
+    // Persist what this turn actually taught us about the user. The UI promises
+    // a permanent memory; before this the promise was never kept. Extraction is
+    // deterministic and conservative, and reports the true number written.
+    let memoriesStored = 0;
+    try {
+      const existing = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'memories', []);
+      const candidates = extractMemories(text, existing.map((item) => String(item?.text || '')));
+      for (const candidate of candidates) {
+        const record = {
+          id: `mem_${crypto.randomUUID()}`,
+          timestamp: new Date().toISOString(),
+          kind: candidate.kind,
+          text: candidate.text,
+          tags: candidate.tags,
+          importance: candidate.importance,
+          source: 'chat_extraction' as const,
+          verifiedByUser: false,
+        };
+        await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'memories', [], (rows) => {
+          if (res.locals.rareIsGuest && rows.length >= 25) return rows;
+          return [record, ...rows];
+        });
+        memoriesStored += 1;
+      }
+    } catch (error) {
+      console.error('[Memory] Chat memory extraction failed; the reply was still returned.');
+    }
+    return res.json({ user_message: userMessage, assistant_message: assistantMessage, reply: assistantMessage, conversationTitle: updated.title, conversation: updated, memoriesStored });
   } catch (error) {
     console.error('[Conversations] AI reply generation or persistence failed.');
     const unavailable = (error as any)?.statusCode === 503;
     return res.status(unavailable ? 503 : 502).json({ error: { message: unavailable ? 'No online AI provider is available. Configure or restore a provider and retry.' : 'The AI response could not be generated. Please retry.' } });
+  }
+});
+
+// Streaming chat. Emits Server-Sent Events so the reply is rendered as it is
+// produced. It never emits a fabricated token: if no real provider is
+// reachable it sends an `error` event and the client shows the failure.
+app.post('/api/conversations/:id/stream', async (req, res) => {
+  const text = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  if (!text || text.length > 20000) return res.status(400).json({ error: { message: 'A message of at most 20,000 characters is required.' } });
+
+  const ownerId = res.locals.rareUserId as string;
+  let conversation: any = null;
+  try {
+    const conversations = await persistentStorage!.getOwnedState<any[]>(ownerId, 'conversations', []);
+    conversation = conversations.find((item) => item.id === req.params.id);
+  } catch (error) {
+    return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
+  }
+  if (!conversation) return res.status(404).json({ error: { message: 'Conversation not found' } });
+
+  if (res.locals.rareIsGuest && !(await consumeGuestQuota(ownerId, 'online_chat_messages', 30))) {
+    return res.status(429).json({ error: { message: 'Guest online chat limit reached. Create an account to continue.' } });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  const send = (event: string, data: unknown) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  const timestamp = new Date().toISOString();
+  const userMessage = { id: `msg_${crypto.randomUUID()}`, role: 'user', content: text, timestamp };
+
+  try {
+    const memories = await persistentStorage!.getOwnedState<any[]>(ownerId, 'memories', []);
+    const contextMessages = [...conversation.messages, userMessage].slice(-20);
+    const prepared = prepareConversationContext(text, contextMessages as any, memories);
+    const combinedContext = prepared.memoryContext ? `Relevant User Memory:\n${prepared.memoryContext}` : '';
+    const options = {
+      temperature: req.body?.think_harder ? 0.2 : 0.7,
+      persona: typeof req.body?.persona === 'string' ? req.body.persona.slice(0, 40) : undefined,
+      thinkHarder: Boolean(req.body?.think_harder),
+      systemPrompt: buildRareSystemPrompt(appSettings.assistantName || 'RARE', false),
+      conversationHistory: prepared.history,
+    };
+
+    let fullReply = '';
+    const gemini = providerRegistry.getGeminiProvider();
+    if (await gemini.isAvailable()) {
+      for await (const chunk of gemini.generateStream(text, combinedContext, options as any)) {
+        fullReply += chunk;
+        send('delta', { text: chunk });
+      }
+    } else {
+      // No streaming-capable provider: still answer for real, in one piece.
+      const result = await providerRegistry.generateOnline(text, combinedContext, options as any);
+      if (result.providerType === 'offline_cognitive' || !result.reply?.trim()) {
+        throw Object.assign(new Error('No online AI provider returned a response.'), { statusCode: 503 });
+      }
+      fullReply = result.reply.trim();
+      send('delta', { text: fullReply });
+    }
+
+    if (!fullReply.trim()) throw Object.assign(new Error('The provider returned an empty response.'), { statusCode: 502 });
+
+    const assistantMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: fullReply.trim(), timestamp: new Date().toISOString() };
+    let updated: any = null;
+    await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
+      if (item.id !== conversation.id) return item;
+      const title = !item.customTitle && (!item.title || item.title === 'New Chat') ? text.replace(/[^\w\s]/g, '').trim().slice(0, 34) || 'Chat' : item.title;
+      updated = { ...item, title, messages: [...item.messages, userMessage, assistantMessage], messageCount: item.messages.length + 2 };
+      return updated;
+    }));
+
+    let memoriesStored = 0;
+    try {
+      const existing = await persistentStorage!.getOwnedState<any[]>(ownerId, 'memories', []);
+      for (const candidate of extractMemories(text, existing.map((item) => String(item?.text || '')))) {
+        const record = { id: `mem_${crypto.randomUUID()}`, timestamp: new Date().toISOString(), kind: candidate.kind, text: candidate.text, tags: candidate.tags, importance: candidate.importance, source: 'chat_extraction' as const, verifiedByUser: false };
+        await persistentStorage!.updateOwnedState<any[]>(ownerId, 'memories', [], (rows) => (res.locals.rareIsGuest && rows.length >= 25 ? rows : [record, ...rows]));
+        memoriesStored += 1;
+      }
+    } catch { /* the reply already streamed; a memory miss must not fail the turn */ }
+
+    send('done', { user_message: userMessage, assistant_message: assistantMessage, reply: assistantMessage, conversationTitle: updated?.title, memoriesStored });
+    res.end();
+  } catch (error: any) {
+    const unavailable = error?.statusCode === 503;
+    send('error', {
+      code: unavailable ? 'ONLINE_PROVIDER_UNAVAILABLE' : (error?.code || 'INFERENCE_ERROR'),
+      message: unavailable ? 'No online AI provider is available. Configure or restore a provider and retry.' : 'The AI response could not be generated. Please retry.',
+    });
+    res.end();
   }
 });
 
