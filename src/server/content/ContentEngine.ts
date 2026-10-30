@@ -13,6 +13,7 @@
 import { ContentKind, SniffResult, sniffContent } from './ContentSniffer.js';
 import { ExtractionResult, ExtractedPage, extractorsFor, DEFAULT_MAX_CHARS } from './Extractors.js';
 import { SafeFetchError, safeFetch } from './SafeFetcher.js';
+import { recoverWithStrategies, repairPdfBuffer, looksLikeDelimitedText, type DiagnosisReport } from './ContentDiagnosis.js';
 
 export interface ContentSource {
   /** Where the bytes came from. */
@@ -61,6 +62,10 @@ export interface ContentResult {
   truncated: boolean;
   /** Populated only when ok === false. */
   error?: { message: string; code: string; nextStep?: string };
+  /** Populated when the first attempt failed and recovery was attempted. */
+  diagnosis?: DiagnosisReport;
+  /** Which recovery strategy produced the text, when recovery was needed. */
+  diagnosis_used?: string;
   /** Wall-clock duration in ms. */
   durationMs: number;
 }
@@ -223,7 +228,175 @@ export async function processBuffer(buffer: Buffer, options: ProcessOptions = {}
 
   const { result, attempts, warnings } = await extractFromBuffer(buffer, sniff, options);
   const final = finalise(base, result, attempts, warnings);
-  return { ...final, durationMs: Date.now() - started };
+  if (final.ok) return { ...final, durationMs: Date.now() - started };
+
+  // The first pass produced nothing. Rather than reporting a dead end, diagnose
+  // and retry with genuinely different methods, then report the whole log.
+  const recovery = await recoverFromBuffer(buffer, sniff, options, attempts);
+
+  if (recovery.value) {
+    const recovered = finalise(base, recovery.value, attempts, [...warnings, ...recovery.value.warnings]);
+    return {
+      ...recovered,
+      diagnosis: recovery.report,
+      diagnosis_used: recovery.report.winningStrategy,
+      durationMs: Date.now() - started,
+    } as ContentResult;
+  }
+
+  return {
+    ...final,
+    diagnosis: recovery.report,
+    error: {
+      message: final.error?.message || 'No readable content could be extracted.',
+      code: final.error?.code || 'NO_TEXT_EXTRACTED',
+      // Prefer the diagnosed cause and its remedy over the generic message.
+      nextStep: recovery.report.nextStep || final.error?.nextStep,
+    },
+    durationMs: Date.now() - started,
+  };
+}
+
+/**
+ * Recovery strategies, in order of increasing cost. Each is a different method,
+ * not a retry of the one that just failed.
+ */
+async function recoverFromBuffer(
+  buffer: Buffer,
+  sniff: SniffResult,
+  options: ProcessOptions,
+  previousAttempts: ContentAttempt[],
+): Promise<{ value: ExtractionResult | null; report: DiagnosisReport }> {
+  const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
+  const alreadyTried = new Set(previousAttempts.filter((attempt) => attempt.ok).map((attempt) => attempt.extractor));
+
+  const strategies = [
+    {
+      id: 'repair-container',
+      description: 'Strip a junk prefix before the file signature and re-extract.',
+      appliesTo: () => buffer.indexOf('%PDF-') > 0,
+      run: async () => {
+        const repaired = repairPdfBuffer(buffer);
+        if (!repaired) return null;
+        // Re-sniff the repaired bytes. The original sniff described the junk
+        // prefix (usually HTML), so reusing it would route a valid PDF to the
+        // HTML extractor and report the proxy's error page as the content.
+        const repairedSniff = sniffContent(repaired, options.filename || '', 'application/pdf');
+        const repairedTry = await extractFromBuffer(repaired, repairedSniff, { ...options, allowOcr: true });
+        return repairedTry.result;
+      },
+    },
+    {
+      id: 'delimited-text',
+      description: 'Treat the payload as CSV/TSV when its real content is tabular text.',
+      appliesTo: () => looksLikeDelimitedText(buffer),
+      run: async () => {
+        const text = buffer.toString('utf8');
+        const delimiter = (text.split(/\r?\n/)[0].match(/\t/g) || []).length > 0 ? '\t' : ',';
+        const rows = text
+          .split(/\r?\n/)
+          .filter((line) => line.trim().length > 0)
+          .map((line) => line.split(delimiter).map((cell) => cell.trim().replace(/^"|"$/g, '')));
+        if (rows.length < 2) return null;
+        const header = rows[0];
+        const rendered = [
+          `## Recovered table`,
+          '',
+          `| ${header.join(' | ')} |`,
+          `| ${header.map(() => '---').join(' | ')} |`,
+          ...rows.slice(1).map((row) => `| ${header.map((_cell, index) => (row[index] ?? '')).join(' | ')} |`),
+        ].join('\n');
+        return {
+          text: rendered.slice(0, maxChars),
+          method: 'recovery:delimited-text',
+          ocr: false,
+          warnings: ['The file was not a valid workbook/binary document; it was read as a delimited table.'],
+          metadata: { rows: rows.length - 1, columns: header.length },
+          truncated: rendered.length > maxChars,
+        } as ExtractionResult;
+      },
+    },
+    {
+      id: 'force-ocr',
+      description: 'Run OCR over every page even though a text layer was expected.',
+      appliesTo: (context: { tried: string[] }) => !context.tried.includes('force-ocr') && options.allowOcr !== false,
+      run: async () => {
+        const ocrCandidates = extractorsFor(sniff.kind).filter((extractor) => extractor.ocr);
+        for (const extractor of ocrCandidates) {
+          if (alreadyTried.has(extractor.id)) continue;
+          try {
+            if (!(await extractor.available())) continue;
+            const out = await extractor.run({
+              buffer,
+              filename: options.filename || '',
+              mimeType: sniff.mimeType,
+              maxChars,
+            });
+            if (out.text.trim().length > 0) return out;
+          } catch {
+            /* try the next OCR adapter */
+          }
+        }
+        return null;
+      },
+    },
+    {
+      id: 'any-extractor',
+      description: 'Try every registered adapter for this kind, including ones normally skipped.',
+      run: async () => {
+        for (const extractor of extractorsFor(sniff.kind)) {
+          if (alreadyTried.has(extractor.id)) continue;
+          if (extractor.ocr && options.allowOcr === false) continue;
+          try {
+            if (!(await extractor.available())) continue;
+            const out = await extractor.run({
+              buffer,
+              filename: options.filename || '',
+              mimeType: sniff.mimeType,
+              maxChars,
+            });
+            if (out.text.trim().length > 0) return out;
+          } catch {
+            /* keep going */
+          }
+        }
+        return null;
+      },
+    },
+    {
+      id: 'binary-strings',
+      description: 'Extract printable runs directly from the bytes as a last resort.',
+      run: async () => {
+        const printable = buffer
+          .toString('latin1')
+          .replace(/[^\x20-\x7E\n\r\t]{2,}/g, ' ')
+          .replace(/[ \t]{2,}/g, ' ')
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line.length >= 24)
+          .join('\n');
+        if (printable.length < 100) return null;
+        return {
+          text: printable.slice(0, maxChars),
+          method: 'recovery:raw-strings',
+          ocr: false,
+          warnings: [
+            'No format-aware extractor could read this file, so readable text was recovered from the raw bytes. Layout and structure were lost.',
+          ],
+          metadata: { recovery: true },
+          truncated: printable.length > maxChars,
+        } as ExtractionResult;
+      },
+    },
+  ];
+
+  const { value, report } = await recoverWithStrategies<ExtractionResult>(
+    strategies as any,
+    (candidate) => Boolean(candidate && candidate.text.trim().length > 0),
+    { maxStrategies: 5, maxTotalMs: 120_000 },
+  );
+
+  return { value, report };
 }
 
 /** Process plain text supplied directly (no retrieval). */

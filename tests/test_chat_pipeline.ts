@@ -1,7 +1,14 @@
 import assert from 'assert';
 import { extractMemories } from '../src/server/chat/MemoryExtractor.js';
 
-const BASE = process.env.RARE_TEST_BASE_URL || 'http://127.0.0.1:3000';
+const BASE_PORT = 3000;
+
+/**
+ * Resolved per call, not at import time: the runner assigns
+ * RARE_TEST_BASE_URL after this module is imported, so a top-level const
+ * would freeze the fallback port and every request would miss the server.
+ */
+const baseUrl = (): string => process.env.RARE_TEST_BASE_URL || `http://127.0.0.1:${BASE_PORT}`;
 
 /**
  * Exercises the real chat pipeline against the running server: session, CSRF,
@@ -38,8 +45,8 @@ export async function runChatPipelineTests() {
   );
 
   // ---- HTTP level: the running server. ----
-  const origin = BASE;
-  const sessionRes = await fetch(`${BASE}/api/user/guest-session`, {
+  const origin = baseUrl();
+  const sessionRes = await fetch(`${baseUrl()}/api/user/guest-session`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: origin },
   });
@@ -58,7 +65,7 @@ export async function runChatPipelineTests() {
     Cookie: cookie,
   };
 
-  const createRes = await fetch(`${BASE}/api/conversations`, {
+  const createRes = await fetch(`${baseUrl()}/api/conversations`, {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({ title: 'Pipeline Test' }),
@@ -72,7 +79,7 @@ export async function runChatPipelineTests() {
     'The opening greeting names the assistant (regression: "I am undefined")',
   );
 
-  const sendRes = await fetch(`${BASE}/api/conversations/${conversation.id}`, {
+  const sendRes = await fetch(`${baseUrl()}/api/conversations/${conversation.id}`, {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({ message: 'My name is Ada and I prefer dark mode dashboards.' }),
@@ -82,13 +89,13 @@ export async function runChatPipelineTests() {
     assert.ok(sendBody.assistant_message?.content?.trim(), 'A real reply is returned');
     assert.ok(sendBody.memoriesStored >= 1, 'The turn reports the memories actually written');
 
-    const readRes = await fetch(`${BASE}/api/conversations/${conversation.id}`, {
+    const readRes = await fetch(`${baseUrl()}/api/conversations/${conversation.id}`, {
       headers: { Origin: origin, Cookie: cookie },
     });
     const persisted: any = await readRes.json();
     assert.ok(persisted.messages.length >= 3, 'User and assistant turns persist to storage');
 
-    const memRes = await fetch(`${BASE}/api/memories`, { headers: { Origin: origin, Cookie: cookie } });
+    const memRes = await fetch(`${baseUrl()}/api/memories`, { headers: { Origin: origin, Cookie: cookie } });
     const memories: any[] = await memRes.json();
     assert.ok(
       memories.some((m) => m.source === 'chat_extraction'),
@@ -101,7 +108,7 @@ export async function runChatPipelineTests() {
   }
 
   // ---- Streaming endpoint shape. ----
-  const streamRes = await fetch(`${BASE}/api/conversations/${conversation.id}/stream`, {
+  const streamRes = await fetch(`${baseUrl()}/api/conversations/${conversation.id}/stream`, {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({ message: 'Summarise my preferences briefly.' }),

@@ -18,8 +18,20 @@ import { DocumentsService, DocumentPathError, normalizeDocumentPath } from './sr
 import { DeepResearchEngine } from './src/server/services/DeepResearchEngine.js';
 import { listProviders as listResearchProviders } from './src/server/services/ResearchProviders.js';
 import { OwnerSearchIndexRegistry } from './src/server/content/SearchIndex.js';
-import { processBuffer, processUrl, describeResult } from './src/server/content/ContentEngine.js';
+import { processBuffer, processUrl, describeResult, chunkContent } from './src/server/content/ContentEngine.js';
 import { probeExtractors } from './src/server/content/Extractors.js';
+import { probeMedia, ffmpegAvailable } from './src/server/content/MediaProcessor.js';
+import { transcribeBuffer, deriveInsights, formatClock } from './src/server/content/TranscriptionEngine.js';
+import {
+  answerFromPassages,
+  passagesFromHits,
+  summariseHierarchically,
+  compareDocuments,
+  extractEntities,
+} from './src/server/content/DocumentIntelligence.js';
+import { exportDocument, EXPORT_FORMATS } from './src/server/content/DocumentExporter.js';
+import { resolveLink, downloadMediaFromLink } from './src/server/content/LinkResolver.js';
+import { resolveSpeechProvider, LocalWhisperProvider } from './src/server/content/SpeechProviders.js';
 import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
 import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
@@ -3991,6 +4003,103 @@ async function describeTranscriptionCapability(): Promise<{
   }
 }
 
+// Parse without storing — inspect a file or URL and get its text back.
+// This is the route the Assistant's parse control has always called; it did not
+// exist, so every parse attempt returned 404.
+app.post('/api/documents/parse', async (req, res) => {
+  const payload = readDocumentPayload(req.body);
+  try {
+    if (payload.url) {
+      const result = await processUrl(payload.url, { maxBytes: 25 * 1024 * 1024 });
+      res.status(result.ok ? 200 : 422).json({
+        ok: result.ok,
+        kind: result.kind,
+        label: result.label,
+        family: result.family,
+        method: result.method,
+        ocr: result.ocr,
+        title: result.title,
+        sourceUrl: result.sourceUrl,
+        finalUrl: result.finalUrl,
+        text: result.text,
+        pages: result.pages,
+        tables: result.tables,
+        attempts: result.attempts,
+        diagnosis: result.diagnosis,
+        diagnosisUsed: result.diagnosis_used,
+        warnings: result.warnings,
+        truncated: result.truncated,
+        summary: describeResult(result),
+        error: result.error,
+      });
+      return;
+    }
+
+    if (payload.fileBase64) {
+      const buffer = Buffer.from(payload.fileBase64.replace(/^data:[^;]+;base64,/, ''), 'base64');
+      if (buffer.length === 0) {
+        res.status(400).json({ error: { message: 'The uploaded file was empty.' } });
+        return;
+      }
+      if (buffer.length > 40 * 1024 * 1024) {
+        res.status(413).json({ error: { message: 'Files must be 40 MB or smaller.' } });
+        return;
+      }
+      const result = await processBuffer(buffer, {
+        filename: payload.filename,
+        mimeType: payload.mimeType,
+        maxBytes: 40 * 1024 * 1024,
+      });
+      res.status(result.ok ? 200 : 422).json({
+        ok: result.ok,
+        kind: result.kind,
+        label: result.label,
+        family: result.family,
+        method: result.method,
+        ocr: result.ocr,
+        title: result.title,
+        text: result.text,
+        pages: result.pages,
+        tables: result.tables,
+        attempts: result.attempts,
+        diagnosis: result.diagnosis,
+        diagnosisUsed: result.diagnosis_used,
+        warnings: result.warnings,
+        truncated: result.truncated,
+        bytes: buffer.length,
+        summary: describeResult(result),
+        error: result.error,
+      });
+      return;
+    }
+
+    if (typeof payload.text === 'string') {
+      const result = await processBuffer(Buffer.from(payload.text, 'utf8'), {
+        filename: payload.filename || 'input.txt',
+        mimeType: payload.mimeType || 'text/plain',
+      });
+      res.status(result.ok ? 200 : 422).json({
+        ok: result.ok,
+        kind: result.kind,
+        label: result.label,
+        method: result.method,
+        title: result.title,
+        text: result.text,
+        warnings: result.warnings,
+        summary: describeResult(result),
+        error: result.error,
+      });
+      return;
+    }
+
+    res.status(400).json({
+      error: { message: 'Provide a file (fileBase64), a URL, or text to parse.' },
+    });
+  } catch (error) {
+    sendDocumentError(res, error, 'The content could not be parsed.');
+  }
+});
+
 // Capability discovery: what this deployment can actually read right now.
 app.get('/api/documents/capabilities', async (_req, res) => {
   try {
@@ -4000,6 +4109,9 @@ app.get('/api/documents/capabilities', async (_req, res) => {
     const extractors = await probeExtractors();
 
     const transcription = await describeTranscriptionCapability();
+    // Report the speech engine that would actually run, so a client can tell a
+    // user whether their audio leaves the machine before they upload it.
+    const speech = await resolveSpeechProvider(() => providerRegistry.getGeminiProvider());
     const usable = extractors.filter((extractor) => extractor.available).map((extractor) => extractor.id);
 
     res.json({
@@ -4007,10 +4119,22 @@ app.get('/api/documents/capabilities', async (_req, res) => {
       extractors,
       usableExtractors: usable.length,
       transcription,
+      speech: speech.summary,
+      media: {
+        // ffmpeg availability is what decides whether audio/video can be handled
+        // at all here, so it is surfaced rather than assumed.
+        decoding: await (async () => {
+          const { ffmpegAvailable } = await import('./src/server/content/MediaProcessor.js');
+          return ffmpegAvailable();
+        })(),
+        formats: ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'mp4', 'mov', 'webm', 'mkv'],
+      },
+      exportFormats: ['md', 'txt', 'html', 'json', 'csv', 'docx', 'xlsx', 'pdf'],
       notes: [
         'Content type is determined from the bytes, not the filename or Content-Type header.',
         'Scanned PDFs and images fall back to OCR when no text layer exists.',
         'Only adapters reporting available:true can run in this deployment.',
+        'Transcription segments long recordings and reports real coverage rather than assuming completeness.',
       ],
     });
   } catch (error) {
@@ -4207,67 +4331,797 @@ app.post('/api/documents/reindex', async (req, res) => {
   }
 });
 
-// Universal Context-Aware Audio Transcription
+// =============================================================================
+// Transcription — segmented, timestamped, speaker-aware, honest about coverage
+// =============================================================================
+
+/**
+ * Pick the speech engine that can actually run: Gemini when configured,
+ * otherwise the local faster-whisper engine. Probing rather than assuming means
+ * a bare install can still transcribe, and a machine with neither says so
+ * precisely.
+ */
+async function requireSpeechProvider() {
+  const resolved = await resolveSpeechProvider(() => providerRegistry.getGeminiProvider());
+  if (!resolved.provider) {
+    throw Object.assign(
+      new Error(resolved.summary.statement),
+      { code: 'TRANSCRIPTION_PROVIDER_UNAVAILABLE' },
+    );
+  }
+  return { provider: resolved.provider, summary: resolved.summary };
+}
+
+/** Transcribe media bytes, save the transcript, and return the full result. */
+async function transcribeAndStore(
+  ownerId: string,
+  buffer: Buffer,
+  filename: string,
+  options: { isGuest?: boolean; includeFrames?: boolean; segmentSeconds?: number; title?: string },
+): Promise<{
+  path: string;
+  transcript: string;
+  insights: ReturnType<typeof deriveInsights>;
+  result: Awaited<ReturnType<typeof transcribeBuffer>>;
+}> {
+  if (!(await ffmpegAvailable())) {
+    throw Object.assign(
+      new Error('ffmpeg is not installed on this server, so audio cannot be decoded or split for transcription.'),
+      { code: 'FFMPEG_UNAVAILABLE' },
+    );
+  }
+  const { provider } = await requireSpeechProvider();
+  const result = await transcribeBuffer(buffer, filename, provider, {
+    segmentSeconds: options.segmentSeconds,
+    includeFrames: options.includeFrames,
+  });
+
+  const basename =
+    String(options.title || filename || 'recording')
+      .replace(/\.[^/.]+$/, '')
+      .replace(/[^a-zA-Z0-9_-]+/g, '_')
+      .slice(0, 70) || 'recording';
+
+  const header = [
+    `# Transcript — ${options.title || filename || 'recording'}`,
+    '',
+    `- Duration: ${formatClock(result.durationSeconds)}`,
+    `- Speakers detected: ${result.speakers.length}${result.speakerLabelsDetected ? '' : ' (provider did not distinguish them)'}`,
+    `- Segments transcribed: ${result.segmentsCompleted}/${result.segments.length}`,
+    `- Coverage: ${Math.round(result.coverage * 100)}%`,
+    `- Model: ${result.model || 'unspecified'}`,
+    '',
+  ].join('\n');
+
+  const warnings = result.warnings.length
+    ? ['', '## Extraction notes', '', ...result.warnings.map((warning) => `- ${warning}`), '']
+    : [''];
+
+  const saved = await requireDocumentsService().save(
+    ownerId,
+    normalizeDocumentPath(`transcripts/${basename}_${Date.now()}.md`),
+    (header + warnings.join('\n') + '\n' + result.text).slice(0, 2 * 1024 * 1024),
+    { isGuest: options.isGuest, origin: 'transcript' },
+  );
+
+  return { path: saved.path, transcript: result.text, insights: deriveInsights(result), result };
+}
+
 app.post('/api/documents/transcribe', async (req, res) => {
   const rawAudio = String(req.body?.audioBase64 || req.body?.audio || '');
   const dataUrl = rawAudio.match(/^data:([^;]+);base64,(.+)$/s);
   const audioBase64 = dataUrl ? dataUrl[2] : rawAudio;
   const mimeType = String(dataUrl?.[1] || req.body?.mimeType || 'audio/webm');
-  if (!audioBase64 || audioBase64.length > 14 * 1024 * 1024) {
-    res.status(400).json({ error: { message: 'Audio data is required and must not exceed the upload limit.' } });
+  const filename = String(req.body?.audioName || req.body?.filename || 'recording.webm');
+
+  if (!audioBase64) {
+    res.status(400).json({ error: { message: 'Audio data is required.' } });
     return;
   }
-  if (!/^audio\/(webm|ogg|wav|mpeg|mp3|aac|flac|mp4|x-m4a)$/i.test(mimeType)) {
-    res.status(400).json({ error: { message: `Unsupported audio format: ${mimeType}.` } });
-    return;
-  }
-  if (!process.env.GEMINI_API_KEY?.trim()) {
-    res.status(503).json({
+  // Base64 inflates by ~4/3, so a 40 MB body is ~30 MB of audio. ffmpeg and the
+  // segmenter handle this in bounded pieces, so the old 10 MB ceiling is gone.
+  if (audioBase64.length > 40 * 1024 * 1024) {
+    res.status(413).json({
       error: {
-        message: 'Audio transcription requires GEMINI_API_KEY to be configured on the server.',
-        code: 'TRANSCRIPTION_PROVIDER_UNAVAILABLE',
-        nextStep: 'Set GEMINI_API_KEY, or configure a local speech engine.',
+        message: 'That recording is larger than the 30 MB upload limit for a single request.',
+        nextStep: 'Use the document library upload for very long recordings, or split the file.',
       },
     });
     return;
   }
+
   try {
-    const transcription = await providerRegistry.getGeminiProvider().transcribeAudio(audioBase64, mimeType);
-    const basename = String(req.body?.audioName || 'recording')
-      .replace(/\.[^/.]+$/, '')
-      .replace(/[^a-zA-Z0-9_-]+/g, '_')
-      .slice(0, 80) || 'recording';
-    const transcriptPath = normalizeDocumentPath(`transcripts/${basename}_transcript.txt`);
-    const saved = await requireDocumentsService().save(res.locals.rareUserId, transcriptPath, transcription.text.slice(0, 2 * 1024 * 1024), {
+    const buffer = Buffer.from(audioBase64, 'base64');
+    if (buffer.length === 0) {
+      res.status(400).json({ error: { message: 'The audio payload decoded to zero bytes.' } });
+      return;
+    }
+    const outcome = await transcribeAndStore(res.locals.rareUserId, buffer, filename, {
       isGuest: res.locals.rareIsGuest,
-      origin: 'transcript',
+      includeFrames: Boolean(req.body?.includeFrames),
+      segmentSeconds: Number(req.body?.segmentSeconds) || undefined,
+      title: typeof req.body?.title === 'string' ? req.body.title : undefined,
     });
+
     res.json({
       success: true,
-      path: saved.path,
+      path: outcome.path,
       mode: 'verbatim',
-      transcript: transcription.text,
-      transcriptionModel: transcription.model,
-      verifiedNotes: [],
-      uncertaintyCount: (transcription.text.match(/\[(?:inaudible|unclear)\]/gi) || []).length,
-      verifiedQuotations: [],
+      transcript: outcome.transcript,
+      transcriptionModel: outcome.result.model,
+      turns: outcome.result.turns,
+      speakers: outcome.result.speakers,
+      speakerLabelsDetected: outcome.result.speakerLabelsDetected,
+      durationSeconds: outcome.result.durationSeconds,
+      durationClock: formatClock(outcome.result.durationSeconds),
+      segmentsTranscribed: outcome.result.segmentsCompleted,
+      segmentsTotal: outcome.result.segments.length,
+      coverage: outcome.result.coverage,
+      warnings: outcome.result.warnings,
+      insights: outcome.insights,
+      frames: outcome.result.frames?.map((frame) => ({ timestampSeconds: frame.timestampSeconds, index: frame.index })),
+      uncertaintyCount: (outcome.transcript.match(/\[(?:inaudible|unclear|unintelligible)\]/gi) || []).length,
     });
-  } catch (error) {
-    res.status(502).json({ error: { message: error instanceof Error ? error.message : 'Audio transcription failed.' } });
+  } catch (error: any) {
+    const code = error?.code;
+    const status = code === 'TRANSCRIPTION_PROVIDER_UNAVAILABLE' || code === 'FFMPEG_UNAVAILABLE' ? 503 : 502;
+    res.status(status).json({
+      error: {
+        message: error instanceof Error ? error.message : 'Audio transcription failed.',
+        ...(code ? { code } : {}),
+        nextStep:
+          code === 'TRANSCRIPTION_PROVIDER_UNAVAILABLE'
+            ? 'Set GEMINI_API_KEY (or another speech provider) on the server.'
+            : code === 'FFMPEG_UNAVAILABLE'
+              ? 'Install ffmpeg on the server.'
+              : 'Check that the file is a valid recording, then retry.',
+      },
+    });
   }
 });
 
-// Format Conversion
+// Transcribe whatever a link points at: a podcast MP3, a YouTube video, a Drive
+// recording. Resolution and download are separate from transcription so a
+// failure names the stage that actually broke.
+app.post('/api/documents/transcribe-link', async (req, res) => {
+  const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+  if (!url) {
+    res.status(400).json({ error: { message: 'A URL is required.' } });
+    return;
+  }
+  const resolved = resolveLink(url);
+  if (!resolved.media) {
+    res.status(422).json({
+      error: {
+        message: `${resolved.label} is not media, so there is nothing to transcribe.`,
+        code: 'NOT_MEDIA',
+        nextStep: 'Import it as a document instead.',
+      },
+      resolved,
+    });
+    return;
+  }
+  if (resolved.blocker) {
+    res.status(422).json({ error: { message: resolved.blocker, code: 'LINK_UNRESOLVABLE' }, resolved });
+    return;
+  }
+
+  try {
+    let buffer: Buffer;
+    let title: string | undefined;
+    if (resolved.service === 'youtube') {
+      const download = await downloadMediaFromLink(resolved.fetchUrl || url);
+      if (!download.ok || !download.buffer) {
+        res.status(502).json({
+          error: { message: download.error || 'The video audio could not be downloaded.', code: 'MEDIA_DOWNLOAD_FAILED' },
+          resolved,
+        });
+        return;
+      }
+      buffer = download.buffer;
+      title = download.title;
+    } else {
+      const fetched = await fetch(resolved.fetchUrl || url);
+      if (!fetched.ok) {
+        res.status(502).json({
+          error: {
+            message: `The link returned HTTP ${fetched.status}. Private files need their sharing setting changed to "anyone with the link".`,
+            code: 'LINK_FETCH_FAILED',
+          },
+          resolved,
+        });
+        return;
+      }
+      buffer = Buffer.from(await fetched.arrayBuffer());
+      if (buffer.length === 0) {
+        res.status(502).json({ error: { message: 'The link returned an empty body.', code: 'EMPTY_BODY' }, resolved });
+        return;
+      }
+    }
+
+    const outcome = await transcribeAndStore(res.locals.rareUserId, buffer, `${resolved.service}-media`, {
+      isGuest: res.locals.rareIsGuest,
+      includeFrames: Boolean(req.body?.includeFrames),
+      title: title || resolved.label,
+    });
+
+    res.json({
+      success: true,
+      sourceUrl: url,
+      service: resolved.service,
+      path: outcome.path,
+      transcript: outcome.transcript,
+      transcriptionModel: outcome.result.model,
+      turns: outcome.result.turns,
+      speakers: outcome.result.speakers,
+      speakerLabelsDetected: outcome.result.speakerLabelsDetected,
+      durationSeconds: outcome.result.durationSeconds,
+      durationClock: formatClock(outcome.result.durationSeconds),
+      segmentsTranscribed: outcome.result.segmentsCompleted,
+      segmentsTotal: outcome.result.segments.length,
+      coverage: outcome.result.coverage,
+      warnings: [...resolved.warnings, ...outcome.result.warnings],
+      insights: outcome.insights,
+    });
+  } catch (error: any) {
+    const code = error?.code;
+    res.status(code === 'TRANSCRIPTION_PROVIDER_UNAVAILABLE' || code === 'FFMPEG_UNAVAILABLE' ? 503 : 502).json({
+      error: { message: error instanceof Error ? error.message : 'Transcription of the link failed.', ...(code ? { code } : {}) },
+      resolved,
+    });
+  }
+});
+
+// Inspect a media file before committing to transcription: duration, codecs,
+// and how many segments the job will become. Pure probe, no provider call.
+app.post('/api/documents/media-info', async (req, res) => {
+  const raw = String(req.body?.audioBase64 || req.body?.fileBase64 || '');
+  const dataUrl = raw.match(/^data:([^;]+);base64,(.+)$/s);
+  const base64 = dataUrl ? dataUrl[2] : raw;
+  if (!base64) {
+    res.status(400).json({ error: { message: 'Media data is required.' } });
+    return;
+  }
+  try {
+    const buffer = Buffer.from(base64, 'base64');
+    const probe = await probeMedia(buffer, String(req.body?.filename || 'input.mp4'));
+    if (!probe) {
+      res.status(422).json({
+        error: {
+          message: 'This file could not be read as audio or video.',
+          code: 'UNREADABLE_MEDIA',
+          nextStep: (await ffmpegAvailable()) ? 'Check that the file is a valid recording.' : 'ffmpeg is not installed on this server.',
+        },
+      });
+      return;
+    }
+    const segmentSeconds = Number(req.body?.segmentSeconds) || 600;
+    res.json({
+      ok: true,
+      bytes: buffer.length,
+      durationSeconds: probe.durationSeconds,
+      durationClock: formatClock(probe.durationSeconds),
+      audioCodec: probe.audioCodec,
+      videoCodec: probe.videoCodec,
+      container: probe.container,
+      channels: probe.channels,
+      sampleRate: probe.sampleRate,
+      hasAudio: probe.hasAudio,
+      hasVideo: probe.hasVideo,
+      estimatedSegments: probe.durationSeconds > 0 ? Math.ceil(probe.durationSeconds / segmentSeconds) : null,
+      segmentSeconds,
+    });
+  } catch (error) {
+    res.status(500).json({ error: { message: error instanceof Error ? error.message : 'Media probe failed.' } });
+  }
+});
+
+// Derive meeting structure from an already-saved transcript.
+app.post('/api/documents/transcript-insights', async (req, res) => {
+  try {
+    const document = await requireDocumentsService().read(res.locals.rareUserId, String(req.body?.path || ''));
+    if (!document) {
+      res.status(404).json({ error: { message: 'Transcript not found.' } });
+      return;
+    }
+    // Re-parse the stored transcript back into turns so insights come from the
+    // real timestamps rather than a fresh (and possibly different) reading.
+    const turnPattern = /^\[(\d{2}):(\d{2})(?::(\d{2}))?\s*[–-]\s*(\d{2}):(\d{2})(?::(\d{2}))?\]\s*([^:]+):\s*(.*)$/gm;
+    const turns: Array<{ index: number; speaker: string; startSeconds: number; endSeconds: number; startClock: string; endClock: string; text: string }> = [];
+    for (const match of document.content.matchAll(turnPattern)) {
+      const startH = match[3] !== undefined ? Number(match[1]) : 0;
+      const startM = match[3] !== undefined ? Number(match[2]) : Number(match[1]);
+      const startS = match[3] !== undefined ? Number(match[3]) : Number(match[2]);
+      const endH = match[6] !== undefined ? Number(match[4]) : 0;
+      const endM = match[6] !== undefined ? Number(match[5]) : Number(match[4]);
+      const endS = match[6] !== undefined ? Number(match[6]) : Number(match[5]);
+      turns.push({
+        index: turns.length,
+        speaker: match[7].trim(),
+        startSeconds: startH * 3600 + startM * 60 + startS,
+        endSeconds: endH * 3600 + endM * 60 + endS,
+        startClock: match[0].match(/^\[([^\]]+)/)?.[1].split('–')[0].trim() || '',
+        endClock: match[0].match(/^\[([^\]]+)/)?.[1].split('–')[1]?.trim() || '',
+        text: match[8].trim(),
+      });
+    }
+
+    if (turns.length === 0) {
+      res.status(422).json({
+        error: {
+          message: 'This document does not contain a timestamped transcript, so meeting structure cannot be derived from it.',
+          code: 'NOT_A_TRANSCRIPT',
+        },
+      });
+      return;
+    }
+
+    const insights = deriveInsights({
+      turns,
+      text: document.content,
+      durationSeconds: turns[turns.length - 1]?.endSeconds || 0,
+      speakerLabelsDetected: new Set(turns.map((turn) => turn.speaker)).size > 1,
+      speakers: [...new Set(turns.map((turn) => turn.speaker))],
+      segments: [],
+      segmentsCompleted: 0,
+      segmentsFailed: 0,
+      coverage: 1,
+      model: '',
+      warnings: [],
+      probe: null,
+    } as any);
+
+    res.json({ path: document.path, turnCount: turns.length, insights });
+  } catch (error) {
+    sendDocumentError(res, error, 'Transcript insights could not be derived.');
+  }
+});
+
+// Format conversion — real binary formats, not renamed text.
 app.post('/api/documents/convert', async (req, res) => {
   try {
-    const converted = await requireDocumentsService().convert(
-      res.locals.rareUserId,
-      String(req.body?.path || ''),
-      String(req.body?.targetFormat || ''),
-    );
-    res.json({ success: true, ...converted });
+    const document = await requireDocumentsService().read(res.locals.rareUserId, String(req.body?.path || ''));
+    if (!document) {
+      res.status(404).json({ error: { message: 'Document not found.' } });
+      return;
+    }
+    const targetFormat = String(req.body?.targetFormat || '').toLowerCase().replace(/^\\./, '');
+    if (!EXPORT_FORMATS.includes(targetFormat as any)) {
+      res.status(400).json({
+        error: {
+          message: `Conversion to .${targetFormat} is not supported.`,
+          nextStep: `Supported formats: ${EXPORT_FORMATS.join(', ')}.`,
+        },
+      });
+      return;
+    }
+
+    const exported = await exportDocument(document.content, targetFormat as any, {
+      title: document.title || document.path,
+      filename: document.path,
+    });
+
+    // Binary formats are saved as a derived document so they persist in the
+    // library; the bytes are also returned directly for immediate download.
+    // Only text formats can live in the library, so the derived path is only
+    // validated for those — a .docx target must not be rejected by the
+    // text-only path validator before it has even been produced.
+    let storedPath: string | undefined;
+    if (['txt', 'md', 'json', 'html', 'csv'].includes(targetFormat)) {
+      const derivedPath = normalizeDocumentPath(
+        document.path.replace(/\.[^/.]+$/, `-converted.${targetFormat}`),
+      );
+      const saved = await requireDocumentsService().save(res.locals.rareUserId, derivedPath, exported.buffer.toString('utf8'), {
+        isGuest: res.locals.rareIsGuest,
+        origin: 'conversion',
+        derivedFrom: document.path,
+      });
+      storedPath = saved.path;
+    }
+
+    res.json({
+      success: true,
+      originalPath: document.path,
+      convertedPath: storedPath,
+      format: targetFormat,
+      filename: exported.filename,
+      mimeType: exported.mimeType,
+      bytes: exported.buffer.length,
+      // Base64 so the client can save a genuine binary file.
+      base64: exported.buffer.toString('base64'),
+      note:
+        targetFormat === 'docx' || targetFormat === 'xlsx' || targetFormat === 'pdf'
+          ? 'This is a real binary file; download and open it in the matching application.'
+          : undefined,
+    });
   } catch (error) {
     sendDocumentError(res, error, 'Document conversion failed.');
+  }
+});
+
+// Download a document export as an actual file, with a correct content type.
+// Deliberately NOT under /api/documents/: the document reader owns that
+// wildcard, and Express matches in registration order, so a sibling path there
+// is swallowed before it ever runs.
+app.get('/api/export/document', async (req, res) => {
+  try {
+    const documentPath = String((req.query as any).path || '');
+    const document = await requireDocumentsService().read(res.locals.rareUserId, documentPath);
+    if (!document) {
+      res.status(404).json({ error: { message: 'Document not found.' } });
+      return;
+    }
+    const format = String((req.query as any).format || 'txt').toLowerCase() as any;
+    if (!EXPORT_FORMATS.includes(format)) {
+      res.status(400).json({ error: { message: `Unsupported export format: ${format}.` } });
+      return;
+    }
+    const exported = await exportDocument(document.content, format, {
+      title: document.title || document.path,
+      filename: document.path,
+    });
+    res.setHeader('Content-Type', exported.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${exported.filename}"`);
+    res.setHeader('Content-Length', String(exported.buffer.length));
+    res.end(exported.buffer);
+  } catch (error) {
+    sendDocumentError(res, error, 'The document could not be exported.');
+  }
+});
+
+// =============================================================================
+// Document intelligence — grounded Q&A, comparison, summarisation, extraction
+// =============================================================================
+
+/**
+ * The provider that composes answers. Deliberately excludes the offline
+ * rule-based engine: it cannot ground a citation, and a confidently-worded
+ * unsourced answer is exactly what this endpoint exists to prevent. When no
+ * real model is reachable the caller returns passages without a narrative.
+ */
+function requireGroundingProvider(): {
+  generate: (p: string, c?: string, o?: any) => Promise<{ reply: string; modelUsed: string }>;
+} {
+  return {
+    async generate(prompt, context, options) {
+      const active = await providerRegistry.getActiveProvider();
+      const type = active.info?.type;
+      if (type === 'offline_cognitive') {
+        throw new Error('No language model is reachable, so no grounded answer could be composed.');
+      }
+      const result = await active.provider.generate(prompt, context, options);
+      return { reply: result.reply, modelUsed: result.modelUsed };
+    },
+  };
+}
+
+/**
+ * Retrieve the passages that a question should be answered from.
+ * Search is owner-scoped by the per-owner index, so one account's documents can
+ * never appear in another's answer.
+ */
+async function retrievePassages(
+  ownerId: string,
+  question: string,
+  options: { documentPaths?: string[]; maxPassages?: number } = {},
+) {
+  const service = requireDocumentsService();
+  await service.ensureIndexed(ownerId);
+
+  const hits = searchIndexes.forOwner(ownerId).search(question, {
+    limit: (options.maxPassages ?? 10) * 3,
+  });
+
+  const filtered = options.documentPaths?.length
+    ? hits.filter((hit) => options.documentPaths!.includes(hit.documentId))
+    : hits;
+
+  const top = filtered.slice(0, options.maxPassages ?? 10);
+
+  // Titles and source URLs come from the stored record, not the index, so a
+  // renamed document still cites correctly.
+  const meta = new Map<string, { title: string; sourceUrl?: string }>();
+  for (const hit of top) {
+    if (meta.has(hit.documentId)) continue;
+    const record = await service.read(ownerId, hit.documentId);
+    meta.set(hit.documentId, {
+      title: record?.title || hit.title || hit.documentId,
+      ...(record?.sourceUrl ? { sourceUrl: record.sourceUrl } : {}),
+    });
+  }
+
+  return passagesFromHits(top, (documentId) => meta.get(documentId) || { title: documentId });
+}
+
+app.post('/api/documents/ask', async (req, res) => {
+  const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
+  if (!question) {
+    res.status(400).json({ error: { message: 'A question is required.' } });
+    return;
+  }
+  if (question.length > 4000) {
+    res.status(400).json({ error: { message: 'Questions must be at most 4,000 characters.' } });
+    return;
+  }
+
+  try {
+    const documentPaths = Array.isArray(req.body?.documentPaths)
+      ? req.body.documentPaths.filter((value: unknown) => typeof value === 'string')
+      : undefined;
+
+    const passages = await retrievePassages(res.locals.rareUserId, question, {
+      documentPaths,
+      maxPassages: Math.min(20, Math.max(1, Number(req.body?.maxPassages) || 10)),
+    });
+
+    const answer = await answerFromPassages(question, passages, requireGroundingProvider(), {
+      allowReasoning: Boolean(req.body?.allowReasoning),
+    });
+
+    res.json({
+      question,
+      ...answer,
+      // A short, unambiguous statement of what this answer rests on.
+      groundedIn: answer.sources.length === 0 ? 'nothing' : `${answer.sources.length} passage(s) from ${answer.documentsUsed.length} document(s)`,
+    });
+  } catch (error) {
+    console.error('[Documents] Grounded answer failed:', error);
+    res.status(502).json({
+      error: {
+        message: error instanceof Error ? error.message : 'The question could not be answered.',
+        nextStep: 'Retry, or check that the relevant document finished indexing.',
+      },
+    });
+  }
+});
+
+// Summarise an entire document hierarchically, section by section.
+app.post('/api/documents/summarize', async (req, res) => {
+  try {
+    const service = requireDocumentsService();
+    const document = await service.read(res.locals.rareUserId, String(req.body?.path || ''));
+    if (!document) {
+      res.status(404).json({ error: { message: 'Document not found.' } });
+      return;
+    }
+    const chunks = chunkContent({
+      ok: true,
+      text: document.content,
+      kind: (document.kind as any) || 'text',
+      label: document.label || 'Document',
+      family: 'text',
+      mimeType: 'text/plain',
+      identification: 'stored document',
+      method: document.method || 'stored',
+      ocr: Boolean(document.ocr),
+      metadata: {},
+      pages: document.pages,
+      warnings: [],
+      attempts: [],
+      byteLength: Buffer.byteLength(document.content, 'utf8'),
+      truncated: false,
+      durationMs: 0,
+    } as any);
+
+    const summary = await summariseHierarchically(chunks, requireGroundingProvider(), {
+      title: document.title || document.path,
+      maxSections: Math.min(80, Math.max(1, Number(req.body?.maxSections) || 60)),
+    });
+
+    res.json({
+      path: document.path,
+      title: document.title || document.path,
+      chunks: chunks.length,
+      ...summary,
+    });
+  } catch (error) {
+    sendDocumentError(res, error, 'The document could not be summarised.');
+  }
+});
+
+// Compare two documents: computed differences plus, when available, a narrative.
+app.post('/api/documents/compare', async (req, res) => {
+  const leftPath = String(req.body?.leftPath || req.body?.pathA || '');
+  const rightPath = String(req.body?.rightPath || req.body?.pathB || '');
+  if (!leftPath || !rightPath) {
+    res.status(400).json({ error: { message: 'Two document paths are required.' } });
+    return;
+  }
+  try {
+    const service = requireDocumentsService();
+    const left = await service.read(res.locals.rareUserId, leftPath);
+    const right = await service.read(res.locals.rareUserId, rightPath);
+    if (!left) {
+      res.status(404).json({ error: { message: `Left document not found: ${leftPath}` } });
+      return;
+    }
+    if (!right) {
+      res.status(404).json({ error: { message: `Right document not found: ${rightPath}` } });
+      return;
+    }
+
+    let provider: ReturnType<typeof requireGroundingProvider> | null = null;
+    try {
+      provider = requireGroundingProvider();
+      // Probe before committing, so a missing model yields the structural
+      // comparison instead of a failed request.
+      await providerRegistry.getActiveProvider();
+    } catch {
+      provider = null;
+    }
+
+    const comparison = await compareDocuments(
+      { path: left.path, title: left.title || left.path, text: left.content },
+      { path: right.path, title: right.title || right.path, text: right.content },
+      provider,
+    );
+
+    res.json({ ok: true, ...comparison });
+  } catch (error) {
+    sendDocumentError(res, error, 'The documents could not be compared.');
+  }
+});
+
+// Deterministic entity and action-item extraction from one document.
+app.post('/api/documents/extract', async (req, res) => {
+  try {
+    const document = await requireDocumentsService().read(res.locals.rareUserId, String(req.body?.path || ''));
+    if (!document) {
+      res.status(404).json({ error: { message: 'Document not found.' } });
+      return;
+    }
+    const text = req.body?.text === true ? document.content : document.content;
+    const entities = extractEntities(text);
+    res.json({
+      path: document.path,
+      title: document.title || document.path,
+      ...entities,
+      counts: {
+        dates: entities.dates.length,
+        figures: entities.figures.length,
+        emails: entities.emails.length,
+        names: entities.names.length,
+        actionItems: entities.actionItems.length,
+      },
+    });
+  } catch (error) {
+    sendDocumentError(res, error, 'Entities could not be extracted.');
+  }
+});
+
+// Import from a link, resolving cloud services properly before fetching.
+app.post('/api/documents/import-link', async (req, res) => {
+  const url = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+  if (!url) {
+    res.status(400).json({ error: { message: 'A URL is required.' } });
+    return;
+  }
+  const resolved = resolveLink(url);
+
+  if (resolved.blocker) {
+    res.status(422).json({
+      error: { message: resolved.blocker, code: 'LINK_UNRESOLVABLE' },
+      resolved,
+    });
+    return;
+  }
+
+  // Media links become transcripts, not empty documents.
+  if (resolved.media) {
+    res.status(422).json({
+      error: {
+        message: `${resolved.label} is media, so it is transcribed rather than imported as a document.`,
+        code: 'MEDIA_USE_TRANSCRIBE_LINK',
+        nextStep: 'POST the same URL to /api/documents/transcribe-link.',
+      },
+      resolved,
+    });
+    return;
+  }
+
+  try {
+    const outcome = await requireDocumentsService().importUrl(res.locals.rareUserId, resolved.fetchUrl || url, {
+      isGuest: res.locals.rareIsGuest,
+      requestedPath: typeof req.body?.path === 'string' ? req.body.path : undefined,
+    });
+
+    if (!outcome.ok) {
+      // A cloud service returning a sign-in page is the most common failure and
+      // deserves its own message rather than a generic extraction error.
+      const unauthorized = /401|403|sign in|login/i.test(outcome.error?.message || '');
+      res.status(unauthorized ? 403 : 422).json({
+        error: {
+          message: unauthorized
+            ? `${resolved.label} is not publicly accessible, so its contents could not be retrieved.`
+            : outcome.error?.message || 'The link could not be read.',
+          code: unauthorized ? 'SOURCE_NOT_PUBLIC' : outcome.error?.code,
+          nextStep: unauthorized
+            ? 'Change the file\'s sharing setting to "anyone with the link", or download it and upload the file directly.'
+            : outcome.error?.nextStep,
+        },
+        resolved,
+        kind: outcome.kind,
+        warnings: outcome.warnings,
+      });
+      return;
+    }
+
+    res.status(201).json({ ...outcome, ok: true, service: resolved.service, sourceUrl: url, resolved });
+  } catch (error) {
+    sendDocumentError(res, error, 'The link could not be imported.');
+  }
+});
+
+// Git-style archive inspection with explicit safety reporting.
+app.post('/api/documents/inspect-archive', async (req, res) => {
+  const raw = String(req.body?.fileBase64 || '');
+  const base64 = raw.replace(/^data:[^;]+;base64,/, '');
+  if (!base64) {
+    res.status(400).json({ error: { message: 'An archive file is required.' } });
+    return;
+  }
+  try {
+    const buffer = Buffer.from(base64, 'base64');
+    const AdmZip = (await import('adm-zip')).default;
+    const zip = new AdmZip(buffer);
+    const entries = zip.getEntries();
+
+    const MAX_ENTRIES = 2000;
+    let totalUncompressed = 0;
+    const unsafe: Array<{ name: string; reason: string }> = [];
+    const listing = entries.slice(0, MAX_ENTRIES).map((entry) => {
+      const name = entry.entryName;
+      const size = entry.header.size;
+      totalUncompressed += size;
+      let reason = '';
+      if (name.includes('..')) reason = 'path traversal';
+      else if (name.startsWith('/')) reason = 'absolute path';
+      else if (/\.(exe|dll|bat|cmd|sh|ps1|scr|vbs|js|jar|msi)$/i.test(name)) reason = 'executable';
+      if (reason) unsafe.push({ name, reason });
+      return {
+        name,
+        size,
+        compressedSize: entry.header.compressedSize,
+        directory: entry.isDirectory,
+        unsafe: Boolean(reason),
+        ...(reason ? { reason } : {}),
+      };
+    });
+
+    // Decompression-bomb guard: refuse to claim safety when the expansion
+    // ratio or absolute size is implausible.
+    const ratio = buffer.length > 0 ? totalUncompressed / buffer.length : 0;
+    const warnings: string[] = [];
+    if (ratio > 100 && totalUncompressed > 10 * 1024 * 1024) {
+      warnings.push(
+        `Expansion ratio is ${ratio.toFixed(0)}x (${(totalUncompressed / 1024 / 1024).toFixed(1)} MB from ${(buffer.length / 1024).toFixed(0)} KB) — this looks like a decompression bomb.`,
+      );
+    }
+    if (unsafe.length > 0) {
+      warnings.push(`${unsafe.length} entr(ies) have unsafe names or executable extensions and were not extracted.`);
+    }
+    if (entries.length > MAX_ENTRIES) {
+      warnings.push(`Archive has ${entries.length} entries; only the first ${MAX_ENTRIES} were listed.`);
+    }
+
+    res.json({
+      ok: true,
+      entryCount: entries.length,
+      totalUncompressedBytes: totalUncompressed,
+      compressionRatio: Number(ratio.toFixed(2)),
+      entries: listing,
+      unsafeEntries: unsafe.slice(0, 200),
+      // This never extracts to disk, so no archive content can escape the sandbox.
+      extracted: false,
+      warnings,
+    });
+  } catch (error) {
+    res.status(422).json({
+      error: {
+        message: error instanceof Error ? error.message : 'The archive could not be read.',
+        code: 'ARCHIVE_UNREADABLE',
+      },
+    });
   }
 });
 
@@ -5179,19 +6033,28 @@ async function startServer() {
   let vite: import('vite').ViteDevServer | undefined;
 
   if (!isProduction) {
-    const { createServer: createViteServer } = await import('vite');
-    vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-        host: '0.0.0.0',
-        port: PORT,
-        hmr: {
-          server: httpServer,
+    // RARE_SKIP_DEV_BUNDLER lets the API be exercised on its own, without the
+    // Vite dev server. That matters in constrained environments where the
+    // dependency optimizer alone can exceed the container's memory budget and
+    // take the whole process down mid-test; it also keeps API tests from
+    // depending on frontend bundling. Never set in a normal deployment.
+    if (process.env.RARE_SKIP_DEV_BUNDLER === 'true') {
+      console.log('[RARE] RARE_SKIP_DEV_BUNDLER=true — serving API only, no SPA middleware.');
+    } else {
+      const { createServer: createViteServer } = await import('vite');
+      vite = await createViteServer({
+        server: {
+          middlewareMode: true,
+          host: '0.0.0.0',
+          port: PORT,
+          hmr: {
+            server: httpServer,
+          },
         },
-      },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    }
   } else {
     // The SPA must be served even when the API half of this process failed to
     // initialise. Otherwise every route 404s ("Cannot GET /") and the whole

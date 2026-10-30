@@ -29,6 +29,8 @@ import {
   CheckCircle2,
   RefreshCw,
   Repeat,
+  ScanLine,
+  GitCompare,
 } from 'lucide-react';
 
 interface DocumentSummary {
@@ -79,6 +81,61 @@ interface CapabilityReport {
   extractors?: Array<{ format: string; available: boolean; method?: string; note?: string }>;
   transcription?: { available: boolean; provider?: string; note?: string };
   browserRendering?: { available: boolean; note?: string };
+  speech?: { available: boolean; selected: string | null; statement: string };
+  media?: { decoding: boolean; formats: string[] };
+  exportFormats?: string[];
+}
+
+interface CitationPayload {
+  marker: number;
+  documentTitle: string;
+  page?: number;
+  section?: string;
+  quote: string;
+}
+
+interface GroundedAnswerPayload {
+  question: string;
+  answer: string;
+  citations: CitationPayload[];
+  explicitClaims: string[];
+  derivedClaims: string[];
+  documentsUsed: string[];
+  noRelevantContent: boolean;
+  warnings: string[];
+  groundedIn: string;
+  model: string;
+}
+
+interface SummaryPayload {
+  path: string;
+  overview: string;
+  sections: Array<{ index: number; heading?: string; page?: number; summary: string; modelSummarised: boolean }>;
+  totalChars: number;
+  coveredChars: number;
+  truncated: boolean;
+  warnings: string[];
+}
+
+interface EntitiesPayload {
+  path: string;
+  dates: string[];
+  figures: string[];
+  emails: string[];
+  names: string[];
+  actionItems: Array<{ text: string; clock?: string }>;
+  counts: Record<string, number>;
+}
+
+interface ComparePayload {
+  left: { title: string; chars: number };
+  right: { title: string; chars: number };
+  onlyInLeft: string[];
+  onlyInRight: string[];
+  shared: string[];
+  numericConflicts: Array<{ topic: string; left: string; right: string }>;
+  narrative?: string;
+  warnings: string[];
 }
 
 interface DocumentsWorkspaceViewProps {
@@ -144,6 +201,25 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
 
   // What this deployment can actually read.
   const [capabilities, setCapabilities] = useState<CapabilityReport | null>(null);
+
+  // Document intelligence: grounded Q&A over the open document, plus a summary
+  // and entity extraction. Each result carries its own provenance so the panel
+  // can show what a claim rests on instead of presenting a bare answer.
+  const [askQuestion, setAskQuestion] = useState('');
+  const [askBusy, setAskBusy] = useState(false);
+  const [askResult, setAskResult] = useState<GroundedAnswerPayload | null>(null);
+  const [askError, setAskError] = useState('');
+  const [summaryResult, setSummaryResult] = useState<SummaryPayload | null>(null);
+  const [summaryBusy, setSummaryBusy] = useState(false);
+  const [entitiesResult, setEntitiesResult] = useState<EntitiesPayload | null>(null);
+  const [entitiesBusy, setEntitiesBusy] = useState(false);
+  // Which comparison document to diff the open one against.
+  const [comparePath, setComparePath] = useState('');
+  const [compareResult, setCompareResult] = useState<ComparePayload | null>(null);
+  const [compareBusy, setCompareBusy] = useState(false);
+  // Export format chosen in the toolbar.
+  const [exportFormat, setExportFormat] = useState('pdf');
+  const [exportBusy, setExportBusy] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
@@ -222,6 +298,149 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
       }
     }, 300);
   }, []);
+
+  /**
+   * Ask a question about the open document.
+   *
+   * The response is rendered with its provenance intact: an answer whose claims
+   * could not be traced back to a passage is shown separately from the passages
+   * themselves, so the reader can always tell what the document said from what
+   * the model concluded.
+   */
+  const askDocument = useCallback(async () => {
+    const question = askQuestion.trim();
+    if (!question || !activePath) return;
+    setAskBusy(true);
+    setAskError('');
+    setAskResult(null);
+    try {
+      const response = await apiFetch('/api/documents/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, documentPaths: [activePath] }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      setAskResult((await response.json()) as GroundedAnswerPayload);
+    } catch (err) {
+      setAskError(err instanceof Error ? err.message : 'The question could not be answered.');
+    } finally {
+      setAskBusy(false);
+    }
+  }, [askQuestion, activePath]);
+
+  /** Summarise the whole document, section by section. */
+  const summarizeDocument = useCallback(async () => {
+    if (!activePath) return;
+    setSummaryBusy(true);
+    setError('');
+    setSummaryResult(null);
+    try {
+      const response = await apiFetch('/api/documents/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: activePath }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      setSummaryResult((await response.json()) as SummaryPayload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The document could not be summarised.');
+    } finally {
+      setSummaryBusy(false);
+    }
+  }, [activePath]);
+
+  /** Pull out dates, figures, contacts and action items deterministically. */
+  const extractFromDocument = useCallback(async () => {
+    if (!activePath) return;
+    setEntitiesBusy(true);
+    setError('');
+    setEntitiesResult(null);
+    try {
+      const response = await apiFetch('/api/documents/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: activePath }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      setEntitiesResult((await response.json()) as EntitiesPayload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Entities could not be extracted.');
+    } finally {
+      setEntitiesBusy(false);
+    }
+  }, [activePath]);
+
+  /** Compare the open document against another one in the library. */
+  const compareWith = useCallback(async () => {
+    if (!activePath || !comparePath) return;
+    setCompareBusy(true);
+    setError('');
+    setCompareResult(null);
+    try {
+      const response = await apiFetch('/api/documents/compare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leftPath: activePath, rightPath: comparePath }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      setCompareResult((await response.json()) as ComparePayload);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The documents could not be compared.');
+    } finally {
+      setCompareBusy(false);
+    }
+  }, [activePath, comparePath]);
+
+  /**
+   * Export the open document to a real file.
+   *
+   * Binary formats arrive as base64 over JSON and are turned into a genuine
+   * download here; the server has already produced the real bytes, so what the
+   * user saves is a valid .docx/.xlsx/.pdf rather than renamed text.
+   */
+  const exportDocument = useCallback(async () => {
+    if (!activePath) return;
+    setExportBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await apiFetch('/api/documents/convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: activePath, targetFormat: exportFormat }),
+      });
+      if (!response.ok) throw new Error(await readErrorMessage(response));
+      const data = (await response.json()) as {
+        base64: string;
+        filename: string;
+        mimeType: string;
+        bytes: number;
+        convertedPath?: string;
+      };
+
+      const binary = atob(data.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+      const blob = new Blob([bytes], { type: data.mimeType });
+      const href = URL.createObjectURL(blob);
+      const link = window.document.createElement('a');
+      link.href = href;
+      link.download = data.filename;
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(href);
+
+      setNotice(
+        `Exported ${data.filename} (${formatBytes(data.bytes)})${data.convertedPath ? ` · also saved as ${data.convertedPath}` : ''}`,
+      );
+      if (data.convertedPath) void loadList();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The document could not be exported.');
+    } finally {
+      setExportBusy(false);
+    }
+  }, [activePath, exportFormat, loadList]);
 
   const renameDocument = async () => {
     if (!activePath) return;
@@ -897,6 +1116,245 @@ export function DocumentsWorkspaceView({ t, onNavigate }: DocumentsWorkspaceView
             )}
           </div>
         </div>
+
+        {/* Document intelligence — ask, summarise, extract, compare, export */}
+        {activePath && (
+          <div className={`border-b ${t.cardBorder} ${t.cardSub} px-4 py-2 space-y-2`}>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className={`text-[10px] uppercase font-semibold ${t.textDim} mr-1`}>Intelligence</span>
+              <button
+                onClick={() => void summarizeDocument()}
+                disabled={summaryBusy}
+                className={`px-2 py-1 rounded-lg ${t.card} border ${t.cardBorder} text-[10px] font-medium disabled:opacity-40 flex items-center gap-1`}
+              >
+                {summaryBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                Summarise
+              </button>
+              <button
+                onClick={() => void extractFromDocument()}
+                disabled={entitiesBusy}
+                className={`px-2 py-1 rounded-lg ${t.card} border ${t.cardBorder} text-[10px] font-medium disabled:opacity-40 flex items-center gap-1`}
+              >
+                {entitiesBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <ScanLine className="w-3 h-3" />}
+                Extract facts
+              </button>
+
+              {/* Export produces real bytes in the chosen format. */}
+              <span className="inline-flex items-center gap-1">
+                <select
+                  value={exportFormat}
+                  onChange={(event) => setExportFormat(event.target.value)}
+                  className={`px-1.5 py-1 rounded-lg ${t.card} border ${t.cardBorder} text-[10px]`}
+                >
+                  {(capabilities?.exportFormats || ['pdf', 'docx', 'xlsx', 'md', 'txt', 'html', 'json', 'csv']).map((format) => (
+                    <option key={format} value={format}>
+                      {format.toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => void exportDocument()}
+                  disabled={exportBusy}
+                  className={`px-2 py-1 rounded-lg ${t.card} border ${t.cardBorder} text-[10px] font-medium disabled:opacity-40 flex items-center gap-1`}
+                >
+                  {exportBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                  Export
+                </button>
+              </span>
+
+              {/* Compare against any other document in the library. */}
+              <span className="inline-flex items-center gap-1">
+                <select
+                  value={comparePath}
+                  onChange={(event) => setComparePath(event.target.value)}
+                  className={`px-1.5 py-1 rounded-lg ${t.card} border ${t.cardBorder} text-[10px] max-w-[9rem]`}
+                >
+                  <option value="">Compare with…</option>
+                  {documents
+                    .filter((document) => document.path !== activePath)
+                    .map((document) => (
+                      <option key={document.path} value={document.path}>
+                        {document.path}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  onClick={() => void compareWith()}
+                  disabled={compareBusy || !comparePath}
+                  className={`px-2 py-1 rounded-lg ${t.card} border ${t.cardBorder} text-[10px] font-medium disabled:opacity-40 flex items-center gap-1`}
+                >
+                  {compareBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <GitCompare className="w-3 h-3" />}
+                  Compare
+                </button>
+              </span>
+            </div>
+
+            {/* Grounded question answering over this document. */}
+            <div className="flex items-center gap-1.5">
+              <input
+                value={askQuestion}
+                onChange={(event) => setAskQuestion(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    void askDocument();
+                  }
+                }}
+                placeholder="Ask this document a question…"
+                className={`flex-1 px-2 py-1 rounded-lg ${t.card} border ${t.cardBorder} text-[11px] focus:outline-none`}
+              />
+              <button
+                onClick={() => void askDocument()}
+                disabled={askBusy || !askQuestion.trim()}
+                className={`px-2.5 py-1 rounded-lg ${t.accentBg} text-white text-[10px] font-medium disabled:opacity-40`}
+              >
+                {askBusy ? 'Asking…' : 'Ask'}
+              </button>
+            </div>
+
+            {askError && (
+              <div className="text-[10px] text-amber-300 flex items-start gap-1.5">
+                <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
+                <span>{askError}</span>
+              </div>
+            )}
+
+            {askResult && (
+              <div className={`rounded-lg ${t.card} border ${t.cardBorder} p-2 space-y-1.5 max-h-72 overflow-y-auto`}>
+                <div className={`text-[10px] ${t.textDim}`}>
+                  Grounded in {askResult.groundedIn}
+                  {askResult.model ? ` · ${askResult.model}` : ''}
+                </div>
+
+                {askResult.noRelevantContent ? (
+                  <div className="text-[11px] text-amber-300">
+                    Nothing in this document matched that question, so no answer was invented.
+                  </div>
+                ) : askResult.answer ? (
+                  <div className={`text-[11px] whitespace-pre-wrap ${t.textPrimary}`}>{askResult.answer}</div>
+                ) : (
+                  <div className="text-[11px] text-amber-300">
+                    No model was available to compose an answer. The matching passages are shown below so
+                    you can read them directly.
+                  </div>
+                )}
+
+                {askResult.citations.length > 0 && (
+                  <div className="space-y-1 pt-1 border-t border-white/5">
+                    <div className={`text-[10px] uppercase font-semibold ${t.textDim}`}>Sources</div>
+                    {askResult.citations.map((citation) => (
+                      <div key={citation.marker} className="text-[10px] leading-snug">
+                        <span className={`font-mono ${t.textMuted}`}>
+                          [{citation.marker}] {citation.documentTitle}
+                          {citation.page ? ` · p.${citation.page}` : ''}
+                          {citation.section ? ` · ${citation.section}` : ''}
+                        </span>
+                        <div className={`${t.textMuted} italic line-clamp-3`}>&ldquo;{citation.quote.slice(0, 240)}&rdquo;</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Claims that could not be traced to a passage are labelled,
+                    not hidden — the distinction is the whole point. */}
+                {askResult.derivedClaims.length > 0 && (
+                  <div className="pt-1 border-t border-white/5">
+                    <div className="text-[10px] uppercase font-semibold text-amber-300">
+                      Reasoning, not document content
+                    </div>
+                    {askResult.derivedClaims.map((claim, index) => (
+                      <div key={index} className="text-[10px] text-amber-200/90">
+                        · {claim}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {askResult.warnings.map((warning, index) => (
+                  <div key={index} className="text-[10px] text-amber-300/80">
+                    {warning}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {summaryResult && (
+              <div className={`rounded-lg ${t.card} border ${t.cardBorder} p-2 space-y-1 max-h-56 overflow-y-auto`}>
+                <div className={`text-[10px] ${t.textDim}`}>
+                  {summaryResult.sections.length} section(s) · covered{' '}
+                  {Math.round((summaryResult.coveredChars / Math.max(1, summaryResult.totalChars)) * 100)}% of{' '}
+                  {formatBytes(summaryResult.totalChars)}
+                  {summaryResult.truncated ? ' · truncated' : ''}
+                </div>
+                <div className={`text-[11px] whitespace-pre-wrap ${t.textPrimary}`}>{summaryResult.overview}</div>
+                {summaryResult.warnings.map((warning, index) => (
+                  <div key={index} className="text-[10px] text-amber-300/80">
+                    {warning}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {entitiesResult && (
+              <div className={`rounded-lg ${t.card} border ${t.cardBorder} p-2 space-y-1 max-h-48 overflow-y-auto`}>
+                <div className={`text-[10px] ${t.textDim}`}>
+                  {entitiesResult.counts.dates} dates · {entitiesResult.counts.figures} figures ·{' '}
+                  {entitiesResult.counts.names} names · {entitiesResult.counts.actionItems} action items
+                </div>
+                {entitiesResult.figures.length > 0 && (
+                  <div className="text-[10px]">
+                    <span className={`${t.textDim}`}>Figures: </span>
+                    <span className={t.textMuted}>{entitiesResult.figures.slice(0, 20).join(', ')}</span>
+                  </div>
+                )}
+                {entitiesResult.dates.length > 0 && (
+                  <div className="text-[10px]">
+                    <span className={`${t.textDim}`}>Dates: </span>
+                    <span className={t.textMuted}>{entitiesResult.dates.slice(0, 20).join(', ')}</span>
+                  </div>
+                )}
+                {entitiesResult.actionItems.slice(0, 8).map((item, index) => (
+                  <div key={index} className={`text-[10px] ${t.textMuted}`}>
+                    · {item.text.slice(0, 140)}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {compareResult && (
+              <div className={`rounded-lg ${t.card} border ${t.cardBorder} p-2 space-y-1 max-h-64 overflow-y-auto`}>
+                <div className={`text-[10px] ${t.textDim}`}>
+                  {compareResult.shared.length} shared · {compareResult.onlyInLeft.length} only in this ·{' '}
+                  {compareResult.onlyInRight.length} only in the other · {compareResult.numericConflicts.length}{' '}
+                  conflicting figure(s)
+                </div>
+                {compareResult.narrative && (
+                  <div className={`text-[11px] whitespace-pre-wrap ${t.textPrimary}`}>{compareResult.narrative}</div>
+                )}
+                {compareResult.numericConflicts.map((conflict, index) => (
+                  <div key={index} className="text-[10px] text-amber-300">
+                    {conflict.topic}: this says {conflict.left}, other says {conflict.right}
+                  </div>
+                ))}
+                {compareResult.onlyInLeft.slice(0, 5).map((sentence, index) => (
+                  <div key={`l${index}`} className={`text-[10px] ${t.textMuted}`}>
+                    · only here: {sentence.slice(0, 140)}
+                  </div>
+                ))}
+                {compareResult.onlyInRight.slice(0, 5).map((sentence, index) => (
+                  <div key={`r${index}`} className={`text-[10px] ${t.textMuted}`}>
+                    · only there: {sentence.slice(0, 140)}
+                  </div>
+                ))}
+                {compareResult.warnings.map((warning, index) => (
+                  <div key={index} className="text-[10px] text-amber-300/80">
+                    {warning}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Version history */}
         {showHistory && history.length > 0 && (
