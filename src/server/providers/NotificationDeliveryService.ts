@@ -103,6 +103,120 @@ export class NotificationDeliveryService {
   }
 
   /**
+   * Dispatch a developer-access request to the application owner.
+   *
+   * Replaces "record the request and claim it was forwarded". The message
+   * carries everything the owner needs to decide, including the request id and
+   * whether the requester is already an authorised developer. The master
+   * passkey is never included — the owner communicates it separately.
+   */
+  public async sendOwnerAccessRequest(input: {
+    ownerEmail: string;
+    requestId: string;
+    requesterName: string;
+    requesterEmail: string;
+    requestedAt: string;
+    reason: string;
+    alreadyDeveloper: boolean;
+  }): Promise<MessageDispatchResult> {
+    const apiKey = process.env.EMAIL_PROVIDER_API_KEY?.trim();
+    const fromAddress = process.env.EMAIL_FROM?.trim() || 'no-reply@rare-erudite.com';
+
+    if (!apiKey) {
+      return {
+        success: false,
+        channel: 'email',
+        destination: input.ownerEmail,
+        error:
+          'Email delivery provider is not configured. Set the server-side environment variable EMAIL_PROVIDER_API_KEY (Resend "re_…" or SendGrid key) and EMAIL_FROM to a verified sender.',
+      };
+    }
+
+    if (!input.ownerEmail) {
+      return {
+        success: false,
+        channel: 'email',
+        destination: '',
+        error: 'No owner address is configured. Set RARE_OWNER_EMAIL.',
+      };
+    }
+
+    const subject = `RARE developer access request ${input.requestId} — ${input.requesterName}`;
+    const lines = [
+      'A developer-access request was submitted from inside RARE.',
+      '',
+      `Request ID:        ${input.requestId}`,
+      `Requesting user:   ${input.requesterName}`,
+      `Verified email:    ${input.requesterEmail}`,
+      `Requested at:      ${input.requestedAt}`,
+      `Already a developer: ${input.alreadyDeveloper ? 'yes' : 'no'}`,
+      '',
+      'Reason given:',
+      input.reason || '(none supplied)',
+      '',
+      'RARE never emails the master passkey. If you approve, communicate the',
+      'passkey to this person separately through a channel you trust.',
+    ];
+    const text = lines.join('\n');
+
+    try {
+      const isResend = apiKey.startsWith('re_');
+      const endpoint = isResend
+        ? 'https://api.resend.com/emails'
+        : 'https://api.sendgrid.com/v3/mail/send';
+
+      const body = isResend
+        ? JSON.stringify({
+            from: fromAddress,
+            to: [input.ownerEmail],
+            reply_to: input.requesterEmail,
+            subject,
+            text,
+          })
+        : JSON.stringify({
+            personalizations: [{ to: [{ email: input.ownerEmail }] }],
+            from: { email: fromAddress, name: 'RARE Developer Access' },
+            reply_to: { email: input.requesterEmail },
+            subject,
+            content: [{ type: 'text/plain', value: text }],
+          });
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        return {
+          success: false,
+          channel: 'email',
+          destination: input.ownerEmail,
+          error: `Email provider rejected the access-request email (HTTP ${response.status}): ${errorText.slice(0, 300)}`,
+        };
+      }
+
+      return {
+        success: true,
+        channel: 'email',
+        destination: input.ownerEmail,
+        providerId: isResend ? 'resend' : 'sendgrid',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        channel: 'email',
+        destination: input.ownerEmail,
+        error: `Access-request email dispatch failed: ${err?.message || String(err)}`,
+      };
+    }
+  }
+
+  /**
    * Dispatch verification code via SMS.
    */
   public async sendSmsVerification(

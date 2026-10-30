@@ -41,6 +41,9 @@ import { runUpdateContractTests } from './test_update_contract.js';
 import { runStartupReadinessTests } from './test_startup_readiness.js';
 import { runBrowserE2ETests } from './test_browser_e2e.js';
 
+import { runStage1ChatTests } from './test_stage1_chat.js';
+import { runStage1ChatHttpTests } from './test_stage1_chat_http.js';
+
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -126,6 +129,15 @@ async function main() {
     await runUpdateContractTests();
     console.log();
     await runServerlessFrontendAvailabilityTests();
+    console.log();
+    // Stage 1 (Chat) pure unit suites: memory extraction, continuation
+    // ranking, task registry ownership, owner identity.
+    await runStage1ChatTests();
+    console.log();
+    // Stage 1 (Chat) contract: memory capture, continuation ranking, durable
+    // owner-scoped tasks. Runs early while the server is fresh.
+    await runStage1ChatHttpTests();
+    console.log();
     await runOrchestratorTests();
     console.log();
     // Real Chromium against the live server: the UI actually renders, routes

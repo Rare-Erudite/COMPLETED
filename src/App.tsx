@@ -195,6 +195,14 @@ interface ChatMessage {
   content: string;
   timestamp: string;
   thought?: string;
+  /** Which model layer actually produced this reply, as reported by the server. */
+  provider?: {
+    providerId?: string;
+    providerName?: string;
+    modelUsed?: string;
+    providerType?: string;
+    usedRealModel?: boolean;
+  };
   actionDetected?: {
     type: 'project_build' | 'document_work' | 'schedule_create' | 'image_create' | 'memory_stored';
     data?: any;
@@ -3522,6 +3530,10 @@ function CleanChatWorkspaceView({
           ...data.assistant_message,
           ...(data.mode === 'offline_local' ? { content: `Offline local mode: ${data.assistant_message.content}` } : {}),
           actionDetected: data.actionDetected,
+          // Provenance from the server: which brain actually answered. Rendered
+          // under the message so the chat never implies RARE's own model replied
+          // when an external provider did.
+          provider: data.provider,
         };
 
         setMessages((prev) => {
@@ -3550,6 +3562,16 @@ function CleanChatWorkspaceView({
           setConvTitle(data.conversationTitle);
           setTitleInput(data.conversationTitle);
           if (onRefreshConversations) onRefreshConversations();
+        }
+
+        // Honest reporting of what the turn produced. A memory count is shown
+        // only when something was really stored, and a continuation is
+        // announced with the conversation it resumed.
+        if (typeof data.memories_added === 'number' && data.memories_added > 0) {
+          showToast(`Remembered ${data.memories_added} detail${data.memories_added === 1 ? '' : 's'} from this message.`);
+        }
+        if (data.continuation?.conversationId) {
+          showToast(`Resumed context from "${data.continuation.title}".`);
         }
       } else {
         setMessages((prev) => prev.filter((message) => message.id !== tempUserMsg.id));
@@ -3741,6 +3763,20 @@ function CleanChatWorkspaceView({
                   title={isUser ? 'Long press or right click for message options' : undefined}
                 >
                   {msg.content}
+                </div>
+              )}
+
+              {/* Model provenance: who actually answered. Only shown for
+                  assistant turns that carry a real server report, so the chat
+                  never implies RARE's own model replied when an external
+                  provider did (or that nothing is configured when it is). */}
+              {!isUser && msg.provider?.providerId && msg.provider.providerId !== 'unknown' && (
+                <div className="mt-1 flex items-center space-x-1 text-[10px] text-slate-500">
+                  <Cpu className="w-2.5 h-2.5" />
+                  <span>
+                    Answered by {msg.provider.modelUsed || msg.provider.providerId}
+                    {msg.provider.usedRealModel === false ? ' (heuristic fallback, not a language model)' : ''}
+                  </span>
                 </div>
               )}
 

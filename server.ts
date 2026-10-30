@@ -52,6 +52,15 @@ import { engine } from './src/engine/engine.ts';
 import { googleTtsProvider } from './src/server/providers/GoogleTtsProvider.js';
 import { notificationDeliveryService } from './src/server/providers/NotificationDeliveryService.js';
 import { oAuthVerificationService } from './src/server/providers/OAuthVerificationService.js';
+import { extractMemories, mergeMemories } from './src/server/chat/MemoryExtractor.js';
+import {
+  buildConversationContext,
+  buildResumeBrief,
+  findRelevantConversations,
+  isContinuationRequest,
+} from './src/server/chat/ConversationRetrieval.js';
+import { taskRegistry, type RareTask } from './src/server/chat/TaskRegistry.js';
+import { getOwnerEmail, isOwnerAccount, ownerContactAddress } from './src/server/chat/OwnerIdentity.js';
 
 const app = express();
 const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
@@ -229,7 +238,7 @@ async function consumeGuestQuota(ownerId: string, action: string, limit: number)
   return allowed;
 }
 
-// Access requests dispatched to owner (rarelivescore@gmail.com)
+// Access requests dispatched to the configured owner (RARE_OWNER_EMAIL).
 interface DevAccessRequest {
   id: string;
   requesterName: string;
@@ -274,13 +283,17 @@ function toPublicAuthUser(user: {
     createdAt: user.createdAt,
   };
 }
+// The owner identity is configuration, not source: `RARE_OWNER_EMAIL` wins and
+// the documented default is used when it is unset. The seed account exists so a
+// fresh deployment has an owner row to promote; it is never used to *decide*
+// ownership — that always comes from a validated session (see isOwnerAccount).
 let registeredUsers: Map<string, AppUser> = new Map([
   [
-    'rarelivescore@gmail.com',
+    getOwnerEmail(),
     {
       id: 'usr_owner_1',
       name: 'RARE Core Owner',
-      email: 'rarelivescore@gmail.com',
+      email: getOwnerEmail(),
       provider: 'google',
       role: 'developer',
       createdAt: new Date().toISOString(),
@@ -1084,7 +1097,29 @@ async function getDynamicIntelligenceStatus() {
   };
 }
 
-// Helper: Intelligent reply generator driven by Unified Provider Registry & Memory Store
+/**
+ * What the model layer actually answered with. Returned all the way to the
+ * client so the UI can report the real provider and model (Part D §1: "Report
+ * the actual provider and model used"), instead of the app implying its own
+ * intelligence answered when an external model did.
+ */
+export interface ReplyProvenance {
+  providerId: string;
+  providerName: string;
+  modelUsed?: string;
+  providerType?: string;
+  /** True only when the reply came from a genuine language model. */
+  usedRealModel: boolean;
+}
+
+/**
+ * Helper: Intelligent reply generator driven by Unified Provider Registry &
+ * Memory Store.
+ *
+ * Context is now assembled by `buildConversationContext`, which keeps the
+ * opening of a long conversation and any message relevant to the current
+ * question — the previous `slice(-20)` lost both.
+ */
 async function generateAssistantReply(
   prompt: string,
   thinkHarder: boolean,
@@ -1092,10 +1127,12 @@ async function generateAssistantReply(
   persona?: string,
   recentMessages?: ChatMessage[],
   isVoiceCall?: boolean,
-  ownerId?: string
+  ownerId?: string,
+  resumeContext?: string
 ): Promise<{
   reply: string;
   thought?: string;
+  provenance: ReplyProvenance;
   actionDetected?: {
     type: 'project_build' | 'document_work' | 'schedule_create' | 'image_create' | 'memory_stored';
     data?: any;
@@ -1111,13 +1148,35 @@ async function generateAssistantReply(
       console.error('[Memory] Could not load authenticated user memory context:', error);
     }
   }
-const allMessages = recentMessages || [];
-  const context = prepareConversationContext(prompt, allMessages, userMemories);
-  const combinedContext = [context.memoryContext ? `Relevant User Memory:\n${context.memoryContext}` : '']
-    .filter(Boolean)
-    .join('\n\n');
 
-  // Use ProviderRegistry (prioritizes local neural -> Coprocessor -> Standalone Offline Cognitive Core)
+  const allMessages = recentMessages || [];
+  const historyWindow = buildConversationContext(allMessages as any, prompt);
+
+  // Relevant memory for this prompt, using the shared term-overlap rule so the
+  // in-context memories and the memory panel agree on what "relevant" means.
+  const stopWords = new Set(['about', 'after', 'again', 'before', 'being', 'could', 'should', 'their', 'there', 'these', 'those', 'think', 'would', 'where', 'which', 'while', 'what', 'when', 'with', 'from', 'have', 'does', 'that', 'this', 'your', 'please']);
+  const promptTerms = new Set(
+    (prompt.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) || []).filter((term) => !stopWords.has(term)),
+  );
+  const relevantMemories = userMemories
+    .filter((memory) => {
+      const searchable = `${memory?.text || ''} ${(memory?.tags || []).join(' ')} ${memory?.kind || ''}`.toLowerCase();
+      return [...promptTerms].some((term) => searchable.includes(term));
+    })
+    .slice(0, 8);
+
+  const contextBlocks: string[] = [];
+  if (resumeContext) contextBlocks.push(resumeContext);
+  if (relevantMemories.length) {
+    contextBlocks.push(
+      ['Relevant User Memory:', ...relevantMemories.map((memory) => `• [${String(memory?.kind || 'memory').slice(0, 40)}] ${String(memory?.text || '').slice(0, 500)}`)].join('\n'),
+    );
+  }
+  const combinedContext = contextBlocks.join('\n\n');
+
+  // A provider exception or an unreachable model must surface as an honest 503:
+  // 'generateOnline' never returns the rule-based engine, so nothing here can
+  // present a heuristic as a model response.
   const result = await providerRegistry.generateOnline(prompt, combinedContext, {
     temperature: thinkHarder ? 0.2 : 0.7,
     activeConversationId: activeConvId,
@@ -1125,14 +1184,9 @@ const allMessages = recentMessages || [];
     persona,
     isVoiceCall: Boolean(isVoiceCall),
     systemPrompt: buildRareSystemPrompt(appSettings.assistantName || 'RARE', Boolean(isVoiceCall)),
-    conversationHistory: context.history,
-    // Reconciled from main: providers now read `history`/`memoryContext` as
-    // well as the shared prompt contract, so both context shapes are supplied.
-    history: context.history,
-    memoryContext: userMemories
-      .slice(0, 3)
-      .map((m: any) => String(m?.text || ''))
-      .filter(Boolean),
+    conversationHistory: historyWindow,
+    history: historyWindow,
+    memoryContext: relevantMemories.map((memory) => String(memory?.text || '')).filter(Boolean),
   } as any);
 
   // ProviderRegistry retains an offline engine for intentional local workflows,
@@ -1148,9 +1202,22 @@ const allMessages = recentMessages || [];
     await persistentStorage.updateOwnedState<ScheduledTask[]>(ownerId, 'schedules', [], (items) => [task, ...items].slice(0, 100));
   }
 
+  const lastUsed = providerRegistry.getLastUsed();
+  const provenance: ReplyProvenance = {
+    providerId: lastUsed?.id || 'unknown',
+    providerName: lastUsed?.id || 'unknown',
+    modelUsed: (result as any).modelUsed,
+    providerType: result.providerType,
+    // generateOnline never returns the rule-based engine (guarded above), so a
+    // last-used record flagged as an offline fallback would indicate a bug; the
+    // registry's own flag is the honest source rather than re-deriving it here.
+    usedRealModel: !lastUsed?.usedOfflineFallback,
+  };
+
   return {
     reply: result.reply,
     thought: thinkHarder ? (result.thought || '[RARE Core Intelligence] Direct reasoning execution.') : undefined,
+    provenance,
     actionDetected: result.actionDetected as any,
   };
 }
@@ -1164,11 +1231,65 @@ const allMessages = recentMessages || [];
 app.get('/api/conversations', async (req, res) => {
   try {
     const conversations = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'conversations', []);
-    const search = typeof req.query.search === 'string' ? req.query.search.trim().toLowerCase() : '';
-    const filtered = conversations.filter((conversation) => !search || conversation.title.toLowerCase().includes(search) || conversation.messages.some((message: any) => message.content.toLowerCase().includes(search)));
-    return res.json(filtered.sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)));
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+    if (!search) {
+      return res.json([...conversations].sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at)));
+    }
+
+    // Ranking, not a literal substring test. A sentence such as "continue our
+    // discussion about the shoes" used to match nothing unless that exact
+    // sentence appeared in the history; it now finds the shoes conversation by
+    // content term. Conversations with no evidence are excluded rather than
+    // returned as a misleading "everything" result.
+    const ranked = findRelevantConversations(conversations as any, search, { limit: Math.min(50, Number(req.query.limit) || 30) });
+    const byId = new Map(conversations.map((conversation) => [conversation.id, conversation]));
+    return res.json(
+      ranked
+        .map((hit) => {
+          const conversation = byId.get(hit.conversationId);
+          if (!conversation) return null;
+          return {
+            ...conversation,
+            relevance: { score: hit.score, reasons: hit.reasons, matchedMessages: hit.messages.slice(-3) },
+          };
+        })
+        .filter(Boolean),
+    );
   } catch (error) {
     console.error('[Conversations] Private conversation list failed:', error);
+    return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
+  }
+});
+
+/**
+ * Continuation lookup: find the conversation the user means, without sending a
+ * message into it yet. Used by the client's "continue our discussion about…"
+ * affordance and by the Assistant before it starts a fresh thread.
+ */
+app.get('/api/conversations/find', async (req, res) => {
+  const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  if (!query) return res.status(400).json({ error: { message: 'A search phrase is required.' } });
+  try {
+    const conversations = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'conversations', []);
+    const hits = findRelevantConversations(conversations as any, query, {
+      limit: Math.min(10, Number(req.query.limit) || 5),
+      excludeId: typeof req.query.exclude === 'string' ? req.query.exclude : undefined,
+    });
+    return res.json({
+      query,
+      isContinuationRequest: isContinuationRequest(query),
+      matches: hits.map((hit) => ({
+        conversationId: hit.conversationId,
+        title: hit.title,
+        score: hit.score,
+        reasons: hit.reasons,
+        lastActivity: hit.lastActivity,
+        messageCount: hit.messages.length,
+        preview: hit.messages.slice(-2).map((message) => ({ role: message.role, content: message.content.slice(0, 240) })),
+      })),
+    });
+  } catch (error) {
+    console.error('[Conversations] Continuation lookup failed:', error);
     return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
   }
 });
@@ -1292,10 +1413,64 @@ app.post('/api/conversations/:id', async (req, res) => {
     if (!conversation) return res.status(404).json({ error: { message: 'Conversation not found' } });
     const timestamp = new Date().toISOString();
     const userMessage = { id: `msg_${crypto.randomUUID()}`, role: 'user', content: text, timestamp };
-    const contextMessages = [...conversation.messages, userMessage].slice(-20);
-    const generated = await generateAssistantReply(text, Boolean(req.body?.think_harder), conversation.id, typeof req.body?.persona === 'string' ? req.body.persona.slice(0, 40) : undefined, contextMessages as any, false, res.locals.rareUserId);
+
+    // --- Continuation (Part D §2) -------------------------------------------
+    // "Let's continue our discussion about the shoes" must resume the original
+    // conversation, not open a new one. When the turn is a continuation request
+    // we search the owner's full history and prepend a resume brief to the model
+    // context; when this conversation is fresh we also say so instead of
+    // pretending to remember something it never contained.
+    let resumeContext: string | undefined;
+    let continuationTarget: { conversationId: string; title: string } | undefined;
+    if (isContinuationRequest(text)) {
+      const candidates = findRelevantConversations(conversations as any, text, { limit: 3 });
+      // Prefer another conversation; fall back to this one when the user is
+      // already inside the conversation they mean.
+      const best = candidates.find((hit) => hit.conversationId !== conversation.id) || candidates[0];
+      if (best) {
+        const bestConversation = conversations.find((item) => item.id === best.conversationId);
+        const ownerMemories = await persistentStorage!.getOwnedState<any[]>(res.locals.rareUserId, 'memories', []).catch(() => []);
+        resumeContext = buildResumeBrief(bestConversation as any, ownerMemories);
+        resumeContext += `\nMatched because: ${best.reasons.join('; ')}.`;
+        continuationTarget = { conversationId: best.conversationId, title: best.title };
+      }
+    }
+
+    // Full-history context, not the previous `slice(-20)`.
+    const contextMessages = [...conversation.messages, userMessage];
+    const generated = await generateAssistantReply(
+      text,
+      Boolean(req.body?.think_harder),
+      conversation.id,
+      typeof req.body?.persona === 'string' ? req.body.persona.slice(0, 40) : undefined,
+      contextMessages as any,
+      false,
+      res.locals.rareUserId,
+      resumeContext,
+    );
     if (typeof generated.reply !== 'string' || !generated.reply.trim()) return res.status(502).json({ error: { message: 'The AI provider returned an empty response.' } });
     const assistantMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: generated.reply.trim(), timestamp: new Date().toISOString(), ...(generated.thought ? { thought: generated.thought } : {}) };
+
+    // --- Memory capture (Part D §3) -----------------------------------------
+    // The workspace promises "my permanent memory retains everything we discuss".
+    // Until now nothing wrote a memory, so that promise was false. Extract what
+    // the user actually asserted and persist it against the owner, reporting how
+    // many records were genuinely added.
+    let memoriesAdded: Array<Record<string, any>> = [];
+    try {
+      const candidates = extractMemories(text, { conversationId: conversation.id });
+      if (candidates.length) {
+        await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'memories', [], (existing) => {
+          const merged = mergeMemories(existing, candidates);
+          memoriesAdded = merged.added;
+          return merged.next.slice(0, 400);
+        });
+      }
+    } catch (memoryError) {
+      // A memory write failure must never lose the user's chat turn.
+      console.error('[Memory] Automatic memory capture failed:', memoryError);
+    }
+
     let updated: any = null;
     await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'conversations', [], (current) => current.map((item) => {
       if (item.id !== conversation.id) return item;
@@ -1304,11 +1479,32 @@ app.post('/api/conversations/:id', async (req, res) => {
       return updated;
     }));
     if (!updated) return res.status(404).json({ error: { message: 'Conversation not found' } });
-    return res.json({ user_message: userMessage, assistant_message: assistantMessage, reply: assistantMessage, conversationTitle: updated.title, conversation: updated });
+    return res.json({
+      user_message: userMessage,
+      assistant_message: assistantMessage,
+      reply: assistantMessage,
+      conversationTitle: updated.title,
+      conversation: updated,
+      // Truthful execution reporting: which brain answered, and what was saved.
+      provider: generated.provenance,
+      memories_added: memoriesAdded.length,
+      memories: memoriesAdded.map((memory) => ({ id: memory.id, kind: memory.kind, text: memory.text })),
+      continuation: continuationTarget,
+    });
   } catch (error) {
     console.error('[Conversations] AI reply generation or persistence failed.');
     const unavailable = (error as any)?.statusCode === 503;
-    return res.status(unavailable ? 503 : 502).json({ error: { message: unavailable ? 'No online AI provider is available. Configure or restore a provider and retry.' : 'The AI response could not be generated. Please retry.' } });
+    // A stable machine-readable code lets the client tell "no provider is
+    // configured" (a configuration problem the user or owner can fix) apart
+    // from a transient generation failure it should simply retry.
+    return res.status(unavailable ? 503 : 502).json({
+      error: {
+        message: unavailable
+          ? 'No online AI provider is available. Configure or restore a provider and retry.'
+          : 'The AI response could not be generated. Please retry.',
+        ...(unavailable ? { code: 'ONLINE_PROVIDER_UNAVAILABLE' } : {}),
+      },
+    });
   }
 });
 
@@ -1879,6 +2075,13 @@ app.get('/api/settings', async (req, res) => {
       architecture: activeInfo.architecture,
       has_external_api_key: Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim().length > 5),
       developer_authenticated: isDeveloper,
+      // The owner address is configuration-derived, so the developer surface
+      // always shows the address a request will actually reach.
+      owner_email: getOwnerEmail(),
+      owner_configured: Boolean(process.env.RARE_OWNER_EMAIL && process.env.RARE_OWNER_EMAIL.trim()),
+      // Whether real email dispatch is possible, so the UI can warn before the
+      // user submits a request that could not be delivered.
+      email_delivery_configured: Boolean(process.env.EMAIL_PROVIDER_API_KEY && process.env.EMAIL_PROVIDER_API_KEY.trim()),
       evaluation: lastEval ? lastEval.vectors : null,
       evaluation_status: lastEval ? 'evaluated' : 'not_yet_evaluated',
       overall_score: lastEval ? lastEval.overallScore : null,
@@ -2297,6 +2500,129 @@ app.get('/api/memories/export', async (_req, res) => {
   }
 });
 
+// -----------------------------------------------------------------------------
+// Task registry (Part D §4) — durable, owner-scoped background tasks
+// -----------------------------------------------------------------------------
+// Every task lives in the owner's own state document, so a task is private by
+// construction. Progress only ever comes from a real observed operation.
+
+const TASK_STATE_KEY = 'tasks';
+
+async function readOwnerTasks(ownerId: string): Promise<RareTask[]> {
+  return (await persistentStorage!.getOwnedState<RareTask[]>(ownerId, TASK_STATE_KEY, [])) || [];
+}
+
+app.get('/api/tasks', async (req, res) => {
+  try {
+    const tasks = await readOwnerTasks(res.locals.rareUserId);
+    const conversationId = typeof req.query.conversationId === 'string' ? req.query.conversationId : undefined;
+    res.json({
+      tasks: taskRegistry.list(tasks, res.locals.rareUserId, conversationId),
+      summary: taskRegistry.summarise(tasks, res.locals.rareUserId),
+    });
+  } catch (error) {
+    console.error('[Tasks] Private task list failed:', error);
+    res.status(503).json({ error: { message: 'Private task storage is unavailable.' } });
+  }
+});
+
+app.get('/api/tasks/:id', async (req, res) => {
+  try {
+    const tasks = await readOwnerTasks(res.locals.rareUserId);
+    res.json(taskRegistry.find(tasks, res.locals.rareUserId, req.params.id));
+  } catch (error: any) {
+    res.status(error?.statusCode || 503).json({ error: { message: error?.message || 'Task storage is unavailable.' } });
+  }
+});
+
+app.post('/api/tasks', async (req, res) => {
+  const { capability, description, conversationId, dependsOn } = req.body || {};
+  const capabilities = ['document', 'research', 'transcription', 'conversion', 'build', 'image', 'schedule', 'chat'];
+  if (!capabilities.includes(capability)) {
+    return res.status(400).json({ error: { message: `capability must be one of: ${capabilities.join(', ')}` } });
+  }
+  try {
+    if (res.locals.rareIsGuest && (await readOwnerTasks(res.locals.rareUserId)).length >= 20) {
+      return res.status(429).json({ error: { message: 'Guest task limit reached. Create an account to continue.' } });
+    }
+    let created: RareTask | null = null;
+    await persistentStorage!.updateOwnedState<RareTask[]>(res.locals.rareUserId, TASK_STATE_KEY, [], (existing) => {
+      const result = taskRegistry.create(existing, res.locals.rareUserId, {
+        capability,
+        description,
+        conversationId: typeof conversationId === 'string' ? conversationId : undefined,
+        dependsOn: Array.isArray(dependsOn) ? dependsOn.filter((id: unknown) => typeof id === 'string') : undefined,
+      });
+      created = result.task;
+      return result.next;
+    });
+    return res.status(201).json(created);
+  } catch (error: any) {
+    console.error('[Tasks] Task creation failed:', error);
+    return res.status(error?.statusCode || 503).json({ error: { message: error?.message || 'Task storage is unavailable.' } });
+  }
+});
+
+/**
+ * Transition a task. Only the four states a real worker can prove are accepted;
+ * the processor admits arbitrary phase messages because they are the worker's
+ * own recorded observations, and `percent` is only stored when actually given.
+ */
+app.post('/api/tasks/:id/status', async (req, res) => {
+  const { status, phase, message, percent } = req.body || {};
+  const allowed = ['queued', 'running', 'succeeded', 'failed', 'cancelled'];
+  if (!allowed.includes(status)) return res.status(400).json({ error: { message: `status must be one of: ${allowed.join(', ')}` } });
+  try {
+    let updated: RareTask | null = null;
+    await persistentStorage!.updateOwnedState<RareTask[]>(res.locals.rareUserId, TASK_STATE_KEY, [], (existing) => {
+      const result = taskRegistry.transition(existing, res.locals.rareUserId, req.params.id, status, {
+        phase: typeof phase === 'string' ? phase.slice(0, 80) : undefined,
+        message: typeof message === 'string' ? message.slice(0, 800) : undefined,
+        percent: typeof percent === 'number' ? percent : undefined,
+      });
+      updated = result.task;
+      return result.next;
+    });
+    return res.json(updated);
+  } catch (error: any) {
+    return res.status(error?.statusCode || 503).json({ error: { message: error?.message || 'Task storage is unavailable.' } });
+  }
+});
+
+app.post('/api/tasks/:id/output', async (req, res) => {
+  const { label, href, text } = req.body || {};
+  if (typeof label !== 'string' || !label.trim()) return res.status(400).json({ error: { message: 'An output label is required.' } });
+  try {
+    let updated: RareTask | null = null;
+    await persistentStorage!.updateOwnedState<RareTask[]>(res.locals.rareUserId, TASK_STATE_KEY, [], (existing) => {
+      const result = taskRegistry.addOutput(existing, res.locals.rareUserId, req.params.id, {
+        label: label.trim().slice(0, 200),
+        href: typeof href === 'string' ? href.slice(0, 2000) : undefined,
+        text: typeof text === 'string' ? text.slice(0, 8000) : undefined,
+      });
+      updated = result.task;
+      return result.next;
+    });
+    return res.json(updated);
+  } catch (error: any) {
+    return res.status(error?.statusCode || 503).json({ error: { message: error?.message || 'Task storage is unavailable.' } });
+  }
+});
+
+app.post('/api/tasks/:id/cancel', async (req, res) => {
+  try {
+    let updated: RareTask | null = null;
+    await persistentStorage!.updateOwnedState<RareTask[]>(res.locals.rareUserId, TASK_STATE_KEY, [], (existing) => {
+      const result = taskRegistry.requestCancel(existing, res.locals.rareUserId, req.params.id);
+      updated = result.task;
+      return result.next;
+    });
+    return res.json(updated);
+  } catch (error: any) {
+    return res.status(error?.statusCode || 503).json({ error: { message: error?.message || 'Task storage is unavailable.' } });
+  }
+});
+
 app.post('/api/settings', async (req, res) => {
   const body = req.body || {};
   try {
@@ -2486,39 +2812,115 @@ app.post('/api/developer/change-passkey', async (req, res) => {
   res.json({ success: true, message: 'Developer passkey successfully changed.' });
 });
 
-// Request Developer Access (Dispatched to Owner at rarelivescore@gmail.com)
-app.post('/api/developer/request-access', (req, res) => {
-  const { requesterName, requesterEmail, reason } = req.body;
-  if (!requesterEmail || !requesterEmail.includes('@')) {
-    return res.status(400).json({ error: { message: 'A valid email address is required.' } });
+/**
+ * Request Developer Access — dispatched to the configured owner.
+ *
+ * Defect this fixes (Part H §3): the old route read `requesterEmail` straight
+ * out of the request body, recorded a row, and replied "successfully forwarded"
+ * without dispatching anything. It therefore (a) let anyone claim any address,
+ * and (b) claimed a delivery that never happened.
+ *
+ * Now:
+ *  - The requester identity is taken from the validated session account, never
+ *    from the request body.
+ *  - A real transactional email is attempted through the configured provider.
+ *  - The response reports whether delivery actually occurred, and names the
+ *    exact missing configuration when it did not.
+ */
+app.post('/api/developer/request-access', async (req, res) => {
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 1000) : '';
+
+  const token = readBearerSessionToken(req);
+  if (!token || !persistentStorage) {
+    return res.status(401).json({ error: { message: 'A valid RARE session is required to request developer access.' } });
   }
 
-  const requestId = `req_${Date.now()}`;
+  let account: { id: string; name?: string | null; email?: string | null; role?: string } | null = null;
+  try {
+    const session = await persistentStorage.getAuthSession(hashUserSessionToken(token));
+    if (!session || session.expiresAt <= Date.now() || !session.accountId) {
+      return res.status(401).json({ error: { message: 'Your session has expired. Sign in again and retry.' } });
+    }
+    account = (await persistentStorage.getAuthUserById(session.accountId)) as any;
+  } catch (error) {
+    console.error('[Developer Access] Session lookup failed:', error);
+    return res.status(503).json({ error: { message: 'Your session could not be validated. Try again.' } });
+  }
+
+  if (!account) return res.status(401).json({ error: { message: 'Your account could not be resolved.' } });
+
+  const requesterName = (account.name || 'Fellow developer').trim();
+  const requesterEmail = (account.email || '').trim().toLowerCase();
+  const ownerEmail = ownerContactAddress();
+  const requestId = `req_${crypto.randomUUID()}`;
+  const requestedAt = new Date().toISOString();
+  const alreadyDeveloper = account.role === 'developer';
+
+  // A requester with no verified address on file cannot be replied to; say so
+  // rather than recording a request the owner could never action.
+  if (!requesterEmail) {
+    return res.status(400).json({
+      error: {
+        message: 'Your account has no verified email address on file. Add one to your account before requesting developer access.',
+        code: 'REQUESTER_EMAIL_MISSING',
+      },
+    });
+  }
+
   const newReq: DevAccessRequest = {
     id: requestId,
-    requesterName: requesterName || 'Fellow Developer',
+    requesterName,
     requesterEmail,
     reason: reason || 'Requested access to RARE Developer Space',
-    timestamp: new Date().toISOString(),
+    timestamp: requestedAt,
     status: 'pending',
   };
   devAccessRequests.unshift(newReq);
 
-  // Log dispatch to owner's Gmail
+  // Real dispatch. Never claim success without it.
+  let delivered = false;
+  let deliveryError: string | undefined;
+  try {
+    const dispatch = await notificationDeliveryService.sendOwnerAccessRequest({
+      ownerEmail,
+      requestId,
+      requesterName,
+      requesterEmail,
+      requestedAt,
+      reason: newReq.reason,
+      alreadyDeveloper,
+    });
+    delivered = dispatch.success;
+    deliveryError = dispatch.error;
+  } catch (error: any) {
+    deliveryError = error?.message || String(error);
+  }
+
   auditLog.unshift({
     id: `aud_${Date.now()}`,
-    timestamp: new Date().toISOString(),
+    timestamp: requestedAt,
     actor: requesterEmail,
-    action: 'access_permission_requested',
+    action: delivered ? 'access_request_emailed' : 'access_request_recorded_undelivered',
     kind: 'dev_privileged',
-    details: `Access request dispatched to Owner (rarelivescore@gmail.com) for ${requesterName} <${requesterEmail}>: "${reason}".`,
+    details: delivered
+      ? `Access request ${requestId} emailed to the owner from ${requesterName} <${requesterEmail}>.`
+      : `Access request ${requestId} recorded but NOT emailed (${deliveryError || 'unknown delivery error'}).`,
   });
 
-  res.json({
-    success: true,
+  // 202 when the request is durably recorded but the email did not go out: the
+  // caller must not be told "sent" in that case.
+  return res.status(delivered ? 200 : 202).json({
+    success: delivered,
     requestId,
-    ownerEmail: 'rarelivescore@gmail.com',
-    message: 'Access request successfully forwarded to Owner at rarelivescore@gmail.com',
+    ownerEmail,
+    requestedAt,
+    alreadyDeveloper,
+    emailDelivered: delivered,
+    emailError: delivered ? undefined : deliveryError,
+    message: delivered
+      ? `Access request delivered to the owner at ${ownerEmail}. Your request ID is ${requestId}.`
+      : `Your request was recorded (ID ${requestId}) but the email could not be sent. ${deliveryError || ''}`.trim(),
+    requiredConfiguration: delivered ? undefined : ['EMAIL_PROVIDER_API_KEY', 'EMAIL_FROM'],
   });
 });
 

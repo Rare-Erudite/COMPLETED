@@ -15,6 +15,7 @@ import {
 import { ThemeConfig } from './theme';
 import {
   getStoredSessionToken,
+  safeFetch,
   safePost,
   storeUserSessionToken,
 } from './api';
@@ -25,6 +26,13 @@ interface DeveloperAuthModalProps {
   onSuccess: () => void;
   onClose: () => void;
 }
+
+/**
+ * Shown until /api/settings tells us the configured owner address. The server is
+ * the single source of truth (RARE_OWNER_EMAIL); this literal is only a
+ * placeholder so the UI never prints a blank address while loading.
+ */
+const OWNER_EMAIL_FALLBACK = 'the application owner';
 
 export function DeveloperAuthModal({
   t,
@@ -39,6 +47,28 @@ export function DeveloperAuthModal({
 
   // Recovery / Access Request State
   const [viewMode, setViewMode] = useState<'unlock' | 'request_access' | 'change_password'>('unlock');
+
+  // The owner address and whether real email delivery is possible come from the
+  // server, so this modal can never advertise an address that is no longer the
+  // configured owner (the previous hardcoded one drifted out of the account).
+  const [ownerEmail, setOwnerEmail] = useState<string>(OWNER_EMAIL_FALLBACK);
+  const [emailDeliveryConfigured, setEmailDeliveryConfigured] = useState<boolean | null>(null);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      const settings = await safeFetch<any>('/api/settings');
+      if (cancelled) return;
+      if (typeof settings?.owner_email === 'string' && settings.owner_email.includes('@')) {
+        setOwnerEmail(settings.owner_email);
+      }
+      if (typeof settings?.email_delivery_configured === 'boolean') {
+        setEmailDeliveryConfigured(settings.email_delivery_configured);
+      }
+    })().catch(() => { /* the fallback copy is still truthful */ });
+    return () => { cancelled = true; };
+  }, [isOpen]);
   
   // Request access form
   const [requesterName, setRequesterName] = useState('');
@@ -113,12 +143,13 @@ export function DeveloperAuthModal({
     setLoading(true);
     setError('');
     try {
+      // The requester identity now comes from the authenticated session on the
+      // server, so only the reason is sent. A 202 means "recorded but not
+      // emailed" and must be shown as such, not as success.
       const res = await safePost<any>('/api/developer/request-access', {
-        requesterName: requesterName.trim() || 'Fellow Developer',
-        requesterEmail: requesterEmail.trim(),
         reason: requestReason.trim(),
       });
-      if (res?.success) {
+      if (res && (res.success === true || res.emailDelivered === false)) {
         setRequestSubmitted(true);
         setRequestDetails(res);
       } else {
@@ -194,7 +225,7 @@ export function DeveloperAuthModal({
               {viewMode === 'unlock'
                 ? 'Privileged self-development security barrier'
                 : viewMode === 'request_access'
-                ? 'Request Access from Owner (rarelivescore@gmail.com)'
+                ? `Request Access from Owner (${ownerEmail})`
                 : 'Protected Developer Passkey Change'}
             </p>
           </div>
@@ -301,7 +332,7 @@ export function DeveloperAuthModal({
           </form>
         )}
 
-        {/* View Mode 2: Request Access from Owner (rarelivescore@gmail.com) */}
+        {/* View Mode 2: Request Access from the configured owner */}
         {viewMode === 'request_access' && (
           <div className="space-y-4">
             {!requestSubmitted ? (
@@ -312,7 +343,12 @@ export function DeveloperAuthModal({
                     <span>Strictly Guarded Access Request</span>
                   </div>
                   <p className="text-[11px] text-slate-300">
-                    Access requests are dispatched directly to the App Owner at <span className="font-mono text-indigo-200 font-semibold">rarelivescore@gmail.com</span> (like Google Docs edit permission requests). Once approved, the owner will send you the developer password via WhatsApp or email.
+                    Access requests are dispatched to the App Owner at <span className="font-mono text-indigo-200 font-semibold">{ownerEmail}</span>. Your name and verified account email are taken from your RARE session, so the owner sees who is really asking. Once approved, the owner will send you the developer passkey separately.
+                    {emailDeliveryConfigured === false && (
+                      <span className="block mt-2 text-amber-300">
+                        Note: this deployment has no email provider configured, so the request will be recorded in the audit log but cannot be emailed. The owner can still see it in Developer Space.
+                      </span>
+                    )}
                   </p>
                 </div>
 
@@ -388,7 +424,13 @@ export function DeveloperAuthModal({
                     <span>Access Request Dispatched!</span>
                   </div>
                   <p className="text-slate-300">
-                    Notification dispatched to Owner at <span className="font-semibold text-white">rarelivescore@gmail.com</span>.
+                    {requestDetails?.emailDelivered ? (
+                      <>Email delivered to the Owner at <span className="font-semibold text-white">{requestDetails.ownerEmail || ownerEmail}</span>.</>
+                    ) : (
+                      <>
+                        Recorded, but <span className="font-semibold text-amber-300">the email was not delivered</span>. {requestDetails?.emailError || 'No email provider is configured on this deployment.'}
+                      </>
+                    )}
                   </p>
                   <div className="text-[11px] text-slate-400 font-mono bg-black/40 p-2.5 rounded-lg border border-slate-800">
                     Request ID: {requestDetails?.requestId || 'req_live'}
