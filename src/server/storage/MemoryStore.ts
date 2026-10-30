@@ -1,9 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import type { PersistentJsonStore } from './PersistentJsonStore.js';
+import { resolveWritableAppRoot } from './PersistentJsonStore.js';
 import { MemoryRecord } from '../types.js';
 
-const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+// On a serverless host the deployment tree is read-only; resolveWritableAppRoot
+// selects os.tmpdir() there instead of failing every boot with EROFS.
+const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAppRoot());
 const KNOWLEDGE_DIR = path.resolve(PROJECT_ROOT, 'knowledge');
 const MEMORIES_FILE = path.resolve(KNOWLEDGE_DIR, 'memories.json');
 const CONVERSATIONS_FILE = path.resolve(KNOWLEDGE_DIR, 'conversations.json');

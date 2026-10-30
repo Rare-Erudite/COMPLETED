@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import type { PersistentJsonStore } from './PersistentJsonStore.js';
 
-const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+import { resolveWritableAppRoot } from './PersistentJsonStore.js';
+const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAppRoot());
 const UPDATES_FILE = path.join(PROJECT_ROOT, 'knowledge', 'updates.json');
 
 export type UpdateChannel = 'public' | 'developer';

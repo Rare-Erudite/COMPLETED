@@ -4,7 +4,8 @@ import { TrajectoryStore } from '../storage/TrajectoryStore.js';
 import { ToolExecutor } from '../tools/ToolExecutor.js';
 import { DevelopmentTrajectory } from '../types.js';
 
-const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+import { resolveWritableAppRoot } from '../storage/PersistentJsonStore.js';
+const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAppRoot());
 
 export interface SelfDevRequest {
   instruction: string;

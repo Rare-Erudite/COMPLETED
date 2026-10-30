@@ -3,7 +3,8 @@ import path from 'path';
 import { DevelopmentTrajectory } from '../types.js';
 import type { PersistentJsonStore } from './PersistentJsonStore.js';
 
-const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+import { resolveWritableAppRoot } from './PersistentJsonStore.js';
+const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAppRoot());
 const KNOWLEDGE_DIR = path.resolve(PROJECT_ROOT, 'knowledge');
 const TRAJECTORIES_FILE = path.resolve(KNOWLEDGE_DIR, 'trajectories.json');
 

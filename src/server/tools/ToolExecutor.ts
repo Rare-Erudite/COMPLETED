@@ -12,7 +12,8 @@ import { OwnerSearchIndexRegistry } from '../content/SearchIndex.js';
 import { processUrl, describeResult } from '../content/ContentEngine.js';
 
 const execFileAsync = promisify(execFile);
-const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+import { resolveWritableAppRoot } from '../storage/PersistentJsonStore.js';
+const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAppRoot());
 
 // Allowlist from rare.config.json
 const COMMAND_ALLOWLIST = new Set([

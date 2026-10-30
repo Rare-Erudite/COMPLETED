@@ -14,7 +14,7 @@ import path from 'path';
  *     EROFS/EACCES and turn every request into a 500.
  *  3. process.cwd() — normal self-hosted behaviour, unchanged.
  */
-function resolveWritableAppRoot(): string {
+export function resolveWritableAppRoot(): string {
   const configured = process.env.RARE_APP_ROOT?.trim();
   if (configured) return configured;
   if (process.env.VERCEL) return os.tmpdir();

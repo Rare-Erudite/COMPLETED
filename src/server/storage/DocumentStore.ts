@@ -3,6 +3,7 @@ import fs from 'fs';
 import https from 'https';
 import path from 'path';
 import { isIP } from 'net';
+import { resolveWritableAppRoot } from './PersistentJsonStore.js';
 
 const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.text', '.json', '.html', '.htm', '.csv', '.xml', '.yaml', '.yml', '.log']);
@@ -18,7 +19,7 @@ export interface StoredDocument {
 export class DocumentStore {
   private readonly root: string;
 
-  constructor(projectRoot = process.env.RARE_APP_ROOT || process.cwd()) {
+  constructor(projectRoot = process.env.RARE_APP_ROOT || resolveWritableAppRoot()) {
     this.root = path.resolve(projectRoot, 'documents');
   }
 

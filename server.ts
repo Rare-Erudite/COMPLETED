@@ -43,9 +43,12 @@ import { engine } from './src/engine/engine.ts';
 import { googleTtsProvider } from './src/server/providers/GoogleTtsProvider.js';
 import { notificationDeliveryService } from './src/server/providers/NotificationDeliveryService.js';
 import { oAuthVerificationService } from './src/server/providers/OAuthVerificationService.js';
+import { resolveWritableAppRoot } from './src/server/storage/PersistentJsonStore.js';
 
 const app = express();
-const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+// resolveWritableAppRoot() keeps the deployment tree untouched on serverless
+// hosts, where only os.tmpdir() is writable.
+const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAppRoot());
 const PORT = process.argv.includes('--port')
   ? Number(process.argv[process.argv.indexOf('--port') + 1])
   : (Number(process.env.PORT) || 3000);
