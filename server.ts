@@ -32,6 +32,7 @@ import { exportDocument, EXPORT_FORMATS } from './src/server/content/DocumentExp
 import { resolveLink, downloadMediaFromLink } from './src/server/content/LinkResolver.js';
 import { resolveSpeechProvider, LocalWhisperProvider } from './src/server/content/SpeechProviders.js';
 import { type ProjectTemplate } from './src/server/builder/ProjectScaffolder.js';
+import { detectToolchains, type ToolchainCapability } from './src/server/builder/ToolchainRegistry.js';
 import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
 import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
@@ -829,14 +830,9 @@ activeAgentRuns.splice(0, activeAgentRuns.length);
 activeAgentRuns = durableStateStore.trackArray('agent_runs', activeAgentRuns);
 
 // Toolchains Environment Matrix
-const toolchains = [
-  { id: 'node_ts', name: 'Node.js 22 & TypeScript', detected: true, version: 'Node 22.13.5 / TS 5.7', status: 'ready', domains: ['Web', 'Backend', 'CLI'] },
-  { id: 'vite_bundler', name: 'Vite Production Engine', detected: true, version: 'Vite 6.2.0', status: 'ready', domains: ['Web SPA', 'Electron'] },
-  { id: 'python_runtime', name: 'Python 3.13 Runtime', detected: true, version: 'Python 3.13.2', status: 'ready', domains: ['AI Engine', 'Automation', 'CLI'] },
-  { id: 'android_gradle', name: 'Android SDK & Gradle', detected: true, version: 'Gradle 8.7.3 / SDK 34', status: 'platform_configured', domains: ['Android APK', 'Mobile'] },
-  { id: 'windows_toolchain', name: 'Windows C++/Win32 Toolchain', detected: true, version: 'MSVC 2022 / CMake 3.28', status: 'platform_configured', domains: ['Windows EXE', 'Desktop'] },
-  { id: 'rust_cargo', name: 'Rust Toolchain', detected: true, version: 'Cargo / rustc 1.84.0', status: 'ready', domains: ['High-Performance', 'Native Libs'] },
-];
+// Served from ToolchainRegistry.detectToolchains(), which probes each real
+// executable with `--version` on this host. Nothing here is hardcoded as
+// detected: an absent compiler reports status 'missing' and names the fix.
 
 // Conversations
 interface ChatMessage {
@@ -3537,7 +3533,7 @@ app.get('/api/developer/status', async (req, res) => {
     checkpointRetention: 'Keep last 40 snapshots / 30 days',
     checkpointsCount: checkpoints.length,
     activeRunsCount: activeAgentRuns.length,
-    toolchainsCount: toolchains.length,
+    toolchainsCount: (await detectToolchains().catch(() => [])).length,
     updatesCount: updateStore.getAll('developer').length,
     auditEvents: auditLog.slice(0, 20),
     systemConfig: {
@@ -4015,8 +4011,19 @@ app.get('/api/checkpoints', async (req, res) => {
 });
 
 // Toolchains
-app.get('/api/builder/toolchains', (req, res) => {
-  res.json(toolchains);
+app.get('/api/builder/toolchains', async (req, res) => {
+  // Real detection: each entry is the outcome of probing an actual executable on
+  // this host. A tool that is not installed reports 'missing' with a fix hint
+  // rather than being advertised as available.
+  try {
+    const capabilities: ToolchainCapability[] = await detectToolchains();
+    res.json(capabilities);
+  } catch (error: any) {
+    console.error('[Builder] Toolchain detection failed:', error);
+    res.status(503).json({
+      error: { message: 'Toolchain detection could not be completed on this host.' },
+    });
+  }
 });
 
 app.post('/api/user/verify-email-otp', async (req, res) => {

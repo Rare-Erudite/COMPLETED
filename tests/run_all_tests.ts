@@ -30,7 +30,7 @@ import { runAuthenticationSecurityTests } from './test_authentication_security.j
 import { runPersistentWorkflowTests } from './test_persistent_workflows.js';
 import { runOAuthValidationTests } from './test_oauth_validation.js';
 import { runStandaloneResearchTests } from './test_standalone_research.js';
-import { runToolchainRegistryTests, runAssistantCommandTests } from './test_builder_and_assistant.js';
+import { runToolchainRegistryTests, runToolchainRouteTests, runAssistantCommandTests } from './test_builder_and_assistant.js';
 import { runProjectBuildTests } from './test_project_build.js';
 import { runMediaBinaryTests } from './test_media_binaries.js';
 import { runUpdateStoreTests } from './test_update_store.js';
@@ -149,6 +149,7 @@ async function main() {
     await runEvaluationTests();
     console.log();
     await runToolchainRegistryTests();
+    await runToolchainRouteTests();
     console.log();
     await runAssistantCommandTests();
     console.log();
