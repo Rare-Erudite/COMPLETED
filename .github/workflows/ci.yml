@@ -123,15 +123,29 @@ jobs:
           echo "have_keystore=true" >> "$GITHUB_OUTPUT"
 
       - name: Build APK
+        id: apk
         env:
           RARE_BACKEND_URL: https://rareproject.vercel.app
-          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/keystore/release.keystore
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: bash scripts/build_apk.sh
+          RARE_ANDROID_KEYSTORE: ${{ runner.temp }}/keystore/release.keystore
+          RARE_ANDROID_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          RARE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          RARE_ANDROID_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # build_apk.sh deliberately refuses to mint a throwaway signing key,
+          # because an APK signed by a new key can never update an installed one.
+          # Without the secret there is no correct APK to produce, so this step
+          # reports that plainly instead of failing the pipeline on a missing
+          # owner-supplied secret.
+          if [ "${{ steps.keystore.outputs.have_keystore }}" != "true" ]; then
+            echo "::warning::Skipping the signed APK: ANDROID_KEYSTORE_BASE64 is not configured. The build itself is verified by the 'verify' job."
+            echo "built=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bash scripts/build_apk.sh
+          echo "built=true" >> "$GITHUB_OUTPUT"
 
       - name: Verify the APK exists and report its hash
+        if: steps.apk.outputs.built == 'true'
         run: |
           APK=exports/rare-v1.0.0-release.apk
           test -f "$APK" || { echo "::error::APK was not produced at $APK"; exit 1; }
@@ -139,6 +153,7 @@ jobs:
           sha256sum "$APK"
 
       - name: Upload APK
+        if: steps.apk.outputs.built == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: rare-apk
