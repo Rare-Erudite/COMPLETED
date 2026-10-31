@@ -6300,7 +6300,12 @@ if (process.env.VERCEL === '1') {
   // failed API boot must never leave the deployment with no frontend routes:
   // that produced Express's bare "Cannot GET /" for every URL. API requests
   // still fail closed, via the /api middleware and its 503.
-  const frontendRoot = path.resolve(PROJECT_ROOT, 'public');
+  // APP_ROOT is the deployment tree (process.cwd()) where the bundled assets
+  // actually live — NOT PROJECT_ROOT, which resolveWritableAppRoot() points at
+  // os.tmpdir() under VERCEL=1. Resolving the bundle against the writable data
+  // root made public/index.html look missing, so this whole block was skipped
+  // and every URL fell through to Express's bare "Cannot GET /".
+  const frontendRoot = path.resolve(APP_ROOT, 'public');
   if (fs.existsSync(path.join(frontendRoot, 'index.html'))) {
     app.use(express.static(frontendRoot));
     app.get('*', (_req, res) => {
