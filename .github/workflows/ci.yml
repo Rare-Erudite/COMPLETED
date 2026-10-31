@@ -38,8 +38,28 @@ jobs:
           ffmpeg -version | head -1
           ffprobe -version | head -1
 
+      # @huggingface/transformers pulls onnxruntime-node, whose postinstall
+      # downloads native binaries from a Microsoft CDN. That download has been
+      # observed to time out (ETIMEDOUT / ENETUNREACH) and fail the whole job in
+      # ~40s on an otherwise healthy commit. It is a transient network fault, not
+      # a code fault, so retry with backoff instead of failing the release.
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::npm ci attempt $attempt"
+            if npm ci --no-audit --no-fund; then
+              echo "::endgroup::"
+              echo "Dependencies installed on attempt $attempt."
+              exit 0
+            fi
+            echo "::endgroup::"
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::npm ci failed on attempt $attempt (transient registry/CDN fault). Retrying in $((attempt * 20))s."
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "::error::npm ci failed after 3 attempts. This is a real dependency failure, not a flake."
+          exit 1
 
       - name: Typecheck
         run: npm run lint
@@ -106,7 +126,22 @@ jobs:
           echo "Android SDK ready."
 
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::npm ci attempt $attempt"
+            if npm ci --no-audit --no-fund; then
+              echo "::endgroup::"
+              echo "Dependencies installed on attempt $attempt."
+              exit 0
+            fi
+            echo "::endgroup::"
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::npm ci failed on attempt $attempt (transient registry/CDN fault). Retrying in $((attempt * 20))s."
+              sleep $((attempt * 20))
+            fi
+          done
+          echo "::error::npm ci failed after 3 attempts. This is a real dependency failure, not a flake."
+          exit 1
 
       - name: Restore signing keystore
         id: keystore
