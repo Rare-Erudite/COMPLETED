@@ -20,11 +20,28 @@ import path from 'node:path';
 
 const baseUrl = (): string => process.env.RARE_TEST_BASE_URL || 'http://127.0.0.1:3000';
 
+/**
+ * Resolve ffmpeg the same way the server does: prefer the binary bundled in
+ * node_modules, fall back to PATH. Shelling out to a bare `ffmpeg` made this
+ * suite fail on any machine without a system install, even though the repo
+ * ships its own — a false negative that looked like a code defect.
+ */
+function resolveFfmpeg(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const installer = require('@ffmpeg-installer/ffmpeg');
+    if (installer?.path && fs.existsSync(installer.path)) return installer.path;
+  } catch {
+    // Not installed; fall through to PATH.
+  }
+  return 'ffmpeg';
+}
+
 function buildAudio(seconds: number): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rare-ka-'));
   const output = path.join(dir, 'audio.mp3');
   execFileSync(
-    'ffmpeg',
+    resolveFfmpeg(),
     ['-y', '-f', 'lavfi', '-i', `sine=frequency=320:duration=${seconds}`, '-ar', '16000', '-ac', '1', '-b:a', '32k', output],
     { stdio: 'ignore' },
   );

@@ -22,6 +22,12 @@ import { probeExtractors } from './src/server/content/Extractors.js';
 import { probeMedia, ffmpegAvailable } from './src/server/content/MediaProcessor.js';
 import { transcribeBuffer, deriveInsights, formatClock } from './src/server/content/TranscriptionEngine.js';
 import {
+  diarizeBuffer,
+  applyToTranscript,
+  probeDiarization,
+  DiarizationError,
+} from './src/server/content/DiarizationService.js';
+import {
   answerFromPassages,
   passagesFromHits,
   summariseHierarchically,
@@ -4354,6 +4360,9 @@ app.get('/api/documents/capabilities', async (_req, res) => {
     const extractors = await probeExtractors();
 
     const transcription = await describeTranscriptionCapability();
+    // Diarisation is probed separately from transcription: they are different
+    // models, and a host can transcribe without being able to separate voices.
+    const diarization = await probeDiarization();
     // Report the speech engine that would actually run, so a client can tell a
     // user whether their audio leaves the machine before they upload it.
     const speech = await resolveSpeechProvider(() => providerRegistry.getGeminiProvider());
@@ -4364,6 +4373,7 @@ app.get('/api/documents/capabilities', async (_req, res) => {
       extractors,
       usableExtractors: usable.length,
       transcription,
+      diarization,
       speech: speech.summary,
       media: {
         // ffmpeg availability is what decides whether audio/video can be handled
@@ -4380,6 +4390,7 @@ app.get('/api/documents/capabilities', async (_req, res) => {
         'Scanned PDFs and images fall back to OCR when no text layer exists.',
         'Only adapters reporting available:true can run in this deployment.',
         'Transcription segments long recordings and reports real coverage rather than assuming completeness.',
+        'Speaker diarisation is a separate model from transcription; when it is unavailable the transcript is returned without voice-derived speaker labels.',
       ],
     });
   } catch (error) {
@@ -4602,12 +4613,22 @@ async function transcribeAndStore(
   ownerId: string,
   buffer: Buffer,
   filename: string,
-  options: { isGuest?: boolean; includeFrames?: boolean; segmentSeconds?: number; title?: string },
+  options: {
+    isGuest?: boolean;
+    includeFrames?: boolean;
+    segmentSeconds?: number;
+    title?: string;
+    /** Run real speaker diarisation over the audio after transcription. */
+    diarize?: boolean;
+    numSpeakers?: number;
+  },
 ): Promise<{
   path: string;
   transcript: string;
   insights: ReturnType<typeof deriveInsights>;
   result: Awaited<ReturnType<typeof transcribeBuffer>>;
+  diarization?: { model: string; method: string; unattributedTurns: number };
+  diarizationError?: { message: string; code: string };
 }> {
   if (!(await ffmpegAvailable())) {
     throw Object.assign(
@@ -4616,10 +4637,36 @@ async function transcribeAndStore(
     );
   }
   const { provider } = await requireSpeechProvider();
-  const result = await transcribeBuffer(buffer, filename, provider, {
+  let result = await transcribeBuffer(buffer, filename, provider, {
     segmentSeconds: options.segmentSeconds,
     includeFrames: options.includeFrames,
   });
+
+  // Speaker attribution is a separate model doing a separate job. It runs only
+  // when asked for, and a failure here is reported rather than papered over:
+  // the transcript is still returned, but it is not claimed to be diarised.
+  let diarization: { model: string; method: string; unattributedTurns: number } | undefined;
+  let diarizationError: { message: string; code: string } | undefined;
+
+  if (options.diarize) {
+    try {
+      const diarised = await diarizeBuffer(buffer, filename, {
+        numSpeakers: options.numSpeakers,
+      });
+      const merged = applyToTranscript(result, diarised);
+      result = merged;
+      diarization = merged.diarization;
+    } catch (error) {
+      const code = error instanceof DiarizationError ? error.code : 'DIARIZE_FAILED';
+      diarizationError = {
+        message: error instanceof Error ? error.message : 'Speaker diarisation failed.',
+        code,
+      };
+      result.warnings.push(
+        `Speaker diarisation was requested but did not run (${code}): ${diarizationError.message} The transcript below is not speaker-attributed.`,
+      );
+    }
+  }
 
   const basename =
     String(options.title || filename || 'recording')
@@ -4631,7 +4678,8 @@ async function transcribeAndStore(
     `# Transcript — ${options.title || filename || 'recording'}`,
     '',
     `- Duration: ${formatClock(result.durationSeconds)}`,
-    `- Speakers detected: ${result.speakers.length}${result.speakerLabelsDetected ? '' : ' (provider did not distinguish them)'}`,
+    `- Speakers detected: ${result.speakers.length}${result.speakerLabelsDetected ? '' : ' (not diarised — labels are not voice-derived)'}`,
+    ...(diarization ? [`- Diarisation: ${diarization.model} (${diarization.method})`] : []),
     `- Segments transcribed: ${result.segmentsCompleted}/${result.segments.length}`,
     `- Coverage: ${Math.round(result.coverage * 100)}%`,
     `- Model: ${result.model || 'unspecified'}`,
@@ -4649,7 +4697,14 @@ async function transcribeAndStore(
     { isGuest: options.isGuest, origin: 'transcript' },
   );
 
-  return { path: saved.path, transcript: result.text, insights: deriveInsights(result), result };
+  return {
+    path: saved.path,
+    transcript: result.text,
+    insights: deriveInsights(result),
+    result,
+    diarization,
+    diarizationError,
+  };
 }
 
 app.post('/api/documents/transcribe', async (req, res) => {
@@ -4686,6 +4741,8 @@ app.post('/api/documents/transcribe', async (req, res) => {
       includeFrames: Boolean(req.body?.includeFrames),
       segmentSeconds: Number(req.body?.segmentSeconds) || undefined,
       title: typeof req.body?.title === 'string' ? req.body.title : undefined,
+      diarize: Boolean(req.body?.diarize),
+      numSpeakers: Number(req.body?.numSpeakers) || undefined,
     });
 
     res.json({
@@ -4697,6 +4754,9 @@ app.post('/api/documents/transcribe', async (req, res) => {
       turns: outcome.result.turns,
       speakers: outcome.result.speakers,
       speakerLabelsDetected: outcome.result.speakerLabelsDetected,
+      diarized: Boolean(outcome.diarization),
+      diarization: outcome.diarization || null,
+      diarizationError: outcome.diarizationError || null,
       durationSeconds: outcome.result.durationSeconds,
       durationClock: formatClock(outcome.result.durationSeconds),
       segmentsTranscribed: outcome.result.segmentsCompleted,
