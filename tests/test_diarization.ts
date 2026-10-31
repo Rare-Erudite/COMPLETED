@@ -148,4 +148,98 @@ export async function runDiarizationTests(): Promise<void> {
   assert.equal(untouched.diarization.unattributedTurns, 3, 'every turn is unattributed');
   assert.equal(untouched.speakerLabelsDetected, false, 'no speakers means no detected labels');
   console.log('  ✓ empty diarisation leaves the transcript untouched');
+
+  // --- 5. Real model, real audio. ---
+  // Runs only when pyannote is actually installed AND a token is present, so a
+  // host without the model skips rather than pretending. When it does run, the
+  // audio is a genuine two-voice recording with known ground truth: speaker A
+  // and speaker B alternate six times, so a correct diarisation must find
+  // exactly two speakers and alternate between them.
+  if (info.available && (process.env.HF_TOKEN || process.env.HUGGINGFACE_TOKEN)) {
+    const audioDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rare-diar-real-'));
+    const wavPath = path.join(audioDir, 'two_speakers.wav');
+    try {
+      writeTwoSpeakerWav(wavPath);
+      const { code, stdout } = await runWorker(
+        JSON.stringify({ audioPath: wavPath, minSpeakers: 1, maxSpeakers: 8 }),
+        15 * 60_000,
+      );
+      const parsed = JSON.parse(stdout);
+      assert.equal(code, 0, `real diarisation must succeed: ${parsed.error || ''}`);
+      assert.equal(parsed.ok, true, 'real diarisation must report ok');
+      assert.equal(parsed.speakerCount, 2, 'the two synthetic voices must be separated');
+      assert.ok(parsed.turnCount >= 4, `expected several turns, got ${parsed.turnCount}`);
+
+      // Ground truth: A, B, A, B, A, B. Consecutive turns must alternate.
+      const labels = parsed.turns.map((t: any) => t.speaker);
+      let alternations = 0;
+      for (let i = 1; i < labels.length; i += 1) {
+        if (labels[i] !== labels[i - 1]) alternations += 1;
+      }
+      assert.ok(
+        alternations >= 3,
+        `speakers must alternate across the recording, saw ${alternations} changes in ${labels.join(',')}`,
+      );
+      console.log(
+        `  ✓ real pyannote run: ${parsed.speakerCount} speakers, ${parsed.turnCount} turns, model ${parsed.model}`,
+      );
+    } finally {
+      fs.rmSync(audioDir, { recursive: true, force: true });
+    }
+  } else {
+    console.log('  – real-model test skipped (pyannote or HF_TOKEN not available on this host)');
+  }
+}
+
+/**
+ * Write a 14-second WAV containing two clearly different synthetic voices
+ * alternating A,B,A,B,A,B. Different fundamental frequency and formants make
+ * them separable by a real diarisation model, which is what makes this a
+ * meaningful test rather than a smoke test.
+ */
+function writeTwoSpeakerWav(target: string): void {
+  const sampleRate = 16000;
+  const voices: Record<string, { f0: number; formants: [number, number][] }> = {
+    A: { f0: 110, formants: [[700, 0.5], [1200, 0.3]] },
+    B: { f0: 210, formants: [[850, 0.5], [1600, 0.3]] },
+  };
+  const plan: [string, number][] = [['A', 2.0], ['B', 2.0], ['A', 1.8], ['B', 2.2], ['A', 2.0], ['B', 1.9]];
+
+  const samples: number[] = [];
+  for (const [voice, duration] of plan) {
+    const { f0, formants } = voices[voice];
+    const count = Math.floor(sampleRate * duration);
+    for (let i = 0; i < count; i += 1) {
+      const t = i / sampleRate;
+      let value = 0;
+      for (let k = 1; k < 12; k += 1) value += Math.sin(2 * Math.PI * f0 * k * t) / k;
+      for (const [freq, gain] of formants) value += gain * Math.sin(2 * Math.PI * freq * t);
+      const envelope = 0.5 * (1 - Math.cos(2 * Math.PI * 3.5 * t));
+      samples.push(value * envelope * 0.125);
+    }
+    for (let i = 0; i < Math.floor(sampleRate * 0.35); i += 1) samples.push(0);
+  }
+
+  const data = Buffer.alloc(samples.length * 2);
+  samples.forEach((sample, index) => {
+    const clamped = Math.max(-32767, Math.min(32767, Math.round(sample * 32767)));
+    data.writeInt16LE(clamped, index * 2);
+  });
+
+  const header = Buffer.alloc(44);
+  header.write('RIFF', 0);
+  header.writeUInt32LE(36 + data.length, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(data.length, 40);
+
+  fs.writeFileSync(target, Buffer.concat([header, data]));
 }

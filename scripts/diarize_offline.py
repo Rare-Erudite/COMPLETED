@@ -40,10 +40,17 @@ import os
 import sys
 import traceback
 
+# The real stdout, captured at import time. pyannote and huggingface_hub write
+# progress banners to stdout, which would corrupt the JSON contract with the
+# Node caller, so main() redirects sys.stdout to stderr and results go here.
+RESULT_STREAM = sys.stdout
+
 
 def fail(message: str, code: str) -> None:
-    json.dump({"ok": False, "error": message, "code": code}, sys.stdout)
-    sys.stdout.flush()
+    # RESULT_STREAM is the real stdout, captured before pyannote's chatter is
+    # redirected to stderr. See main().
+    json.dump({"ok": False, "error": message, "code": code}, RESULT_STREAM)
+    RESULT_STREAM.flush()
     sys.exit(1)
 
 
@@ -58,12 +65,25 @@ def load_pipeline(hf_token):
 
     token = hf_token or os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
 
+    # pyannote.audio 4.x renamed the auth argument from `use_auth_token` to
+    # `token`; 3.x only accepts the old name. Passing the wrong one raises
+    # TypeError, which the fallback below would swallow and report as "model
+    # unavailable" — a misleading failure that looks like a permissions problem.
+    # Detect the accepted keyword once and use it for both models.
+    import inspect
+
+    try:
+        params = inspect.signature(Pipeline.from_pretrained).parameters
+        token_kwarg = "token" if "token" in params else "use_auth_token"
+    except (TypeError, ValueError):
+        token_kwarg = "use_auth_token"
+
+    def _load(model_id):
+        return Pipeline.from_pretrained(model_id, **{token_kwarg: token})
+
     # Preferred: the full diarization pipeline (segmentation + clustering).
     try:
-        pipeline = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1",
-            use_auth_token=token,
-        )
+        pipeline = _load("pyannote/speaker-diarization-3.1")
         if pipeline is not None:
             return pipeline, "pyannote/speaker-diarization-3.1", "pyannote-pipeline"
     except Exception as error:  # noqa: BLE001 - we want the fallback path
@@ -71,14 +91,22 @@ def load_pipeline(hf_token):
 
     # Fallback: segmentation model only, clustered by hand below.
     try:
-        pipeline = Pipeline.from_pretrained(
-            "pyannote/segmentation-3.0",
-            use_auth_token=token,
-        )
+        pipeline = _load("pyannote/segmentation-3.0")
         if pipeline is not None:
             return pipeline, "pyannote/segmentation-3.0", "pyannote-segmentation"
     except Exception as error:  # noqa: BLE001
         log(f"segmentation-3.0 unavailable: {error}")
+
+    # Last resort: the community pipeline. It is NOT gated, so it works with a
+    # plain read token even when the account has not accepted the terms for
+    # speaker-diarization-3.1. Same architecture, so the output shape is
+    # identical; the model id is reported so callers can tell which ran.
+    try:
+        pipeline = _load("pyannote/speaker-diarization-community-1")
+        if pipeline is not None:
+            return pipeline, "pyannote/speaker-diarization-community-1", "pyannote-pipeline"
+    except Exception as error:  # noqa: BLE001
+        log(f"speaker-diarization-community-1 unavailable: {error}")
 
     raise RuntimeError(
         "No pyannote diarisation model could be loaded. The Hugging Face token "
@@ -87,8 +115,77 @@ def load_pipeline(hf_token):
     )
 
 
+def load_waveform(audio_path):
+    """
+    Decode an audio file into the in-memory form pyannote accepts:
+    {"waveform": (channel, time) float32 tensor, "sample_rate": int}.
+
+    WAV is decoded with the standard library. Anything else is transcoded to
+    16 kHz mono WAV with ffmpeg first, because pyannote's own decoder
+    (torchcodec) is not reliably present in slim containers.
+    """
+    import subprocess
+    import tempfile
+    import wave
+
+    import numpy as np
+    import torch
+
+    source = audio_path
+    tmp_path = None
+
+    if not audio_path.lower().endswith(".wav"):
+        handle, tmp_path = tempfile.mkstemp(suffix=".wav")
+        os.close(handle)
+        subprocess.run(
+            ["ffmpeg", "-nostdin", "-y", "-i", audio_path,
+             "-ac", "1", "-ar", "16000", tmp_path],
+            check=True, capture_output=True,
+        )
+        source = tmp_path
+
+    try:
+        with wave.open(source, "rb") as handle:
+            sample_rate = handle.getframerate()
+            channels = handle.getnchannels()
+            width = handle.getsampwidth()
+            frames = handle.readframes(handle.getnframes())
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    if width != 2:
+        raise RuntimeError(f"Unsupported WAV sample width: {width * 8} bits")
+
+    samples = np.frombuffer(frames, dtype=np.int16).astype("float32") / 32768.0
+    if channels > 1:
+        samples = samples.reshape(-1, channels).mean(axis=1)
+
+    waveform = torch.from_numpy(samples).unsqueeze(0)
+    return {"waveform": waveform, "sample_rate": sample_rate}
+
+
+def unwrap_annotation(result):
+    """
+    pyannote 4.x returns a `DiarizeOutput` wrapper instead of a bare Annotation;
+    3.x returns the Annotation directly. Unwrap so both versions work.
+    """
+    if hasattr(result, "itertracks"):
+        return result
+    for attribute in ("speaker_diarization", "annotation", "diarization"):
+        candidate = getattr(result, attribute, None)
+        if candidate is not None and hasattr(candidate, "itertracks"):
+            return candidate
+    raise RuntimeError(
+        f"The diarisation pipeline returned {type(result).__name__}, which has no speaker turns."
+    )
+
+
 def turns_from_annotation(annotation):
-    """Convert a pyannote Annotation into our turn list."""
+    annotation = unwrap_annotation(annotation)
     turns = []
     for segment, _track, label in annotation.itertracks(yield_label=True):
         turns.append(
@@ -174,10 +271,20 @@ def merge_adjacent(turns, gap=0.35):
 
 
 def main() -> None:
+    # stdout is the JSON contract with the Node caller. pyannote and
+    # huggingface_hub print progress and "Could not download Pipeline..."
+    # banners to stdout, which corrupts that contract and makes the caller
+    # report a JSON parse error instead of the real outcome. Redirect the real
+    # stdout to stderr for the whole run and keep a private handle for results.
+    result_stream = RESULT_STREAM
+    sys.stdout = sys.stderr
+
     try:
         request = json.load(sys.stdin)
     except Exception:
-        fail("The diarisation request was not valid JSON.", "BAD_REQUEST")
+        json.dump({"ok": False, "error": "The diarisation request was not valid JSON.", "code": "BAD_REQUEST"}, result_stream)
+        result_stream.flush()
+        sys.exit(1)
 
     audio_path = request.get("audioPath")
     if not audio_path or not os.path.exists(audio_path):
@@ -202,6 +309,17 @@ def main() -> None:
     except Exception as error:  # noqa: BLE001
         fail(f"The diarisation model could not be loaded: {error}", "MODEL_LOAD_FAILED")
 
+    # pyannote 4.x decodes files through torchcodec, which is frequently broken
+    # or absent in slim containers (it needs its own FFmpeg shared libraries).
+    # Decoding the WAV ourselves and handing pyannote an in-memory waveform
+    # removes that dependency entirely and is the path pyannote itself
+    # recommends when torchcodec is unavailable.
+    audio_input = audio_path
+    try:
+        audio_input = load_waveform(audio_path)
+    except Exception as error:  # noqa: BLE001
+        log(f"in-memory decode unavailable ({error}); falling back to file path")
+
     try:
         if method == "pyannote-pipeline":
             kwargs = {}
@@ -210,10 +328,10 @@ def main() -> None:
             else:
                 kwargs["min_speakers"] = min_speakers
                 kwargs["max_speakers"] = max_speakers
-            annotation = pipeline(audio_path, **kwargs)
+            annotation = pipeline(audio_input, **kwargs)
             turns = turns_from_annotation(annotation)
         else:
-            turns = cluster_segmentation(pipeline, audio_path, min_speakers, max_speakers)
+            turns = cluster_segmentation(pipeline, audio_input, min_speakers, max_speakers)
     except Exception as error:  # noqa: BLE001
         fail(f"The audio could not be diarised: {error}", "DIARIZE_FAILED")
 
@@ -239,9 +357,9 @@ def main() -> None:
             "model": model_id,
             "method": method,
         },
-        sys.stdout,
+        result_stream,
     )
-    sys.stdout.flush()
+    result_stream.flush()
 
 
 if __name__ == "__main__":
