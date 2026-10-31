@@ -687,6 +687,34 @@ export async function generateDynamicBrainReply(options: {
       lower
     );
 
+  // 8. Honest fallback. No language model is connected, so never fake an answer.
+  //
+  // Reconciled from both branches. Main contributed a few small-talk replies
+  // that are truthful without a model (an AI genuinely does not eat, and
+  // "how's your day going" is a real question rather than a fabricated fact),
+  // so they are kept ahead of the disclosure. The disclosure itself is the
+  // feature branch's, which is stricter: it refuses to emit placeholder code
+  // or a generic explanation that may not answer the question.
+  const plain = lower.replace(/[^a-z0-9\s']/g, ' ').replace(/\s+/g, ' ').trim();
+
+  if (/\b(have you eaten|did you eat|have you had (breakfast|lunch|dinner)|are you hungry)\b/.test(plain)) {
+    return {
+      content: isVoiceCall
+        ? "I'm an AI, so I don't eat, but I hope you've had something good. Have you eaten?"
+        : "I'm an AI, so I don't eat, but I hope you've had something good today. Have you eaten?",
+      thought: thinkHarder ? 'Offline fallback: honest small-talk reply, no model available.' : undefined,
+    };
+  }
+
+  if (/\b(how was your day|how is your day|how's your day|what are you doing|what's up with you)\b/.test(plain)) {
+    return {
+      content: isVoiceCall
+        ? "All good on my side. I'm here and ready to help. How's your day going?"
+        : "All good on my side, I'm here and ready to help. How's your day going?",
+      thought: thinkHarder ? 'Offline fallback: honest small-talk reply, no model available.' : undefined,
+    };
+  }
+
   const fallbackReply = looksLikeCodeRequest
     ? 'I can see that you need task-specific code. However, the fallback currently handling this request cannot reliably generate and verify that implementation. I will not give you placeholder code and pretend it solves your problem. Restore a working model provider or load the local neural model, then try this request again.'
     : 'I could not produce a sufficiently reliable answer with the current fallback. It can handle certain specific operations, but it is not a substitute for a capable generative language model. I do not want to fill the gap with a generic explanation that may not answer your question. Restore a working model provider or load the local neural model, then try again.';

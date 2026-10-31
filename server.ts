@@ -6333,6 +6333,12 @@ async function startServer() {
     }
   }
 
+  if (process.env.VERCEL) {
+    // On serverless, Vercel serves the built SPA itself; this process only
+    // handles /api/* routes and must not bind a listener or mount static files.
+    return;
+  }
+
   const httpServer = http.createServer(app);
 
   // Keep-alive tuning. Node's default keepAliveTimeout (5s) is shorter than the
@@ -6482,3 +6488,14 @@ if (process.env.VERCEL === '1') {
     process.exitCode = 1;
   });
 }
+
+// Exported so the serverless entry point (api/index.ts) can wait for stores to
+// hydrate before handing the first request to Express. On Vercel this is the
+// same promise the block above already started; elsewhere it is the startup
+// sequence itself.
+export const ready: Promise<void> =
+  serverInitialization ??
+  startServer().catch((error) => {
+    console.error('[RARE] Startup failed:', error?.message || error);
+    process.exitCode = 1;
+  });

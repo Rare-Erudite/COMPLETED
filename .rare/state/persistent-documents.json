@@ -7182,6 +7182,126 @@
         "role": "user",
         "createdAt": "2026-10-31T04:18:13.829Z"
       }
+    ],
+    [
+      "test_regular_1793473796071@example.com",
+      {
+        "id": "usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb",
+        "name": "Regular Test User",
+        "email": "test_regular_1793473796071@example.com",
+        "passwordHash": "scrypt:6c27ee392048979596139bc414d30c3e:842826774ed14cadf64431da20837811ee30f4335cc493612f01f59c20923ef8ffe0f6cfcfa54ce1485a56eec68ebe86e9ca34a1fbdf7a3582c348e55c2fa3f6",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T19:09:56.161Z"
+      }
+    ],
+    [
+      "test_other_1793473796177@example.com",
+      {
+        "id": "usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f",
+        "name": "Other Test User",
+        "email": "test_other_1793473796177@example.com",
+        "passwordHash": "scrypt:b4684388350e57a1dd1ceec9aa705828:8138f9267e9357b30a5168190ff435c4784bf748f7976c42c9e51d58ed12052f693f3ff0b72c4cbb3af12672676e221fcc3055c7ef0037f3f22c5d0dbb9409ee",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T19:09:56.264Z"
+      }
+    ],
+    [
+      "toolchain-route-1793473806863@rare-verify.test",
+      {
+        "id": "usr_75c81cf3-c79b-4175-8292-0b3343991250",
+        "name": "Toolchain Route",
+        "email": "toolchain-route-1793473806863@rare-verify.test",
+        "passwordHash": "scrypt:747cc50d68a20a64d2782d89b76fea13:87a1e83eee1c6ed596856b82bb66bb8db8b146718074c233d0bd8b7619885583a098a2d7c9e034714ccbcc3a9398a7d0c4633a7b4f7a6b04745e97b6fcabb51b",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T19:10:06.904Z"
+      }
+    ],
+    [
+      "test_regular_1793474028970@example.com",
+      {
+        "id": "usr_81e7c239-0514-4ff0-b3e7-c46e79923931",
+        "name": "Regular Test User",
+        "email": "test_regular_1793474028970@example.com",
+        "passwordHash": "scrypt:84d81d6f0ff361e4abbe2f0c6d67455a:dabdb634b5bed2970cec57cbe9e444e110a801e44a580e1e85d49bdcdbb11f128059051ce4162efa14ba2cfdfb01f44aebfad36fb122721407191d8d92e92aaa",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T19:13:49.060Z"
+      }
+    ],
+    [
+      "test_other_1793474029078@example.com",
+      {
+        "id": "usr_6de54590-ca0d-45c1-9db8-f817b8baa49f",
+        "name": "Other Test User",
+        "email": "test_other_1793474029078@example.com",
+        "passwordHash": "scrypt:30705eb94abd862d873ea34324342dde:e0e851c4dc79770fae1ae82819bfe1e71f3aa6fb83aeb087ccf4da7db0fa6ac335d37c822f84efba9aec33ca38fa0119e3b72e93deeebbaf168e3f87f5d53109",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T19:13:49.143Z"
+      }
+    ],
+    [
+      "toolchain-route-1793474034548@rare-verify.test",
+      {
+        "id": "usr_8e117f0f-2d1c-4dbf-beb0-4ece3bbbf026",
+        "name": "Toolchain Route",
+        "email": "toolchain-route-1793474034548@rare-verify.test",
+        "passwordHash": "scrypt:3b49981c4490e37fd517a9eae63b3fc6:0d5ce365050956c436c2611cce490eead090ec3cfd9062d9a1cdba0d7c8ac65695a8329c523fdeacb4564924ce9749437afa8198db7052633310ccaba4050829",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T19:13:54.592Z"
+      }
+    ],
+    [
+      "docs-test-1793474266456-95itj5@rare-test.local",
+      {
+        "id": "usr_01d5e6bf-387c-4093-820a-03aad36c1682",
+        "name": "Docs Test",
+        "email": "docs-test-1793474266456-95itj5@rare-test.local",
+        "passwordHash": "scrypt:4d5c27e85d4e0d651bbad307449484bd:fe0bb603b48ba90a75f1c27b157d6890eef2cb850c1f4c2214050dea17e71fee0aa5b304adabb6bb8bc9402271767c3635ae7b5d3a555f2017d6331d3de81dd4",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T19:17:46.510Z"
+      }
+    ],
+    [
+      "test_regular_1793474276665@example.com",
+      {
+        "id": "usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb",
+        "name": "Regular Test User",
+        "email": "test_regular_1793474276665@example.com",
+        "passwordHash": "scrypt:5fbf68d1c7fe02b10ed2348cfb9bea09:ef10147b8d0e66c18a51b2f28a733020135275d2600c4886b0571f8ad83169eebf7e95e2678ddc9d8a01696aefef214c65cab503ca295498a2e919c3fb64cd95",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T19:17:56.727Z"
+      }
+    ],
+    [
+      "test_other_1793474276745@example.com",
+      {
+        "id": "usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb",
+        "name": "Other Test User",
+        "email": "test_other_1793474276745@example.com",
+        "passwordHash": "scrypt:c08b7960db3cc6e3970b11c88d802363:e488fe1adaa4cd48c64b0db7c06a6f885c5e1d1ff036438dbe981768887b2dc9a7b229c1b5b226896315a86483aa76bf1b9e504eae0a070ecc74194ecafeb26e",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T19:17:56.789Z"
+      }
+    ],
+    [
+      "toolchain-route-1793474288842@rare-verify.test",
+      {
+        "id": "usr_f019c761-3784-4e21-a1d6-0022a4f047a6",
+        "name": "Toolchain Route",
+        "email": "toolchain-route-1793474288842@rare-verify.test",
+        "passwordHash": "scrypt:0634525770561fc9db7628c45274a278:0b02192062c07e1811b763bd8dcdc016ee0619902e04836f7563c773b841599f3843281c482c52569779e8be042aedbcedaa56f4d695a8541a6723f7611f6f49",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T19:18:08.882Z"
+      }
     ]
   ],
   "audit_log": [
@@ -7846,6 +7966,153 @@
       {
         "userId": "guest_84d023c0-5e9d-482f-8552-49fd5bf2e083",
         "expiresAt": 1796012665942
+      }
+    ],
+    [
+      "5f3ded605a5712581b4d3646767f8d83f28209db1b5d68a29c23870cfde0060a",
+      {
+        "userId": "usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb",
+        "expiresAt": 1796065796169
+      }
+    ],
+    [
+      "8365f2a3b022d1edf354d2b2850551b1852d87925db4a6853bf009992d00d018",
+      {
+        "userId": "usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f",
+        "expiresAt": 1796065796269
+      }
+    ],
+    [
+      "d70aa27868322371cc218111277c8036583c5245d9bab3c21d56f29c14db759f",
+      {
+        "userId": "usr_75c81cf3-c79b-4175-8292-0b3343991250",
+        "expiresAt": 1796065806943
+      }
+    ],
+    [
+      "8cf2ab392d94e2eec8d65481e0a88d020b514477dee76ca8a8139c7f5e56a267",
+      {
+        "userId": "guest_f83f28c7-5ee6-419f-a254-c88ecb1b4621",
+        "expiresAt": 1796065809021
+      }
+    ],
+    [
+      "6c80784d8e3e4979a1fc6e55c649e30e7d098cf9a32fbe59deec846f917c89a2",
+      {
+        "userId": "guest_c42c1da3-0c0b-49e7-8535-ffa1fd413650",
+        "expiresAt": 1796065813147
+      }
+    ],
+    [
+      "1fd2905386756c69a377ab417b2d1c97ef4fd44084dfea75640e4ef6f5888207",
+      {
+        "userId": "guest_67bc8ba5-781a-4d32-a787-37424c9d88c8",
+        "expiresAt": 1796065819514
+      }
+    ],
+    [
+      "ad062f4e5f57d82595e3c415a6d154d6634983bed08cab64c804972920c0d518",
+      {
+        "userId": "usr_81e7c239-0514-4ff0-b3e7-c46e79923931",
+        "expiresAt": 1796066029068
+      }
+    ],
+    [
+      "1e7f971725738cd8f279e41314a32312aba8a9ad210e7f4180ff43d1805278f6",
+      {
+        "userId": "usr_6de54590-ca0d-45c1-9db8-f817b8baa49f",
+        "expiresAt": 1796066029148
+      }
+    ],
+    [
+      "61c21feb4d7e49655e1566eb5854685920fc3b577b9da9d1a80d14a8c00844b0",
+      {
+        "userId": "usr_8e117f0f-2d1c-4dbf-beb0-4ece3bbbf026",
+        "expiresAt": 1796066034598
+      }
+    ],
+    [
+      "6f04404adc2b8846957f56253994f444e34b01f078f5a5acfc229d0221a95bc5",
+      {
+        "userId": "guest_8b1e63db-bc9e-4ff2-ad7a-7409a47d8a55",
+        "expiresAt": 1796066036678
+      }
+    ],
+    [
+      "ef86a97b918c8260759a34e84daacfc6dbf70b839d8f51c2cea6e638ade16b5d",
+      {
+        "userId": "guest_8186a9cc-7482-459b-8cae-a74241b08628",
+        "expiresAt": 1796066040355
+      }
+    ],
+    [
+      "052806f15a591eb9bc712aa9c8ee42d4ae59cbaa843a1ed522897b522e0224a7",
+      {
+        "userId": "guest_90cab672-8689-4691-aa17-886643483505",
+        "expiresAt": 1796066046579
+      }
+    ],
+    [
+      "7eeb3c65a85ebcce7b9f4fd141650575f12e70e7fb8b794e144063a243baa2ac",
+      {
+        "userId": "guest_4c5ad038-794c-4541-82fa-29265a1fb99c",
+        "expiresAt": 1796066256166
+      }
+    ],
+    [
+      "163a6592724a8a92ec54efc4b369be75013b7859f3bb343c8ce9c73c5a2acb05",
+      {
+        "userId": "usr_01d5e6bf-387c-4093-820a-03aad36c1682",
+        "expiresAt": 1796066266545
+      }
+    ],
+    [
+      "e186eafdd7bfeadc37083dcebcae87ee63b592120217b86525ca6163192b8e68",
+      {
+        "userId": "guest_986b2453-ec2d-4d13-9632-32644b7f593a",
+        "expiresAt": 1796066266720
+      }
+    ],
+    [
+      "1d0c4e0f3387b670ff5d2f9e7e8fe6a0d9d888322c7b9d4abc8301ce84bf310e",
+      {
+        "userId": "usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb",
+        "expiresAt": 1796066276737
+      }
+    ],
+    [
+      "4a7e423c3a737f5d5c874a5d3a92c407466b1bb96b9e162d3179eb9e3bac3611",
+      {
+        "userId": "usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb",
+        "expiresAt": 1796066276794
+      }
+    ],
+    [
+      "2160d43eece570a629845a8f43502ba3f131af5e73f80b1c79076875d8ec5aa6",
+      {
+        "userId": "usr_f019c761-3784-4e21-a1d6-0022a4f047a6",
+        "expiresAt": 1796066288888
+      }
+    ],
+    [
+      "b114e47146eb4d4fafb54681c5086527834ea9f4e964ef1c6472a439cd680ba6",
+      {
+        "userId": "guest_07296b0b-209f-444e-9c13-864466dde685",
+        "expiresAt": 1796066290944
+      }
+    ],
+    [
+      "4fe30dc15141402f3067252b38a75025d63c320dcca9ba4bd173107185509b60",
+      {
+        "userId": "guest_9a134061-35c1-4f62-a1c7-35949683d4dc",
+        "expiresAt": 1796066294755
+      }
+    ],
+    [
+      "4b8ef62c8c4de6e125560c437668fae08f039a104f718f4fd7061f3906e58261",
+      {
+        "userId": "guest_40653caf-6833-42cf-a35d-bcb293ddb612",
+        "expiresAt": 1796066301457
       }
     ]
   ],
@@ -10949,6 +11216,106 @@
       "provider": "email",
       "role": "user",
       "createdAt": "2026-10-31T04:18:13.829Z"
+    },
+    {
+      "id": "usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb",
+      "name": "Regular Test User",
+      "email": "test_regular_1793473796071@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:6c27ee392048979596139bc414d30c3e:842826774ed14cadf64431da20837811ee30f4335cc493612f01f59c20923ef8ffe0f6cfcfa54ce1485a56eec68ebe86e9ca34a1fbdf7a3582c348e55c2fa3f6",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T19:09:56.161Z"
+    },
+    {
+      "id": "usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f",
+      "name": "Other Test User",
+      "email": "test_other_1793473796177@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:b4684388350e57a1dd1ceec9aa705828:8138f9267e9357b30a5168190ff435c4784bf748f7976c42c9e51d58ed12052f693f3ff0b72c4cbb3af12672676e221fcc3055c7ef0037f3f22c5d0dbb9409ee",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T19:09:56.264Z"
+    },
+    {
+      "id": "usr_75c81cf3-c79b-4175-8292-0b3343991250",
+      "name": "Toolchain Route",
+      "email": "toolchain-route-1793473806863@rare-verify.test",
+      "phone": null,
+      "passwordHash": "scrypt:747cc50d68a20a64d2782d89b76fea13:87a1e83eee1c6ed596856b82bb66bb8db8b146718074c233d0bd8b7619885583a098a2d7c9e034714ccbcc3a9398a7d0c4633a7b4f7a6b04745e97b6fcabb51b",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T19:10:06.904Z"
+    },
+    {
+      "id": "usr_81e7c239-0514-4ff0-b3e7-c46e79923931",
+      "name": "Regular Test User",
+      "email": "test_regular_1793474028970@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:84d81d6f0ff361e4abbe2f0c6d67455a:dabdb634b5bed2970cec57cbe9e444e110a801e44a580e1e85d49bdcdbb11f128059051ce4162efa14ba2cfdfb01f44aebfad36fb122721407191d8d92e92aaa",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T19:13:49.060Z"
+    },
+    {
+      "id": "usr_6de54590-ca0d-45c1-9db8-f817b8baa49f",
+      "name": "Other Test User",
+      "email": "test_other_1793474029078@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:30705eb94abd862d873ea34324342dde:e0e851c4dc79770fae1ae82819bfe1e71f3aa6fb83aeb087ccf4da7db0fa6ac335d37c822f84efba9aec33ca38fa0119e3b72e93deeebbaf168e3f87f5d53109",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T19:13:49.143Z"
+    },
+    {
+      "id": "usr_8e117f0f-2d1c-4dbf-beb0-4ece3bbbf026",
+      "name": "Toolchain Route",
+      "email": "toolchain-route-1793474034548@rare-verify.test",
+      "phone": null,
+      "passwordHash": "scrypt:3b49981c4490e37fd517a9eae63b3fc6:0d5ce365050956c436c2611cce490eead090ec3cfd9062d9a1cdba0d7c8ac65695a8329c523fdeacb4564924ce9749437afa8198db7052633310ccaba4050829",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T19:13:54.592Z"
+    },
+    {
+      "id": "usr_01d5e6bf-387c-4093-820a-03aad36c1682",
+      "name": "Docs Test",
+      "email": "docs-test-1793474266456-95itj5@rare-test.local",
+      "phone": null,
+      "passwordHash": "scrypt:4d5c27e85d4e0d651bbad307449484bd:fe0bb603b48ba90a75f1c27b157d6890eef2cb850c1f4c2214050dea17e71fee0aa5b304adabb6bb8bc9402271767c3635ae7b5d3a555f2017d6331d3de81dd4",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T19:17:46.510Z"
+    },
+    {
+      "id": "usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb",
+      "name": "Regular Test User",
+      "email": "test_regular_1793474276665@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:5fbf68d1c7fe02b10ed2348cfb9bea09:ef10147b8d0e66c18a51b2f28a733020135275d2600c4886b0571f8ad83169eebf7e95e2678ddc9d8a01696aefef214c65cab503ca295498a2e919c3fb64cd95",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T19:17:56.727Z"
+    },
+    {
+      "id": "usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb",
+      "name": "Other Test User",
+      "email": "test_other_1793474276745@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:c08b7960db3cc6e3970b11c88d802363:e488fe1adaa4cd48c64b0db7c06a6f885c5e1d1ff036438dbe981768887b2dc9a7b229c1b5b226896315a86483aa76bf1b9e504eae0a070ecc74194ecafeb26e",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T19:17:56.789Z"
+    },
+    {
+      "id": "usr_f019c761-3784-4e21-a1d6-0022a4f047a6",
+      "name": "Toolchain Route",
+      "email": "toolchain-route-1793474288842@rare-verify.test",
+      "phone": null,
+      "passwordHash": "scrypt:0634525770561fc9db7628c45274a278:0b02192062c07e1811b763bd8dcdc016ee0619902e04836f7563c773b841599f3843281c482c52569779e8be042aedbcedaa56f4d695a8541a6723f7611f6f49",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T19:18:08.882Z"
     }
   ],
   "rare_auth_sessions": [
@@ -11606,6 +11973,174 @@
         "ownerId": "guest_84d023c0-5e9d-482f-8552-49fd5bf2e083",
         "accountId": null,
         "expiresAt": 1796012665942
+      }
+    ],
+    [
+      "5f3ded605a5712581b4d3646767f8d83f28209db1b5d68a29c23870cfde0060a",
+      {
+        "ownerId": "usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb",
+        "accountId": "usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb",
+        "expiresAt": 1796065796169
+      }
+    ],
+    [
+      "8365f2a3b022d1edf354d2b2850551b1852d87925db4a6853bf009992d00d018",
+      {
+        "ownerId": "usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f",
+        "accountId": "usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f",
+        "expiresAt": 1796065796269
+      }
+    ],
+    [
+      "d70aa27868322371cc218111277c8036583c5245d9bab3c21d56f29c14db759f",
+      {
+        "ownerId": "usr_75c81cf3-c79b-4175-8292-0b3343991250",
+        "accountId": "usr_75c81cf3-c79b-4175-8292-0b3343991250",
+        "expiresAt": 1796065806943
+      }
+    ],
+    [
+      "8cf2ab392d94e2eec8d65481e0a88d020b514477dee76ca8a8139c7f5e56a267",
+      {
+        "ownerId": "guest_f83f28c7-5ee6-419f-a254-c88ecb1b4621",
+        "accountId": null,
+        "expiresAt": 1796065809021
+      }
+    ],
+    [
+      "6c80784d8e3e4979a1fc6e55c649e30e7d098cf9a32fbe59deec846f917c89a2",
+      {
+        "ownerId": "guest_c42c1da3-0c0b-49e7-8535-ffa1fd413650",
+        "accountId": null,
+        "expiresAt": 1796065813147
+      }
+    ],
+    [
+      "1fd2905386756c69a377ab417b2d1c97ef4fd44084dfea75640e4ef6f5888207",
+      {
+        "ownerId": "guest_67bc8ba5-781a-4d32-a787-37424c9d88c8",
+        "accountId": null,
+        "expiresAt": 1796065819514
+      }
+    ],
+    [
+      "ad062f4e5f57d82595e3c415a6d154d6634983bed08cab64c804972920c0d518",
+      {
+        "ownerId": "usr_81e7c239-0514-4ff0-b3e7-c46e79923931",
+        "accountId": "usr_81e7c239-0514-4ff0-b3e7-c46e79923931",
+        "expiresAt": 1796066029068
+      }
+    ],
+    [
+      "1e7f971725738cd8f279e41314a32312aba8a9ad210e7f4180ff43d1805278f6",
+      {
+        "ownerId": "usr_6de54590-ca0d-45c1-9db8-f817b8baa49f",
+        "accountId": "usr_6de54590-ca0d-45c1-9db8-f817b8baa49f",
+        "expiresAt": 1796066029148
+      }
+    ],
+    [
+      "61c21feb4d7e49655e1566eb5854685920fc3b577b9da9d1a80d14a8c00844b0",
+      {
+        "ownerId": "usr_8e117f0f-2d1c-4dbf-beb0-4ece3bbbf026",
+        "accountId": "usr_8e117f0f-2d1c-4dbf-beb0-4ece3bbbf026",
+        "expiresAt": 1796066034598
+      }
+    ],
+    [
+      "6f04404adc2b8846957f56253994f444e34b01f078f5a5acfc229d0221a95bc5",
+      {
+        "ownerId": "guest_8b1e63db-bc9e-4ff2-ad7a-7409a47d8a55",
+        "accountId": null,
+        "expiresAt": 1796066036678
+      }
+    ],
+    [
+      "ef86a97b918c8260759a34e84daacfc6dbf70b839d8f51c2cea6e638ade16b5d",
+      {
+        "ownerId": "guest_8186a9cc-7482-459b-8cae-a74241b08628",
+        "accountId": null,
+        "expiresAt": 1796066040355
+      }
+    ],
+    [
+      "052806f15a591eb9bc712aa9c8ee42d4ae59cbaa843a1ed522897b522e0224a7",
+      {
+        "ownerId": "guest_90cab672-8689-4691-aa17-886643483505",
+        "accountId": null,
+        "expiresAt": 1796066046579
+      }
+    ],
+    [
+      "7eeb3c65a85ebcce7b9f4fd141650575f12e70e7fb8b794e144063a243baa2ac",
+      {
+        "ownerId": "guest_4c5ad038-794c-4541-82fa-29265a1fb99c",
+        "accountId": null,
+        "expiresAt": 1796066256166
+      }
+    ],
+    [
+      "163a6592724a8a92ec54efc4b369be75013b7859f3bb343c8ce9c73c5a2acb05",
+      {
+        "ownerId": "usr_01d5e6bf-387c-4093-820a-03aad36c1682",
+        "accountId": "usr_01d5e6bf-387c-4093-820a-03aad36c1682",
+        "expiresAt": 1796066266545
+      }
+    ],
+    [
+      "e186eafdd7bfeadc37083dcebcae87ee63b592120217b86525ca6163192b8e68",
+      {
+        "ownerId": "guest_986b2453-ec2d-4d13-9632-32644b7f593a",
+        "accountId": null,
+        "expiresAt": 1796066266720
+      }
+    ],
+    [
+      "1d0c4e0f3387b670ff5d2f9e7e8fe6a0d9d888322c7b9d4abc8301ce84bf310e",
+      {
+        "ownerId": "usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb",
+        "accountId": "usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb",
+        "expiresAt": 1796066276737
+      }
+    ],
+    [
+      "4a7e423c3a737f5d5c874a5d3a92c407466b1bb96b9e162d3179eb9e3bac3611",
+      {
+        "ownerId": "usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb",
+        "accountId": "usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb",
+        "expiresAt": 1796066276794
+      }
+    ],
+    [
+      "2160d43eece570a629845a8f43502ba3f131af5e73f80b1c79076875d8ec5aa6",
+      {
+        "ownerId": "usr_f019c761-3784-4e21-a1d6-0022a4f047a6",
+        "accountId": "usr_f019c761-3784-4e21-a1d6-0022a4f047a6",
+        "expiresAt": 1796066288888
+      }
+    ],
+    [
+      "b114e47146eb4d4fafb54681c5086527834ea9f4e964ef1c6472a439cd680ba6",
+      {
+        "ownerId": "guest_07296b0b-209f-444e-9c13-864466dde685",
+        "accountId": null,
+        "expiresAt": 1796066290944
+      }
+    ],
+    [
+      "4fe30dc15141402f3067252b38a75025d63c320dcca9ba4bd173107185509b60",
+      {
+        "ownerId": "guest_9a134061-35c1-4f62-a1c7-35949683d4dc",
+        "accountId": null,
+        "expiresAt": 1796066294755
+      }
+    ],
+    [
+      "4b8ef62c8c4de6e125560c437668fae08f039a104f718f4fd7061f3906e58261",
+      {
+        "ownerId": "guest_40653caf-6833-42cf-a35d-bcb293ddb612",
+        "accountId": null,
+        "expiresAt": 1796066301457
       }
     ]
   ],
@@ -14837,5 +15372,318 @@
       "origin": "chat",
       "conversationId": "conv_a9de8348-d645-4b9b-9b47-6220815a7d26"
     }
-  ]
+  ],
+  "rare_user_state:usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb:memories": [
+    {
+      "id": "mem_eef3d115-6bf2-47f9-9a78-533a67d9d7c8",
+      "timestamp": "2026-10-31T19:09:56.278Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f:memories": [],
+  "rare_user_state:usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T19:09:56.294Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f:documents": [],
+  "rare_user_state:usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb:conversations": [
+    {
+      "id": "conv_763aa7ea-87b0-4fe8-bf31-96a34a5bf183",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T19:09:56.303Z",
+      "userId": "usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f:conversations": [],
+  "rare_user_state:usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f:settings": {},
+  "rare_user_state:usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb:schedules": [
+    {
+      "id": "sch_b98f4dff-e03e-45a0-a544-5813b2663290",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T19:09:56.371Z"
+    }
+  ],
+  "rare_user_state:usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f:schedules": [],
+  "rare_user_state:usr_fc9e7c16-5ac9-4b36-9a80-1846b94005cb:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f:plugin_settings": {},
+  "rare_user_state:usr_11b79c2c-ed73-4a3d-9aa3-fb33cf60bb7f:projects": [],
+  "rare_user_state:guest_67bc8ba5-781a-4d32-a787-37424c9d88c8:conversations": [
+    {
+      "id": "conv_00b158be-8e6e-4911-aaa6-0224ff698673",
+      "title": "Pipeline Test",
+      "created_at": "2026-10-31T19:10:19.524Z",
+      "userId": "guest_67bc8ba5-781a-4d32-a787-37424c9d88c8",
+      "messages": [
+        {
+          "id": "msg_547c8400-3f44-4f08-bfc3-0a781311c1c9",
+          "role": "assistant",
+          "content": "Hello! I am RARE — your personal AI companion and software builder. What would you like to work on today?",
+          "timestamp": "2026-10-31T19:10:19.524Z"
+        }
+      ]
+    }
+  ],
+  "rare_user_state:guest_67bc8ba5-781a-4d32-a787-37424c9d88c8:guest_usage": {
+    "online_chat_messages": 2
+  },
+  "rare_user_state:guest_67bc8ba5-781a-4d32-a787-37424c9d88c8:memories": [],
+  "rare_user_state:usr_81e7c239-0514-4ff0-b3e7-c46e79923931:memories": [
+    {
+      "id": "mem_9615521d-3119-472f-a78d-4a7a0e1d131f",
+      "timestamp": "2026-10-31T19:13:49.157Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_6de54590-ca0d-45c1-9db8-f817b8baa49f:memories": [],
+  "rare_user_state:usr_81e7c239-0514-4ff0-b3e7-c46e79923931:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T19:13:49.173Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_6de54590-ca0d-45c1-9db8-f817b8baa49f:documents": [],
+  "rare_user_state:usr_81e7c239-0514-4ff0-b3e7-c46e79923931:conversations": [
+    {
+      "id": "conv_491cfe73-cbea-4fcd-995f-324f4b44611c",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T19:13:49.182Z",
+      "userId": "usr_81e7c239-0514-4ff0-b3e7-c46e79923931",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_6de54590-ca0d-45c1-9db8-f817b8baa49f:conversations": [],
+  "rare_user_state:usr_81e7c239-0514-4ff0-b3e7-c46e79923931:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_6de54590-ca0d-45c1-9db8-f817b8baa49f:settings": {},
+  "rare_user_state:usr_81e7c239-0514-4ff0-b3e7-c46e79923931:schedules": [
+    {
+      "id": "sch_4e7848c5-3dbb-4c9f-9b2b-92461d331fcf",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T19:13:49.218Z"
+    }
+  ],
+  "rare_user_state:usr_6de54590-ca0d-45c1-9db8-f817b8baa49f:schedules": [],
+  "rare_user_state:usr_81e7c239-0514-4ff0-b3e7-c46e79923931:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_6de54590-ca0d-45c1-9db8-f817b8baa49f:plugin_settings": {},
+  "rare_user_state:usr_6de54590-ca0d-45c1-9db8-f817b8baa49f:projects": [],
+  "rare_user_state:guest_90cab672-8689-4691-aa17-886643483505:conversations": [
+    {
+      "id": "conv_5b32cd43-4aa4-4329-8059-cd7c3abe5549",
+      "title": "Pipeline Test",
+      "created_at": "2026-10-31T19:14:06.590Z",
+      "userId": "guest_90cab672-8689-4691-aa17-886643483505",
+      "messages": [
+        {
+          "id": "msg_f91cdbfd-97cc-445b-9552-3acfce5e8597",
+          "role": "assistant",
+          "content": "Hello! I am RARE — your personal AI companion and software builder. What would you like to work on today?",
+          "timestamp": "2026-10-31T19:14:06.590Z"
+        }
+      ]
+    }
+  ],
+  "rare_user_state:guest_90cab672-8689-4691-aa17-886643483505:guest_usage": {
+    "online_chat_messages": 2
+  },
+  "rare_user_state:guest_90cab672-8689-4691-aa17-886643483505:memories": [],
+  "rare_user_state:guest_4c5ad038-794c-4541-82fa-29265a1fb99c:documents": [
+    {
+      "path": "uploads/versioned-1793474256177.md",
+      "content": "version one",
+      "format": "md",
+      "updatedAt": "2026-10-31T19:17:46.715Z",
+      "version": 4,
+      "history": [
+        {
+          "content": "version three",
+          "updatedAt": "2026-10-31T19:17:46.711Z",
+          "version": 3
+        },
+        {
+          "content": "version two",
+          "updatedAt": "2026-10-31T19:17:46.705Z",
+          "version": 2
+        },
+        {
+          "content": "version one",
+          "updatedAt": "2026-10-31T19:17:46.700Z",
+          "version": 1
+        }
+      ],
+      "origin": "manual"
+    },
+    {
+      "path": "uploads/sales-1793474256177-1793474262753.md",
+      "content": "## Sales\n\n| Region | Revenue | Units |\n| --- | --- | --- |\n| Lagos | 2100000 | 412 |\n| Abuja | 800000 | 190 |",
+      "format": "md",
+      "updatedAt": "2026-10-31T19:17:42.753Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "xlsx",
+      "label": "Excel workbook (XLSX)",
+      "method": "spreadsheet-sheetjs",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/contract-1793474256177-1793474262693.md",
+      "content": "Contract between RARE and Nova Systems.\n\nPayment of 45000 pounds is due on 2027-01-15.",
+      "format": "md",
+      "updatedAt": "2026-10-31T19:17:42.693Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "docx",
+      "label": "Word document (DOCX)",
+      "method": "docx-mammoth",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/report-1793474256177-1793474262656.md",
+      "content": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan.",
+      "format": "md",
+      "updatedAt": "2026-10-31T19:17:42.656Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "pdf",
+      "label": "PDF document",
+      "method": "pdfjs-text",
+      "ocr": false,
+      "pages": [
+        {
+          "page": 1,
+          "text": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan."
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "rare_user_state:guest_986b2453-ec2d-4d13-9632-32644b7f593a:documents": [],
+  "rare_user_state:usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb:memories": [
+    {
+      "id": "mem_71086f43-7922-4e26-ac0c-0035acd16695",
+      "timestamp": "2026-10-31T19:17:56.849Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb:memories": [],
+  "rare_user_state:usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T19:17:56.868Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb:documents": [],
+  "rare_user_state:usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb:conversations": [
+    {
+      "id": "conv_fa21904b-46c3-4e8b-9f7b-91143d9d115a",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T19:17:56.878Z",
+      "userId": "usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb:conversations": [],
+  "rare_user_state:usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb:settings": {},
+  "rare_user_state:usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb:schedules": [
+    {
+      "id": "sch_1ebc2bb5-a900-4663-bb4a-3bfb6afbf693",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T19:17:56.956Z"
+    }
+  ],
+  "rare_user_state:usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb:schedules": [],
+  "rare_user_state:usr_29fe8c61-1259-4b0a-8990-2d78f33fddcb:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb:plugin_settings": {},
+  "rare_user_state:usr_c5ea6053-190d-492a-b204-f8fcd0b7f6bb:projects": [],
+  "rare_user_state:guest_40653caf-6833-42cf-a35d-bcb293ddb612:conversations": [
+    {
+      "id": "conv_12c1db35-2fba-4443-8d23-19de3b465b18",
+      "title": "Pipeline Test",
+      "created_at": "2026-10-31T19:18:21.466Z",
+      "userId": "guest_40653caf-6833-42cf-a35d-bcb293ddb612",
+      "messages": [
+        {
+          "id": "msg_188938c8-04d0-4ad9-99b4-f564d466cd7b",
+          "role": "assistant",
+          "content": "Hello! I am RARE — your personal AI companion and software builder. What would you like to work on today?",
+          "timestamp": "2026-10-31T19:18:21.466Z"
+        }
+      ]
+    }
+  ],
+  "rare_user_state:guest_40653caf-6833-42cf-a35d-bcb293ddb612:guest_usage": {
+    "online_chat_messages": 2
+  },
+  "rare_user_state:guest_40653caf-6833-42cf-a35d-bcb293ddb612:memories": []
 }

@@ -36,6 +36,31 @@ export class LocalTransformersServerProvider implements IModelProvider {
     return local.hasCachedWeights() || local.isReady;
   }
 
+  /**
+   * Load the local model into memory ahead of the first request.
+   *
+   * Opt-in via RARE_AUTOLOAD_LOCAL=1. Deliberately never throws: a failed
+   * preload must not take the server down, because the provider is optional and
+   * the registry can still answer through another provider. The failure is
+   * logged without the exception detail, which can contain filesystem paths.
+   */
+  public async preload(): Promise<boolean> {
+    const local = this.getLocalProvider();
+    if (local.isReady) return true;
+    if (!local.hasCachedWeights()) {
+      console.warn('[LocalTransformers] RARE_AUTOLOAD_LOCAL is set but no weights are cached; skipping preload.');
+      return false;
+    }
+    try {
+      await local.loadModel();
+      console.log('[LocalTransformers] Local neural model preloaded.');
+      return true;
+    } catch {
+      console.warn('[LocalTransformers] Preload failed; the model will be loaded on first use instead.');
+      return false;
+    }
+  }
+
   public async generate(
     prompt: string,
     context?: string,
