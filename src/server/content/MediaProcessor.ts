@@ -70,27 +70,70 @@ export class MediaProcessorError extends Error {
 let cachedFfmpeg: boolean | undefined;
 let cachedBinaries: { ffmpeg: string; ffprobe: string } | null | undefined;
 
+/** Test-only: clear the memoised binary/availability probes. */
+export function __resetMediaBinaryCache(): void {
+  cachedFfmpeg = undefined;
+  cachedBinaries = undefined;
+}
+
 /**
- * Make a bundled binary executable.
+ * Return a path to `binary` that is definitely executable, or null.
  *
- * `@ffprobe-installer/linux-x64` ships its binary with mode 0644 in the npm
- * tarball and relies on a `postinstall` script (`chmod u+x ffprobe`) to fix it.
- * Vercel installs with `--ignore-scripts`, so that script never runs and the
- * binary stays non-executable: `execFile` then fails with EACCES and the whole
- * transcription path reports FFMPEG_UNAVAILABLE even though the file is present.
- * `@ffmpeg-installer` happens to ship 0755, but both are normalised here so the
- * fix does not depend on which package is well-behaved. Best-effort: a
- * read-only filesystem simply leaves the mode as-is and the probe below decides.
+ * Two distinct problems have to be solved, and a serverless host has both:
+ *
+ *  a) The npm tarball may ship the file 0644 (ffprobe does), and the
+ *     `postinstall` chmod that would fix it is skipped by `--ignore-scripts`.
+ *  b) On Vercel the deployment root (`/var/task`) is mounted READ-ONLY, so
+ *     even a correct chmod attempt fails with EROFS and `execFile` still gets
+ *     EACCES. Fixing the mode in place is therefore not enough there.
+ *
+ * So: try to repair in place, and if the file is still not executable, copy it
+ * into the writable temp directory (which is `/tmp` on Vercel) with mode 0755
+ * and run that copy instead. The copy name carries the source's size+mtime, so
+ * a new deployment never reuses a stale binary, and a warm invocation reuses
+ * the copy already made by the previous one.
  */
-async function ensureExecutable(filePath: string): Promise<void> {
-  if (!filePath || !path.isAbsolute(filePath)) return;
+async function prepareBinary(binary: string): Promise<string | null> {
+  const isBareName = !binary.includes(path.sep);
+
+  if (isBareName) {
+    // A bare name resolves through PATH on a normal host; nothing to copy.
+    return binary;
+  }
+
   try {
-    const stat = await fs.stat(filePath);
-    if ((stat.mode & 0o111) === 0) {
-      await fs.chmod(filePath, 0o755);
+    const stat = await fs.stat(binary);
+    if ((stat.mode & 0o111) !== 0) return binary;
+    // Not executable: try the cheap repair first (works on a writable install).
+    try {
+      await fs.chmod(binary, 0o755);
+      const after = await fs.stat(binary);
+      if ((after.mode & 0o111) !== 0) return binary;
+    } catch {
+      /* read-only filesystem (Vercel /var/task); fall through to a copy */
     }
+
+    const dir = path.join(os.tmpdir(), 'rare-media-bin');
+    const target = path.join(
+      dir,
+      `${path.basename(binary)}-${stat.size}-${Math.round(stat.mtimeMs)}`,
+    );
+    try {
+      const existing = await fs.stat(target);
+      if ((existing.mode & 0o111) !== 0) return target;
+    } catch {
+      /* not copied yet */
+    }
+    await fs.mkdir(dir, { recursive: true });
+    // Write to a unique temp file then rename, so two concurrent cold starts
+    // cannot hand each other a half-copied binary.
+    const staging = `${target}.${process.pid}-${Date.now()}.tmp`;
+    await fs.copyFile(binary, staging);
+    await fs.chmod(staging, 0o755);
+    await fs.rename(staging, target);
+    return target;
   } catch {
-    /* missing or read-only; the probe below reports the real outcome */
+    return null;
   }
 }
 
@@ -136,15 +179,18 @@ export async function resolveMediaBinaries(): Promise<{ ffmpeg: string; ffprobe:
 
   for (const candidate of candidates) {
     try {
-      // Repair the executable bit before probing: a `--ignore-scripts` install
-      // (Vercel) leaves the bundled ffprobe at 0644, which would otherwise make
-      // every candidate fail and surface a false FFMPEG_UNAVAILABLE.
-      await ensureExecutable(candidate.ffmpeg);
-      await ensureExecutable(candidate.ffprobe);
-      await execFileAsync(candidate.ffmpeg, ['-version'], { timeout: 15_000 });
-      await execFileAsync(candidate.ffprobe, ['-version'], { timeout: 15_000 });
-      cachedBinaries = candidate;
-      return candidate;
+      // Make each binary genuinely executable before probing. On a serverless
+      // host the bundled files live on a read-only mount, so this may return a
+      // writable copy in the temp directory rather than the original path.
+      const ffmpeg = await prepareBinary(candidate.ffmpeg);
+      const ffprobe = await prepareBinary(candidate.ffprobe);
+      if (!ffmpeg || !ffprobe) continue;
+      await execFileAsync(ffmpeg, ['-version'], { timeout: 15_000 });
+      await execFileAsync(ffprobe, ['-version'], { timeout: 15_000 });
+      const resolved = { ffmpeg, ffprobe };
+      cachedBinaries = resolved;
+      console.log(`[media] using ffmpeg=${resolved.ffmpeg} ffprobe=${resolved.ffprobe}`);
+      return resolved;
     } catch {
       continue;
     }
