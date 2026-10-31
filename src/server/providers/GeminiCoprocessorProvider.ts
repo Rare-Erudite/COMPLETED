@@ -135,10 +135,33 @@ export class GeminiCoprocessorProvider implements IModelProvider {
     return [...new Set(ordered.filter((id): id is string => Boolean(id && id.trim())))];
   }
 
-  /** True when an error is a transient capacity/rate problem worth retrying. */
+  /**
+   * True when an error is a transient capacity problem worth retrying.
+   *
+   * A 429 quota error is NOT retried: the account's quota will not recover
+   * within a request, and retrying it three times per model turned a fast
+   * failure into a multi-minute hang. Only genuine capacity spikes (500/503)
+   * are retried.
+   */
   private isTransient(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
-    return /"code":\s*(429|500|503)|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(message);
+    if (/"code":\s*429|RESOURCE_EXHAUSTED|quota/i.test(message)) return false;
+    return /"code":\s*(500|503)|UNAVAILABLE|high demand|overloaded/i.test(message);
+  }
+
+  /**
+   * Whether a model id can plausibly accept audio input.
+   *
+   * The catalog lists every model the key can use, including text-to-speech
+   * models and gemma variants that reject audio with "Audio input modality is
+   * not enabled". Trying those first wasted a round-trip each and, with retries,
+   * dominated the request time. TTS and non-multimodal families are skipped.
+   */
+  private canAcceptAudio(modelId: string): boolean {
+    const id = modelId.toLowerCase();
+    if (id.includes('-tts') || id.includes('embedding') || id.includes('aqa')) return false;
+    if (id.startsWith('gemma')) return false;
+    return true;
   }
 
   public async generate(
@@ -333,7 +356,8 @@ export class GeminiCoprocessorProvider implements IModelProvider {
     // hardcoded id silently breaks transcription the day it is withdrawn
     // (gemini-2.5-flash now returns 404 "no longer available to new users").
     let lastError: unknown = null;
-    for (const modelId of this.candidateModelIds()) {
+    const audioModels = this.candidateModelIds().filter((id) => this.canAcceptAudio(id));
+    for (const modelId of audioModels) {
       // A transient 503 ("high demand") is not a reason to give up on the only
       // live model, so retry it a couple of times with a short backoff.
       for (let attempt = 0; attempt < 3; attempt += 1) {
