@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from 'react';
+import { apiFetch } from '../api.js';
 import { Code2, Play, CheckCircle2, ShieldCheck, FileCheck } from 'lucide-react';
 
 export function CodeWorkflowView() {
@@ -15,7 +16,7 @@ export function CodeWorkflowView() {
     setRunning(true);
     setResult(null);
     try {
-      const res = await fetch('/api/v1/workflows/code-repair', {
+      const res = await apiFetch('/api/v1/workflows/code-repair', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filePath, instruction }),

@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from 'react';
+import { apiFetch } from '../api.js';
 import { TrendingUp, Play, Award, CheckCircle2, Shield } from 'lucide-react';
 
 export function ContinuousImprovementView() {
@@ -12,7 +13,7 @@ export function ContinuousImprovementView() {
   const runBenchmark = async () => {
     setRunning(true);
     try {
-      const res = await fetch('/api/v1/tests/run', { method: 'POST' });
+      const res = await apiFetch('/api/intelligence/evaluate', { method: 'POST' });
       const data = await res.json();
       setBenchmarkResult(data);
     } catch (err: any) {

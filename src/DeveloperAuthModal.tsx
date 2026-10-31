@@ -13,7 +13,11 @@ import {
   Share2
 } from 'lucide-react';
 import { ThemeConfig } from './theme';
-import { resolveApiUrl, safePost } from './api';
+import {
+  getStoredSessionToken,
+  safePost,
+  storeUserSessionToken,
+} from './api';
 
 interface DeveloperAuthModalProps {
   t: ThemeConfig;
@@ -55,28 +59,46 @@ export function DeveloperAuthModal({
 
   if (!isOpen) return null;
 
-  const handleAuth = async (e: React.FormEvent) => {
+    const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+
     try {
-      const response = await fetch(resolveApiUrl('/api/developer/auth'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passkey }),
-      });
-      const res = await response.json().catch(() => null);
-      if (response.ok && res?.success) {
+      if (!getStoredSessionToken()) {
+        const guestSession = await safePost<any>(
+          '/api/user/guest-session'
+        );
+
+        if (
+          guestSession?.success !== true ||
+          typeof guestSession.expiresAt !== 'number'
+        ) {
+          setError(
+            'Could not establish a RARE session. Check your connection and try again.'
+          );
+          return;
+        }
+
+        storeUserSessionToken();
+      }
+
+      const res = await safePost<any>(
+        '/api/developer/auth',
+        { passkey }
+      );
+
+      if (res?.success) {
         onSuccess();
         onClose();
       } else {
         setError(
           res?.error?.message ||
-          (response.ok ? 'Invalid developer passkey.' : `Developer sign-in failed (HTTP ${response.status}).`)
+          'Developer sign-in failed. Check your passkey and session, then try again.'
         );
       }
     } catch {
-      setError('Connection error.');
+      setError('Connection error. Please try again.');
     } finally {
       setLoading(false);
     }

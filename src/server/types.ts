@@ -26,6 +26,10 @@ export interface GenerationOptions {
   maxTokens?: number;
   systemPrompt?: string;
   activeConversationId?: string;
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  thinkHarder?: boolean;
+  persona?: string;
+  isVoiceCall?: boolean;
 }
 
 export interface ToolCall {
@@ -67,7 +71,13 @@ export type ToolName =
   | 'RESTORE_CHECKPOINT'
   | 'RESEARCH'
   | 'MEMORY_RECALL'
-  | 'MEMORY_STORE';
+  | 'MEMORY_STORE'
+  | 'OPEN_URL'
+  | 'READ_DOCUMENT'
+  | 'SEARCH_LIBRARY'
+  | 'START_RESEARCH'
+  | 'SCAFFOLD_PROJECT'
+  | 'RUN_PROJECT_STAGE';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'prohibited';
 
@@ -80,7 +90,7 @@ export interface ToolInputSchema {
 export interface ToolSpec {
   name: ToolName;
   description: string;
-  category: 'filesystem' | 'execution' | 'inspection' | 'security' | 'research' | 'memory';
+  category: 'filesystem' | 'execution' | 'inspection' | 'security' | 'research' | 'memory' | 'content';
   risk: RiskLevel;
   requiresDeveloperAuth: boolean;
   inputSchema: ToolInputSchema;

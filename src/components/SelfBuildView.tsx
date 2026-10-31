@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../api.js';
 import { Layers, RotateCcw, Clock, CheckCircle2, Shield } from 'lucide-react';
 
 export function SelfBuildView() {
@@ -14,9 +15,10 @@ export function SelfBuildView() {
   const fetchCheckpoints = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/build/checkpoints');
+      const res = await apiFetch('/api/checkpoints');
+      if (!res.ok) throw new Error(`Checkpoint service returned HTTP ${res.status}.`);
       const data = await res.json();
-      setCheckpoints(data.checkpoints || []);
+      setCheckpoints(Array.isArray(data) ? data : []);
     } catch (err: any) {
       console.error(err);
     } finally {
@@ -32,7 +34,11 @@ export function SelfBuildView() {
     setRestoringId(id);
     setMessage(null);
     try {
-      const res = await fetch(`/api/v1/build/checkpoints/${id}/restore`, { method: 'POST' });
+      const res = await apiFetch('/api/developer/rollback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checkpointId: id }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || 'Restore failed');
       setMessage(`Successfully restored checkpoint ${id}`);
@@ -91,14 +97,14 @@ export function SelfBuildView() {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-mono text-cyan-400">{cp.id}</span>
-                    <span className="text-sm font-medium text-slate-200">{cp.name}</span>
+                    <span className="text-sm font-medium text-slate-200">{cp.description}</span>
                   </div>
                   <div className="text-xs text-slate-500 mt-1 flex items-center gap-3">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      {new Date(cp.createdAt).toLocaleString()}
+                      {new Date(cp.timestamp).toLocaleString()}
                     </span>
-                    <span>{Object.keys(cp.files || {}).length} file(s) captured</span>
+                    <span>{cp.filesCount} file(s) captured</span>
                   </div>
                 </div>
 

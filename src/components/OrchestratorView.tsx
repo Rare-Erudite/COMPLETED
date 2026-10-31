@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from 'react';
+import { apiFetch } from '../api.js';
 import { Sparkles, Play, CheckCircle2, AlertCircle, Clock, Shield } from 'lucide-react';
 
 export function OrchestratorView() {
@@ -17,7 +18,7 @@ export function OrchestratorView() {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch('/api/v1/tasks/execute', {
+      const res = await apiFetch('/api/v1/tasks/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ objective }),

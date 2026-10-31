@@ -67,9 +67,17 @@ import {
   Camera
 } from 'lucide-react';
 import { themes, ThemeKey, ThemeConfig } from './theme';
+import { DocumentsWorkspaceView } from './components/DocumentsWorkspaceView';
+import { ResearchWorkspaceView } from './components/ResearchWorkspaceView';
+
 import {
   safeFetch,
   safePost,
+  isStandaloneMobileApp,
+  getStoredSessionToken,
+  storeUserSessionToken,
+  clearUserSession,
+  validateCurrentUserSession,
   subscribeConnectionState,
   getBackendUrl,
   getDefaultBackendUrl,
@@ -78,6 +86,7 @@ import {
   testBackendConnection,
   BackendConnectionState
 } from './api';
+
 import { ImageStudioWorkspaceView } from './ImageStudioWorkspaceView';
 import { DownloadAppModal } from './DownloadAppModal';
 import { UpdateModal, AppUpdate } from './UpdateModal';
@@ -335,14 +344,21 @@ export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'default' | 'google' | 'outlook' | 'switch'>('default');
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     try {
       const saved = localStorage.getItem('rare_user_account');
-      return saved ? JSON.parse(saved) : null;
+
+      if (!saved || !getStoredSessionToken()) {
+        localStorage.removeItem('rare_user_account');
+        return null;
+      }
+
+      return JSON.parse(saved);
     } catch {
       return null;
     }
   });
+  const [sessionGeneration, setSessionGeneration] = useState(0);
 
   // Full Conversation Share Modal state
   const [shareModalData, setShareModalData] = useState<{ id: string; title: string; messages?: ChatMessage[] } | null>(null);
@@ -366,6 +382,104 @@ export default function App() {
       setConnectionStatus(state);
     });
   }, []);
+
+useEffect(() => {
+  let cancelled = false;
+
+  const validateSavedSession = async () => {
+    if (!getStoredSessionToken()) {
+      return;
+    }
+
+    const result = await validateCurrentUserSession();
+
+    // A network/server failure is not proof that the session is invalid.
+    if (cancelled || !result) {
+      return;
+    }
+
+    if (!result.authenticated) {
+      await clearUserSession();
+
+      if (cancelled) {
+        return;
+      }
+
+      setCurrentUser(null);
+      setIsDeveloperAuthed(false);
+      localStorage.removeItem('rare_user_account');
+      return;
+    }
+
+    if (result.user) {
+      const user = result.user as UserAccount;
+
+      setCurrentUser(user);
+      localStorage.setItem('rare_user_account', JSON.stringify(user));
+
+      if (user.role === 'developer') {
+        setIsDeveloperAuthed(true);
+      } else {
+        setIsDeveloperAuthed(false);
+      }
+    } else {
+      // A valid guest session is not a signed-in account.
+      setCurrentUser(null);
+      setIsDeveloperAuthed(false);
+      localStorage.removeItem('rare_user_account');
+    }
+  };
+
+  void validateSavedSession();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
+useEffect(() => {
+  const callback = async () => {
+    const callbackUrl = new URL(window.location.href);
+    const code = callbackUrl.searchParams.get('code');
+    const state = callbackUrl.searchParams.get('state');
+    const providerError = callbackUrl.searchParams.get('error');
+    if (!code && !providerError) return;
+
+    let transaction: { verifier?: string; nonce?: string; state?: string; redirectUri?: string } | null = null;
+    try {
+      transaction = JSON.parse(sessionStorage.getItem('rare_microsoft_oauth_transaction') || 'null');
+    } catch { /* Invalid local OAuth transaction is rejected below. */ }
+    sessionStorage.removeItem('rare_microsoft_oauth_transaction');
+    window.history.replaceState({}, document.title, `${callbackUrl.pathname}${callbackUrl.hash}`);
+
+    if (providerError || !code || !transaction?.verifier || !transaction.nonce || !transaction.state || !transaction.redirectUri || state !== transaction.state) {
+      sessionStorage.setItem('rare_oauth_error', providerError ? 'Microsoft sign-in was cancelled or rejected.' : 'Microsoft sign-in could not be verified. Start the sign-in again.');
+      setAuthModalMode('outlook');
+      setAuthModalOpen(true);
+      return;
+    }
+
+    try {
+      const response = await safePost<{ success: boolean; user?: UserAccount; error?: string }>('/api/user/oauth', {
+        provider: 'outlook',
+        code,
+        codeVerifier: transaction.verifier,
+        nonce: transaction.nonce,
+        redirectUri: transaction.redirectUri,
+      });
+      if (!response?.success || !response.user) throw new Error('Microsoft could not verify the sign-in. Check the OAuth application configuration and try again.');
+      setCurrentUser(response.user);
+      localStorage.setItem('rare_user_account', JSON.stringify(response.user));
+      setIsDeveloperAuthed(response.user.role === 'developer');
+      setAuthModalOpen(false);
+    } catch {
+      sessionStorage.setItem('rare_oauth_error', 'Microsoft sign-in could not be completed. Check the OAuth application and redirect URI configuration.');
+      setAuthModalMode('outlook');
+      setAuthModalOpen(true);
+    }
+  };
+  void callback();
+}, []);
 
   const checkForUpdates = async (forceOpenModal = false) => {
     const channel = isDeveloperAuthed ? 'developer' : 'public';
@@ -427,8 +541,16 @@ export default function App() {
       return data;
     }
 
-    // Fallback to standalone local conversations store
-    let localList = Object.values(localStore).filter((c) => !c.userId || c.userId === userKey || userKey === 'guest');
+    // Browser accounts must not fall back to a shared device cache when an
+    // online request is unavailable or returns an empty private collection.
+    if (!isStandaloneMobileApp()) {
+      setConversations([]);
+      return [];
+    }
+    // Standalone mode intentionally keeps conversations on the device.
+    let localList = Object.values(localStore).filter(
+      (c) => c.userId === userKey || (!c.userId && userKey === 'guest')
+    );
     if (q && q.trim()) {
       const lq = q.trim().toLowerCase();
       localList = localList.filter(
@@ -448,10 +570,12 @@ export default function App() {
     return [];
   };
 
-  // Sync chats immediately when user logs in, signs out, or switches account
+  // Clear in-memory chat state before loading another account's private chats.
   useEffect(() => {
+    setConversations([]);
+    setActiveConvId('');
     loadConversations('', currentUser);
-  }, [currentUser?.email, currentUser?.phone, currentUser?.id]);
+  }, [currentUser?.id]);
 
   // Fresh initial startup
   useEffect(() => {
@@ -639,6 +763,8 @@ export default function App() {
   };
 
   const workspaceNavItems = [
+    { id: 'documents', label: 'Documents', icon: FileText, badge: 'Any format' },
+    { id: 'research', label: 'Research', icon: Compass, badge: 'Deep' },
     { id: 'projects', label: 'Projects', icon: Package, badge: 'APK • EXE • Web' },
     { id: 'scheduled', label: 'Scheduled', icon: Clock, badge: 'Alarms' },
     { id: 'plugins', label: 'Plugins', icon: Puzzle, badge: '8 Installed' },
@@ -1033,9 +1159,13 @@ export default function App() {
 
                       {/* Sign Out */}
                       <button
-                        onClick={() => {
+                                                onClick={() => {
                           setAccountMenuOpen(false);
+                          void clearUserSession();
                           setCurrentUser(null);
+                          setConversations([]);
+                          setActiveConvId('');
+                          setSessionGeneration((value) => value + 1);
                           localStorage.removeItem('rare_user_account');
                         }}
                         className="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition"
@@ -1232,6 +1362,7 @@ export default function App() {
               thinkHarder={thinkHarder}
               voiceEnabled={voiceEnabled}
               activeConvId={activeConvId}
+              sessionKey={`${currentUser?.id || 'guest'}:${sessionGeneration}`}
               onSelectConv={setActiveConvId}
               onRefreshConversations={() => loadConversations()}
               onNewChat={handleNewChat}
@@ -1240,6 +1371,8 @@ export default function App() {
               onNavigate={setActiveTab}
             />
           )}
+          {activeTab === 'documents' && <DocumentsWorkspaceView t={t} />}
+          {activeTab === 'research' && <ResearchWorkspaceView t={t} onNavigate={setActiveTab} />}
           {activeTab === 'projects' && <CollaborativeBuildWorkspaceView t={t} />}
           {activeTab === 'scheduled' && <ScheduledWorkspaceView t={t} onNavigate={setActiveTab} />}
           {activeTab === 'plugins' && <PluginsDirectoryView t={t} onNavigate={setActiveTab} />}
@@ -1329,7 +1462,8 @@ export default function App() {
         currentUser={currentUser}
         initialMode={authModalMode}
         onClose={() => setAuthModalOpen(false)}
-        onLoginSuccess={(user) => {
+                onLoginSuccess={(user) => {
+          storeUserSessionToken();
           setCurrentUser(user);
           localStorage.setItem('rare_user_account', JSON.stringify(user));
           if (user.role === 'developer') {
@@ -1337,6 +1471,7 @@ export default function App() {
           }
         }}
         onLogout={() => {
+          void clearUserSession();
           setCurrentUser(null);
           localStorage.removeItem('rare_user_account');
         }}
@@ -2639,6 +2774,7 @@ function CleanChatWorkspaceView({
   thinkHarder,
   voiceEnabled,
   activeConvId,
+  sessionKey,
   onSelectConv,
   onRefreshConversations,
   onNewChat,
@@ -2651,6 +2787,7 @@ function CleanChatWorkspaceView({
   thinkHarder: boolean;
   voiceEnabled: boolean;
   activeConvId: string;
+  sessionKey: string;
   onSelectConv?: (id: string) => void;
   onRefreshConversations?: () => void;
   onNewChat?: () => void;
@@ -2717,7 +2854,7 @@ function CleanChatWorkspaceView({
         messageCount: data.messages.length,
       };
       saveLocalConversationsStore(localStore);
-    } else if (localStore[convId] && Array.isArray(localStore[convId].messages) && localStore[convId].messages!.length > 0) {
+    } else if (isStandaloneMobileApp() && localStore[convId] && Array.isArray(localStore[convId].messages) && localStore[convId].messages!.length > 0) {
       setMessages(localStore[convId].messages!);
       setConvTitle(localStore[convId].title || 'New Chat');
       setTitleInput(localStore[convId].title || 'New Chat');
@@ -2744,6 +2881,18 @@ function CleanChatWorkspaceView({
       saveLocalConversationsStore(localStore);
     }
   };
+
+  useEffect(() => {
+    setMessages([{
+      id: `msg_session_${Date.now()}`,
+      role: 'assistant',
+      content: 'Hello! Messages in your account are private. Online AI responses require an available provider.',
+      timestamp: new Date().toISOString(),
+    }]);
+    setConvTitle('New Chat');
+    setTitleInput('New Chat');
+    setInput('');
+  }, [sessionKey]);
 
   useEffect(() => {
     stopHumanVoice();
@@ -3347,11 +3496,12 @@ function CleanChatWorkspaceView({
         message: textToSend,
         think_harder: thinkHarder,
         persona: personaMode,
-      });
+      }, undefined, 55000);
 
       if (data) {
         const botMsg: ChatMessage = {
           ...data.assistant_message,
+          ...(data.mode === 'offline_local' ? { content: `Offline local mode: ${data.assistant_message.content}` } : {}),
           actionDetected: data.actionDetected,
         };
 
@@ -3362,7 +3512,7 @@ function CleanChatWorkspaceView({
             botMsg,
           ];
           const store = loadLocalConversationsStore();
-          const currentConv = store[targetConvId] || {
+          const currentConv: Conversation = store[targetConvId] || {
             id: targetConvId,
             title: data.conversationTitle || convTitle || 'New Chat',
             created_at: new Date().toISOString(),
@@ -3383,48 +3533,8 @@ function CleanChatWorkspaceView({
           if (onRefreshConversations) onRefreshConversations();
         }
       } else {
-        // Standalone built-in cognitive brain response (with live web/weather research & dynamic reasoning)
-        const localGen = await generateDynamicBrainReply({
-          prompt: textToSend,
-          assistantName,
-          personaMode,
-          thinkHarder,
-          recentMessages: messages,
-        });
-
-        const botMsg: ChatMessage = {
-          id: `msg_local_${Date.now()}`,
-          role: 'assistant',
-          content: localGen.content,
-          thought: localGen.thought,
-          timestamp: new Date().toISOString(),
-        };
-
-        setMessages((prev) => {
-          const updated = [
-            ...prev.filter((m) => m.id !== tempUserMsg.id),
-            tempUserMsg,
-            botMsg,
-          ];
-          const store = loadLocalConversationsStore();
-          const currentConv = store[targetConvId] || {
-            id: targetConvId,
-            title: convTitle || 'New Chat',
-            created_at: new Date().toISOString(),
-          };
-          if (!currentConv.customTitle && (currentConv.title === 'New Chat' || !currentConv.title)) {
-            const autoTitle = textToSend.replace(/[^\w\s]/g, '').trim().slice(0, 34) || 'Chat';
-            currentConv.title = autoTitle;
-            setConvTitle(autoTitle);
-            setTitleInput(autoTitle);
-          }
-          currentConv.messages = updated;
-          currentConv.messageCount = updated.length;
-          store[targetConvId] = currentConv;
-          saveLocalConversationsStore(store);
-          return updated;
-        });
-        if (onRefreshConversations) onRefreshConversations();
+        setMessages((prev) => prev.filter((message) => message.id !== tempUserMsg.id));
+        showToast('Online AI could not respond. Your message was not processed. Check the backend and provider connection, then retry.');
       }
     } finally {
       setLoading(false);
@@ -4544,21 +4654,23 @@ function LiveVoiceView({
     setTranscript((prev) => [...prev, userEntry]);
 
     try {
-      const data = await safePost<any>('/api/voice/chat', { speech: cleaned });
-      let replyText = data?.reply;
+      
+      const data = await safePost<any>('/api/voice/chat', {
+        speech: cleaned,
+        recentMessages: transcript.slice(-10).map((message) => ({
+          role: message.sender === 'assistant' ? 'assistant' : 'user',
+          content: message.text.slice(0, 800),
+        })),
+      });
+
+      let replyText = data?.mode === 'offline_local'
+        ? `Offline local mode: ${data.reply || ''}`
+        : data?.reply;
+
       if (!replyText) {
-        const localGen = await generateDynamicBrainReply({
-          prompt: cleaned,
-          assistantName,
-          personaMode: 'casual',
-          isVoiceCall: true,
-          recentMessages: transcript.slice(-6).map((m) => ({
-            role: m.sender,
-            content: m.text,
-          })),
-        });
-        replyText = localGen.content;
+        throw new Error('Online voice response is unavailable.');
       }
+
 
       const botEntry = {
         sender: 'assistant' as const,
@@ -4570,17 +4682,10 @@ function LiveVoiceView({
       // Speak back the response in the selected human voice
       speakAloud(replyText);
     } catch {
-      const localGen = await generateDynamicBrainReply({
-        prompt: cleaned,
-        assistantName,
-        personaMode: 'casual',
-        isVoiceCall: true,
-      });
       setTranscript((prev) => [
         ...prev,
-        { sender: 'assistant', text: localGen.content, time: new Date().toLocaleTimeString() },
+        { sender: 'assistant', text: 'Online voice response is unavailable. No AI reply was generated; please retry when the provider connection is restored.', time: new Date().toLocaleTimeString() },
       ]);
-      speakAloud(localGen.content);
     } finally {
       setIsProcessing(false);
       isProcessingRef.current = false;
@@ -4782,7 +4887,20 @@ function LiveVoiceView({
     startListening();
 
     // Natural greeting spoken immediately
-    const naturalGreeting = await generateNaturalCallGreeting();
+    const greetingResult = await safePost<any>('/api/voice/chat', {
+  speech: 'Hello',
+  isGreeting: true,
+  recentMessages: transcript.slice(-10).map((message) => ({
+    role: message.sender === 'assistant' ? 'assistant' : 'user',
+    content: message.text.slice(0, 800),
+  })),
+});
+
+const naturalGreeting =
+  typeof greetingResult?.reply === 'string' &&
+  greetingResult.reply.trim()
+    ? greetingResult.reply.trim()
+    : await generateNaturalCallGreeting();
     if (!activeRef.current) return;
 
     setTranscript([
@@ -6139,7 +6257,11 @@ function DeveloperSpaceView({
   // OTA Updates State
   const [updatesList, setUpdatesList] = useState<any[]>([]);
   const [newUpdateVersion, setNewUpdateVersion] = useState('');
-  const [newUpdateChannel, setNewUpdateChannel] = useState<'public' | 'developer'>('public');
+  const [newUpdateChannel, setNewUpdateChannel] = useState<'public' | 'developer'>('developer');
+  const [newUpdatePackageUrl, setNewUpdatePackageUrl] = useState('');
+  const [newUpdatePlatform, setNewUpdatePlatform] = useState<'web' | 'android' | 'windows'>('android');
+  const [newUpdateArtifactSize, setNewUpdateArtifactSize] = useState('');
+  const [newUpdateSha256, setNewUpdateSha256] = useState('');
   const [newUpdateTitle, setNewUpdateTitle] = useState('');
   const [newUpdateDescription, setNewUpdateDescription] = useState('');
   const [newUpdateChangelog, setNewUpdateChangelog] = useState('');
@@ -6199,6 +6321,10 @@ function DeveloperSpaceView({
         title: newUpdateTitle.trim(),
         description: newUpdateDescription.trim() || 'Software build update released.',
         changelog: changelogLines.length > 0 ? changelogLines : ['General performance improvements and fixes.'],
+        packageUrl: newUpdatePackageUrl.trim(),
+        platform: newUpdatePlatform,
+        artifactSizeBytes: Number(newUpdateArtifactSize),
+        sha256: newUpdateSha256.trim(),
       });
       if (res?.success) {
         setPublishSuccess(`Update v${res.update.version} published successfully to [${newUpdateChannel.toUpperCase()}] channel!`);
@@ -6207,6 +6333,9 @@ function DeveloperSpaceView({
         setNewUpdateTitle('');
         setNewUpdateDescription('');
         setNewUpdateChangelog('');
+        setNewUpdatePackageUrl('');
+        setNewUpdateArtifactSize('');
+        setNewUpdateSha256('');
         loadDevStatus();
       }
     } finally {
@@ -6608,13 +6737,60 @@ function DeveloperSpaceView({
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-[11px] font-semibold text-slate-300">RARE GitHub Release Artifact URL</label>
+                  <input
+                    type="url"
+                    value={newUpdatePackageUrl}
+                    onChange={(e) => setNewUpdatePackageUrl(e.target.value)}
+                    placeholder="https://github.com/Rare-Erudite/COMPLETED/releases/download/.../artifact.apk"
+                    className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3 py-2 text-xs focus:outline-none font-mono`}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Platform</label>
+                  <select
+                    value={newUpdatePlatform}
+                    onChange={(e) => setNewUpdatePlatform(e.target.value as 'web' | 'android' | 'windows')}
+                    className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3 py-2 text-xs focus:outline-none`}
+                  >
+                    <option value="android">Android APK</option>
+                    <option value="windows">Windows package</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-slate-300">Artifact size (bytes)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={512 * 1024 * 1024}
+                    value={newUpdateArtifactSize}
+                    onChange={(e) => setNewUpdateArtifactSize(e.target.value)}
+                    placeholder="Measured file size"
+                    className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3 py-2 text-xs focus:outline-none font-mono`}
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="text-[11px] font-semibold text-slate-300">Artifact SHA-256</label>
+                  <input
+                    type="text"
+                    value={newUpdateSha256}
+                    onChange={(e) => setNewUpdateSha256(e.target.value)}
+                    placeholder="64 hexadecimal characters"
+                    maxLength={64}
+                    className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3 py-2 text-xs focus:outline-none font-mono`}
+                  />
+                </div>
+              </div>
+
               <div className="flex items-center justify-between pt-1">
                 <p className={`text-[11px] ${t.textDim}`}>
-                  Clients on the selected channel will see the update popup on app launch.
+                  Publish a real package with measured size and SHA-256. Public releases require selecting Public explicitly.
                 </p>
                 <button
                   type="submit"
-                  disabled={publishingUpdate || !newUpdateVersion.trim() || !newUpdateTitle.trim()}
+                  disabled={publishingUpdate || !newUpdateVersion.trim() || !newUpdateTitle.trim() || !newUpdatePackageUrl.trim() || !newUpdateArtifactSize.trim() || !/^[a-f0-9]{64}$/i.test(newUpdateSha256.trim())}
                   className={`px-5 py-2.5 rounded-xl ${
                     newUpdateChannel === 'developer'
                       ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold'
@@ -6752,26 +6928,16 @@ function DeveloperSpaceView({
       {devTab === 'diagnostics' && (
         <div className={`${t.card} border ${t.cardBorder} rounded-xl p-5 space-y-4`}>
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold">Test Suite Verification Matrix</h3>
-            <span className="text-xs text-emerald-400 font-bold">32/32 Passed (97.4% Coverage)</span>
+            <h3 className="text-sm font-bold">Test Suite Verification</h3>
+            <span className="text-xs text-amber-300 font-bold">No live result</span>
           </div>
-          <div className="divide-y divide-white/5 text-xs font-mono">
-            {[
-              'Multi-Agent Orchestration & Inter-Agent Messaging (44ms)',
-              'Developer Space Authentication Gate (12ms)',
-              'Contextual Audio Quotation Verification (38ms)',
-              'Single-writer lock concurrency & rollback safety (22ms)',
-              'Universal Build Engine toolchain detection (51ms)',
-              'Theme semantic design tokens - 6 palettes (18ms)',
-            ].map((chk, i) => (
-              <div key={i} className="py-2.5 flex items-center justify-between">
-                <span className="flex items-center space-x-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>{chk}</span>
-                </span>
-                <span className="text-emerald-400 font-bold">PASS</span>
-              </div>
-            ))}
+          <div className={`rounded-xl ${t.cardSub} border ${t.cardBorder} p-4 space-y-2`}>
+            <p className={`text-xs ${t.textMuted}`}>
+              This screen does not run repository tests. No test result or coverage value is available from the deployed app.
+            </p>
+            <p className="text-[11px] text-slate-400 font-mono">
+              Run the repository test suite on the build host and review its recorded exit status.
+            </p>
           </div>
         </div>
       )}

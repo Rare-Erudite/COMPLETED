@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../api.js';
 import { Cpu, CheckCircle2, XCircle, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
 
 interface ProviderHubViewProps {
@@ -18,7 +19,7 @@ export function ProviderHubView({ onProviderChanged }: ProviderHubViewProps) {
   const fetchProviders = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/v1/providers/available');
+      const res = await apiFetch('/api/v1/providers/available');
       const data = await res.json();
       setProviders(data.providers || []);
       setActiveProvider(data.activeProvider || '');
@@ -36,7 +37,7 @@ export function ProviderHubView({ onProviderChanged }: ProviderHubViewProps) {
   const handleSetActive = async (id: string) => {
     setSwitching(id);
     try {
-      const res = await fetch('/api/v1/providers/active', {
+      const res = await apiFetch('/api/v1/providers/active', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ providerId: id }),

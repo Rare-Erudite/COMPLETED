@@ -127,10 +127,18 @@ export class RareIntelligenceProvider implements IModelProvider {
     const res = await this.fetchWithTimeout('/api/v1/chat', {
       method: 'POST',
       body: JSON.stringify({
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          ...(options?.conversationHistory || []).map((message) => ({
+            role: message.role,
+            content: message.content,
+          })),
+          { role: 'user', content: prompt },
+        ],
         options: {
           temperature: options?.temperature ?? 0.7,
           systemInstruction,
+          thinkHarder: options?.thinkHarder === true,
+          persona: options?.persona,
         },
       }),
     });
@@ -146,6 +154,9 @@ export class RareIntelligenceProvider implements IModelProvider {
     const result = json.result || {};
     const simulated = Boolean(result.isSimulated);
     const model = result.model || 'unknown';
+    if (simulated) {
+      throw new Error('RareIntelligenceProvider: the engine returned a simulated response, not model inference.');
+    }
 
     return {
       reply: result.text || '(the engine returned an empty response)',

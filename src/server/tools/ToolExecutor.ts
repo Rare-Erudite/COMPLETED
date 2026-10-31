@@ -5,10 +5,15 @@ import { promisify } from 'util';
 import { ToolName, ToolSpec, ToolExecutionResult, RiskLevel } from '../types.js';
 import { MemoryStore } from '../storage/MemoryStore.js';
 import { CheckpointStore } from '../storage/CheckpointStore.js';
-import { ResearchService } from '../services/ResearchService.js';
+import { DocumentsService } from '../services/DocumentsService.js';
+import { DeepResearchEngine } from '../services/DeepResearchEngine.js';
+import { OwnerSearchIndexRegistry } from '../content/SearchIndex.js';
+import { processUrl, describeResult } from '../content/ContentEngine.js';
+import { scaffoldProject, PROJECT_TEMPLATES, PROJECT_MANIFEST, readProjectManifest, type ProjectTemplate } from '../builder/ProjectScaffolder.js';
 
 const execFileAsync = promisify(execFile);
-const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+import { resolveWritableAppRoot } from '../storage/PersistentJsonStore.js';
+const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAppRoot());
 
 // Allowlist from rare.config.json
 const COMMAND_ALLOWLIST = new Set([
@@ -210,14 +215,153 @@ export const TOOL_SPECS: Record<ToolName, ToolSpec> = {
       required: ['text'],
     },
   },
+  OPEN_URL: {
+    name: 'OPEN_URL',
+    description: 'Retrieve a public HTTPS URL and return its real extracted text (articles, PDFs, office docs, books, images via OCR). Private/local addresses are refused.',
+    category: 'content',
+    risk: 'low',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Public HTTPS URL to read' },
+        maxChars: { type: 'number', description: 'Maximum characters to return (default 20000)' },
+      },
+      required: ['url'],
+    },
+  },
+  READ_DOCUMENT: {
+    name: 'READ_DOCUMENT',
+    description: "Read one of the current user's saved RARE documents by path.",
+    category: 'content',
+    risk: 'low',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'Document path, e.g. imports/report-123.md' },
+        maxChars: { type: 'number', description: 'Maximum characters to return (default 20000)' },
+      },
+      required: ['path'],
+    },
+  },
+  SEARCH_LIBRARY: {
+    name: 'SEARCH_LIBRARY',
+    description: "Search the current user's own documents, transcripts and research reports for matching passages.",
+    category: 'content',
+    risk: 'low',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Words or an exact phrase to find' },
+        limit: { type: 'number', description: 'Maximum hits (default 10)' },
+      },
+      required: ['query'],
+    },
+  },
+  START_RESEARCH: {
+    name: 'START_RESEARCH',
+    description: 'Run a cited, evidence-grounded research investigation across public sources and return a report with real sources.',
+    category: 'content',
+    risk: 'low',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: 'The research question' },
+        depth: { type: 'string', description: 'quick, standard or deep', enum: ['quick', 'standard', 'deep'] },
+      },
+      required: ['question'],
+    },
+  },
+  SCAFFOLD_PROJECT: {
+    name: 'SCAFFOLD_PROJECT',
+    description: 'Create a real, buildable project on disk (node-cli, node-api, static-web, python-cli, react-vite) with source, tests and a README, and return the build/test/run commands for that stack.',
+    category: 'execution',
+    risk: 'medium',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Project name (used as the folder under projects/)' },
+        template: { type: 'string', description: 'Stack to generate', enum: ['node-cli', 'node-api', 'static-web', 'python-cli', 'react-vite'] },
+        objective: { type: 'string', description: 'What the project is for; written into the README and source header' },
+      },
+      required: ['name', 'template'],
+    },
+  },
+  RUN_PROJECT_STAGE: {
+    name: 'RUN_PROJECT_STAGE',
+    description: 'Run a real build, test or run stage for a scaffolded project and return the actual exit code and output. Only allowlisted stage commands are executed.',
+    category: 'execution',
+    risk: 'medium',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Project folder name under projects/' },
+        stage: { type: 'string', description: 'Which stage to run', enum: ['build', 'test', 'run'] },
+      },
+      required: ['project', 'stage'],
+    },
+  },
 };
 
 export class ToolExecutor {
   constructor(
     private memoryStore: MemoryStore,
     private checkpointStore: CheckpointStore,
-    private researchService = new ResearchService(),
+    /** Owner-scoped document service, injected once storage is ready. */
+    private documentsService?: DocumentsService,
+    private searchIndexes?: OwnerSearchIndexRegistry,
+    private researchEngine?: DeepResearchEngine,
   ) {}
+
+  /**
+   * The authenticated owner for this call. Never taken from model-supplied
+   * arguments: knowing a path must not grant access to another user's data.
+   */
+  private requireOwner(options?: { ownerId?: string }): string {
+    const owner = options?.ownerId;
+    if (!owner || typeof owner !== 'string') {
+      throw new Error('This tool requires an authenticated user session.');
+    }
+    return owner;
+  }
+
+  private requireDocuments(): DocumentsService {
+    if (!this.documentsService) throw new Error('Document storage is not ready yet.');
+    return this.documentsService;
+  }
+
+  private requireIndexes(): OwnerSearchIndexRegistry {
+    if (!this.searchIndexes) throw new Error('The search index is not ready yet.');
+    return this.searchIndexes;
+  }
+
+  private requireResearchEngine(): DeepResearchEngine {
+    // The engine is stateless and needs no storage, so a lazily created one is
+    // equivalent to the shared instance. Constructing it here means the RESEARCH
+    // tool works in any context — including a unit test that never ran the
+    // server's startup wiring — instead of failing with "not ready yet".
+    if (!this.researchEngine) this.researchEngine = new DeepResearchEngine();
+    return this.researchEngine;
+  }
+
+  /**
+   * Attach the owner-scoped content services once storage is initialised.
+   * Called at startup so the executor and the HTTP routes share one instance.
+   */
+  public attachContentServices(
+    documents: DocumentsService,
+    indexes: OwnerSearchIndexRegistry,
+    research: DeepResearchEngine,
+  ): void {
+    this.documentsService = documents;
+    this.searchIndexes = indexes;
+    this.researchEngine = research;
+  }
 
   public getSpecs(): ToolSpec[] {
     return Object.values(TOOL_SPECS);
@@ -239,7 +383,7 @@ export class ToolExecutor {
   public async execute(
     name: ToolName,
     inputs: Record<string, any>,
-    options?: { isDeveloperAuth?: boolean; actor?: string }
+    options?: { isDeveloperAuth?: boolean; actor?: string; ownerId?: string }
   ): Promise<ToolExecutionResult> {
     const start = Date.now();
     const spec = TOOL_SPECS[name];
@@ -392,6 +536,21 @@ export class ToolExecutor {
 
         case 'RUN_TEST': {
           const { testPath } = inputs;
+          // Guard against re-entrancy. The self-development cycle calls RUN_TEST
+          // with no path, which means `npm test` — and the self-development test
+          // itself runs inside `npm test`. Without this guard the suite spawns
+          // itself recursively until the process is killed, which looked like a
+          // memory failure but was unbounded recursion. A nested run reports
+          // honestly that it was skipped rather than pretending it passed.
+          if (process.env.RARE_TEST_RUNNING === 'true') {
+            output = {
+              success: true,
+              skipped: true,
+              exitCode: 0,
+              stdout: 'Skipped: a test run is already in progress in this process tree (RARE_TEST_RUNNING=true).',
+            };
+            break;
+          }
           let testCmd = 'npm';
           let testArgs = ['test'];
           if (testPath) {
@@ -511,10 +670,231 @@ export class ToolExecutor {
           break;
         }
 
+        case 'SCAFFOLD_PROJECT': {
+          const { name: projectName, template, objective = '' } = inputs;
+          if (!projectName || typeof projectName !== 'string') throw new Error('name is required');
+          if (!PROJECT_TEMPLATES.includes(template)) {
+            throw new Error(`template must be one of: ${PROJECT_TEMPLATES.join(', ')}`);
+          }
+          // Writes into the workspace root so the build/test stages can act on
+          // the real files. Refuses to clobber an existing project.
+          output = scaffoldProject(PROJECT_ROOT, projectName, template as ProjectTemplate, String(objective));
+          break;
+        }
+
+        case 'RUN_PROJECT_STAGE': {
+          const { project, stage } = inputs;
+          if (!project || typeof project !== 'string') throw new Error('project is required');
+          if (!['build', 'test', 'run'].includes(stage)) {
+            throw new Error('stage must be one of: build, test, run');
+          }
+          const projectRoot = path.resolve(PROJECT_ROOT, 'projects', project);
+          if (!projectRoot.startsWith(path.resolve(PROJECT_ROOT, 'projects') + path.sep)) {
+            throw new Error('The project path escapes the projects directory.');
+          }
+          if (!fs.existsSync(projectRoot)) {
+            throw new Error(`No project named "${project}" exists under projects/.`);
+          }
+          // Only allowlisted binaries may run, and only from the project folder.
+          // The command is chosen by the server from the project's own manifest,
+          // never supplied by the caller, so this cannot be turned into arbitrary
+          // execution. Each stack has its own build/test/run command: a Python
+          // project must not be run through `npm run build`.
+          const manifest = readProjectManifest(projectRoot);
+          const STAGE_COMMANDS: Record<ProjectTemplate, Record<string, { command: string; args: string[] } | null>> = {
+            'node-cli': {
+              build: { command: 'node', args: ['--check', 'src/index.js'] },
+              test: { command: 'npm', args: ['test'] },
+              run: { command: 'npm', args: ['start'] },
+            },
+            'node-api': {
+              build: { command: 'node', args: ['--check', 'server.js'] },
+              test: { command: 'npm', args: ['test'] },
+              run: { command: 'npm', args: ['start'] },
+            },
+            'static-web': {
+              build: null,
+              test: null,
+              run: null,
+            },
+            'python-cli': {
+              build: { command: 'python3', args: ['-m', 'py_compile', 'main.py'] },
+              test: { command: 'python3', args: ['-m', 'unittest', '-v'] },
+              run: { command: 'python3', args: ['main.py'] },
+            },
+            'react-vite': {
+              build: { command: 'npm', args: ['run', 'build'] },
+              test: null,
+              run: { command: 'npm', args: ['run', 'dev'] },
+            },
+          };
+          const template = manifest?.template;
+          if (!template) {
+            throw new Error(
+              `Project "${project}" has no ${PROJECT_MANIFEST} manifest, so its stack is unknown. Re-scaffold it to record the stack.`,
+            );
+          }
+          const chosen = STAGE_COMMANDS[template][stage];
+          if (!chosen) {
+            // A stack with no such stage is reported as "not applicable", not as
+            // a success and not as a failure.
+            output = {
+              project,
+              stage,
+              template,
+              applicable: false,
+              success: true,
+              exitCode: 0,
+              stdout: '',
+              stderr: '',
+              note: `The ${template} stack has no ${stage} stage.`,
+            };
+            break;
+          }
+          if (!COMMAND_ALLOWLIST.has(chosen.command)) {
+            throw new Error(`Command "${chosen.command}" is not in the security allowlist.`);
+          }
+          try {
+            const res = await execFileAsync(chosen.command, chosen.args, {
+              cwd: projectRoot,
+              timeout: 120000,
+              maxBuffer: 2 * 1024 * 1024,
+              env: {
+                ...process.env,
+                OPENAI_API_KEY: '',
+                ANTHROPIC_API_KEY: '',
+                GEMINI_API_KEY: '',
+                RARE_API_TOKEN: '',
+                RARE_DEV_KEY: '',
+              },
+            });
+            output = {
+              project,
+              stage,
+              template,
+              applicable: true,
+              command: `${chosen.command} ${chosen.args.join(' ')}`,
+              success: true,
+              exitCode: 0,
+              stdout: res.stdout.slice(0, 4000),
+              stderr: res.stderr.slice(0, 2000),
+            };
+          } catch (err: any) {
+            output = {
+              project,
+              stage,
+              template,
+              applicable: true,
+              command: `${chosen.command} ${chosen.args.join(' ')}`,
+              success: false,
+              exitCode: typeof err.code === 'number' ? err.code : 1,
+              stdout: err.stdout ? String(err.stdout).slice(0, 2000) : '',
+              stderr: err.stderr ? String(err.stderr).slice(0, 2000) : err.message,
+            };
+          }
+          break;
+        }
+
         case 'RESEARCH': {
-          const { query, maxResults = 5 } = inputs;
+          const { query, maxResults = 5, depth = 'standard' } = inputs;
           if (!query) throw new Error('query is required');
-          output = await this.researchService.search(String(query), Number(maxResults));
+          // Use the same engine the HTTP route uses. The old ResearchService only
+          // queried Wikipedia and Crossref and returned bare hits; this returns
+          // retrieved, cited evidence so a tool call and a UI run agree.
+          const report = await this.requireResearchEngine().research({
+            question: String(query),
+            depth: (['quick', 'standard', 'deep'].includes(String(depth)) ? String(depth) : 'standard') as any,
+            maxSources: Number(maxResults) || undefined,
+          });
+          output = {
+            question: report.question,
+            scope: report.scope,
+            sourcesRead: report.sources.length,
+            providersUsed: report.providersUsed,
+            providerErrors: report.providerErrors,
+            claims: report.claims,
+            limitations: report.limitations,
+            report: report.report,
+            sources: report.sources.map((source) => ({
+              title: source.title,
+              url: source.finalUrl || source.url,
+              provider: source.provider,
+              date: source.date,
+              chars: source.chars,
+            })),
+          };
+          break;
+        }
+
+        // --- Universal content engine tools -------------------------------
+        // Ownership comes from the authenticated actor, never from the model.
+        case 'OPEN_URL': {
+          const { url, maxChars = 20000 } = inputs;
+          if (!url || typeof url !== 'string') throw new Error('url is required');
+          const result = await processUrl(url, { maxBytes: 8 * 1024 * 1024 });
+          if (!result.ok) {
+            throw new Error(`${result.error?.message || 'The URL could not be read.'}${result.error?.nextStep ? ` ${result.error.nextStep}` : ''}`);
+          }
+          const limit = Math.min(60000, Number(maxChars) || 20000);
+          output = {
+            title: result.title,
+            kind: result.label,
+            method: result.method,
+            ocr: result.ocr,
+            finalUrl: result.finalUrl,
+            text: result.text.slice(0, limit),
+            truncated: result.text.length > limit || result.truncated,
+            summary: describeResult(result),
+          };
+          break;
+        }
+
+        case 'READ_DOCUMENT': {
+          const { path: documentPath, maxChars = 20000 } = inputs;
+          if (!documentPath || typeof documentPath !== 'string') throw new Error('path is required');
+          const owner = this.requireOwner(options);
+          const document = await this.requireDocuments().read(owner, documentPath);
+          if (!document) throw new Error('Document not found.');
+          const limit = Math.min(60000, Number(maxChars) || 20000);
+          output = {
+            path: document.path,
+            title: document.title || document.path,
+            kind: document.label || document.kind,
+            sourceUrl: document.sourceUrl,
+            ocr: document.ocr,
+            text: document.content.slice(0, limit),
+            truncated: document.content.length > limit,
+          };
+          break;
+        }
+
+        case 'SEARCH_LIBRARY': {
+          const { query, limit = 10 } = inputs;
+          if (!query || typeof query !== 'string') throw new Error('query is required');
+          const owner = this.requireOwner(options);
+          const documents = this.requireDocuments();
+          await documents.ensureIndexed(owner);
+          output = {
+            query,
+            hits: this.requireIndexes().forOwner(owner).search(query, { limit: Math.min(30, Number(limit) || 10) }),
+          };
+          break;
+        }
+
+        case 'START_RESEARCH': {
+          const { question, depth = 'standard' } = inputs;
+          if (!question || typeof question !== 'string') throw new Error('question is required');
+          const report = await this.requireResearchEngine().research({
+            question,
+            depth: ['quick', 'standard', 'deep'].includes(String(depth)) ? (String(depth) as any) : 'standard',
+          });
+          output = {
+            question: report.question,
+            scope: report.scope,
+            sources: report.sources.map((source) => ({ title: source.title, url: source.finalUrl || source.url, provider: source.provider })),
+            limitations: report.limitations,
+            report: report.report,
+          };
           break;
         }
 
@@ -544,10 +924,16 @@ export class ToolExecutor {
         }
       }
 
+      // A stage that ran and exited non-zero is a real failure. Reporting
+      // success:true here would let a broken build look green to the caller.
+      const stageFailed = output && typeof output === 'object' && output.success === false;
       return {
-        success: true,
+        success: !stageFailed,
         tool: name,
         output,
+        error: stageFailed
+          ? `The ${output.stage} stage for "${output.project}" exited with code ${output.exitCode}.`
+          : undefined,
         executionTimeMs: Date.now() - start,
       };
     } catch (err: any) {

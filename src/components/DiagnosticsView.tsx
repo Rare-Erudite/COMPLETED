@@ -3,6 +3,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { apiFetch } from '../api.js';
 import { Activity, Play, CheckCircle2, AlertTriangle, AlertOctagon, RefreshCw } from 'lucide-react';
 
 export function DiagnosticsView() {
@@ -14,7 +15,7 @@ export function DiagnosticsView() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/diagnostics/run');
+      const res = await apiFetch('/api/v1/diagnostics/run');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || 'Diagnostics failed');
       setReport(data.report || data);

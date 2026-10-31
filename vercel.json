@@ -1,17 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "vite",
-  "buildCommand": "npm run build:web",
-  "outputDirectory": "dist",
-  "installCommand": "npm install",
+  "framework": "express",
+  "installCommand": "npm install --ignore-scripts --no-audit --no-fund",
+  "buildCommand": "npm run build",
   "functions": {
-    "api/index.ts": {
+    "server.ts": {
       "maxDuration": 60,
-      "memory": 1024
+      "includeFiles": "{public/**,node_modules/pdfjs-dist/**,node_modules/@ffmpeg-installer/**,node_modules/@ffprobe-installer/**}"
     }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  }
 }

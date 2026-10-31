@@ -1,0 +1,166 @@
+name: CI
+
+# Real gates only. Every step here either passes on its own merits or fails the
+# build. Nothing is allowed to report success on a non-zero exit code, and no
+# test is weakened to make the runner happy.
+
+on:
+  push:
+    branches: [main, New-Fixes-by-Erudite]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.0'
+          cache: npm
+
+      - name: Install ffmpeg and ffprobe
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Build web and server bundles
+        run: npm run build
+
+      - name: Run the full test suite
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          RARE_SKIP_DEV_BUNDLER: 'true'
+        run: npm test
+
+      - name: Upload build output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            dist/
+            server-build/
+          retention-days: 7
+          if-no-files-found: warn
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: verify
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.0'
+          cache: npm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The runner image already ships the Android SDK. `setup-android@v3`
+      # failed here with "Failed to find package 'tools'" because the modern
+      # cmdline-tools no longer publish a package by that name, so we use the
+      # preinstalled SDK and only install the platform/build-tools we need.
+      - name: Configure Android SDK
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
+          SDK="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "Using SDK at $SDK"
+          ls "$SDK" || true
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+          # build_apk.sh calls aapt/aapt2/d8/zipalign by bare name, so the
+          # build-tools directory has to be on PATH.
+          echo "$SDK/build-tools/34.0.0" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          echo "Android SDK ready."
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Restore signing keystore
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not configured. A release APK cannot be produced without the permanent signing key, and an APK signed by a new key can never update an installed RARE app."
+            echo "have_keystore=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/keystore"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore/release.keystore"
+          test -s "$RUNNER_TEMP/keystore/release.keystore" || { echo "::error::The decoded keystore is empty."; exit 1; }
+          echo "have_keystore=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build and sign the release APK
+        id: apk
+        env:
+          RARE_BACKEND_URL: https://rareproject.vercel.app
+          RARE_ANDROID_KEYSTORE: ${{ runner.temp }}/keystore/release.keystore
+          RARE_ANDROID_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          RARE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          RARE_ANDROID_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          # build_apk.sh refuses to mint a throwaway signing key, because an APK
+          # signed by a new key can never update an installed one. There is no
+          # correct APK to produce without the secret, so this fails rather than
+          # reporting a green run with no artifact.
+          bash scripts/build_apk.sh
+          echo "built=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the APK signature and metadata
+        run: |
+          APK="exports/rare-v${RARE_APP_VERSION_NAME:-1.0.0}-release.apk"
+          test -f "$APK" || { echo "::error::APK was not produced at $APK"; exit 1; }
+          ls -l "$APK"
+          sha256sum "$APK"
+          SDK="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "--- signature ---"
+          "$SDK/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK"
+          echo "--- package metadata ---"
+          "$SDK/build-tools/34.0.0/aapt" dump badging "$APK" | grep -E "^package:|^application-label:|sdkVersion|targetSdkVersion"
+          # A release APK must not permit cleartext traffic.
+          if "$SDK/build-tools/34.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -q "usesCleartextTraffic.*0xffffffff"; then
+            echo "::error::The release APK permits cleartext HTTP traffic."
+            exit 1
+          fi
+          echo "Cleartext traffic is disabled."
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rare-apk
+          path: exports/rare-v*-release.apk
+          retention-days: 14
+          if-no-files-found: error

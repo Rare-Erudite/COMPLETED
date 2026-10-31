@@ -1,10 +1,28 @@
 node_modules/
 build/
 dist/
+/public/assets/
+/public/index.html
+/public/manifest.webmanifest
+/public/sw.js
+/public/workbox-*.js
+/public/registerSW.js
 coverage/
 .DS_Store
 *.log
 data/models_cache/
 .env*
 !.env.example
+
+# Build output — never commit; `npm start` rebuilds it.
+server-build/
 .vercel
+
+# Local verification harnesses and generated audio (not shipped)
+.verify/
+.env.rare-verify
+
+# Android release signing material — never commit
+.rare/android/
+*.keystore
+*.jks

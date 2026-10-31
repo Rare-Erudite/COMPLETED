@@ -12,7 +12,20 @@
 import { generateDynamicBrainReply } from './engine/standalone-brain';
 
 const BACKEND_URL_KEY = 'rare_backend_url';
+const SESSION_TOKEN_KEY = 'rare_session_token';
 export const DEFAULT_CLOUD_HTTPS_URL = '';
+
+// Browser sessions use an HttpOnly server cookie. The token remains in memory
+// only for standalone clients that cannot use same-site cookies.
+let standaloneSessionToken = '';
+let cookieSessionReady = false;
+let csrfToken = '';
+if (typeof window !== 'undefined') {
+  try {
+    window.localStorage.removeItem(SESSION_TOKEN_KEY);
+    cookieSessionReady = Boolean(window.localStorage.getItem('rare_user_account'));
+  } catch { /* Storage may be disabled; cookie auth remains available. */ }
+}
 
 export interface BackendConnectionState {
   reachable: boolean;
@@ -193,6 +206,286 @@ export function resolveApiUrl(path: string): string {
   return `${normalizedBase}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+export function getStoredSessionToken(): string {
+  if (typeof window === 'undefined') return '';
+  if (isStandaloneMobileApp()) return standaloneSessionToken;
+  return cookieSessionReady ? 'cookie-session' : '';
+}
+
+export function storeUserSessionToken(token?: string): void {
+  if (typeof window === 'undefined') {
+    throw new Error('Session storage is unavailable in this environment.');
+  }
+  const cleanToken = typeof token === 'string' ? token.trim() : '';
+  if (isStandaloneMobileApp()) standaloneSessionToken = cleanToken;
+  else cookieSessionReady = true;
+}
+
+function captureCsrfToken(response: Response): void {
+  csrfToken = response.headers.get('X-CSRF-Token') || csrfToken;
+}
+
+/** Send a browser component request to the configured backend with cookie
+ * credentials and the current CSRF token. Unlike safeFetch, this helper never
+ * turns an unavailable online endpoint into a local mock response. */
+export async function apiFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  if (typeof window === 'undefined') throw new Error('Browser API requests are unavailable during server rendering.');
+  const fullUrl = resolveApiUrl(url);
+  if (!isTrustedBackendRequest(fullUrl)) throw new Error('The backend URL is not trusted.');
+  const headers = new Headers(options.headers || {});
+  const method = (options.method || 'GET').toUpperCase();
+  const token = getStoredSessionToken();
+  if (isStandaloneMobileApp() && token && token !== 'cookie-session') headers.set('Authorization', `Bearer ${token}`);
+  if (csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes(method)) headers.set('X-CSRF-Token', csrfToken);
+  if (!headers.has('Accept')) headers.set('Accept', 'application/json');
+  const response = await fetch(fullUrl, { ...options, method, headers, credentials: 'include' });
+  captureCsrfToken(response);
+  updateConnectionState(response.ok, response.ok ? undefined : `HTTP ${response.status}`);
+  return response;
+}
+
+function isTrustedBackendRequest(url: string): boolean {
+  try {
+    const configuredBackend = getBackendUrl();
+    const fallbackOrigin =
+      typeof window !== 'undefined' ? window.location.origin : '';
+
+    const baseValue = configuredBackend || fallbackOrigin;
+    if (!baseValue || baseValue === 'null') return false;
+
+    const base = new URL(baseValue);
+    const target = new URL(url, fallbackOrigin || 'http://localhost');
+    const basePath = base.pathname.replace(/\/+$/, '');
+
+    const pathMatches =
+      !basePath ||
+      basePath === '/' ||
+      target.pathname === basePath ||
+      target.pathname.startsWith(`${basePath}/`);
+
+    return target.origin === base.origin && pathMatches;
+  } catch {
+    return false;
+  }
+}
+
+function isConversationApiRequest(url: string): boolean {
+  if (
+    /^https?:\/\//i.test(url) &&
+    !isTrustedBackendRequest(url)
+  ) {
+    return false;
+  }
+
+  try {
+    const base =
+      typeof window !== 'undefined'
+        ? window.location.origin
+        : 'http://localhost';
+
+    const pathname = new URL(url, base).pathname;
+    return /^\/api\/conversations(?:\/|$)/.test(pathname);
+  } catch {
+    return /^\/api\/conversations(?:\/|$)/.test(url.split('?')[0]);
+  }
+}
+
+let guestSessionInitialization: Promise<string | null> | null = null;
+
+async function initializeGuestSessionToken(): Promise<string | null> {
+  const existing = getStoredSessionToken();
+  if (existing) return existing;
+  if (typeof window === 'undefined') return null;
+
+  if (!guestSessionInitialization) {
+    guestSessionInitialization = (async (): Promise<string | null> => {
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+      try {
+        const controller = new AbortController();
+        timeoutId = setTimeout(() => controller.abort(), 6500);
+
+        // Direct fetch is intentional. Never call safePost/safeFetch here.
+        const response = await fetch(resolveApiUrl('/api/user/guest-session'), {
+          method: 'POST',
+          headers: { Accept: 'application/json', ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}) },
+          credentials: 'include',
+          signal: controller.signal,
+        });
+        captureCsrfToken(response);
+
+        if (!response.ok) {
+          updateConnectionState(false, `HTTP ${response.status}`);
+          return null;
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!/\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(contentType)) {
+          return null;
+        }
+
+        const payload = await response.json();
+
+        if (
+          payload?.success !== true ||
+          payload.expiresAt === undefined
+        ) {
+          return null;
+        }
+
+        storeUserSessionToken();
+        return 'cookie-session';
+      } catch {
+        return null;
+      } finally {
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+      }
+    })().finally(() => {
+      guestSessionInitialization = null;
+    });
+  }
+
+  return guestSessionInitialization || Promise.resolve(null);
+}
+
+export async function clearUserSession(): Promise<void> {
+  const token = getStoredSessionToken();
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem(SESSION_TOKEN_KEY);
+      window.localStorage.removeItem('rare_user_account');
+    } catch {
+      // Continue with best-effort server-side invalidation.
+    }
+  }
+  cookieSessionReady = false;
+  standaloneSessionToken = '';
+  if (typeof window === 'undefined') return;
+
+  try {
+    const target = resolveApiUrl('/api/user/logout');
+    if (!isTrustedBackendRequest(target)) return;
+
+    const headers = new Headers({
+      Accept: 'application/json',
+    });
+    if (isStandaloneMobileApp() && token) headers.set('Authorization', `Bearer ${token}`);
+    if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
+
+    await fetch(target, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+    });
+    csrfToken = '';
+  } catch {
+    // The local token stays cleared even if the server cannot be reached.
+    // Server-side invalidation is best-effort; the server expiry still applies.
+  }
+}
+
+export interface CurrentUserSessionResult {
+  authenticated: boolean;
+  user: {
+    id: string;
+    name: string;
+    email?: string;
+    phone?: string;
+    provider: 'google' | 'outlook' | 'email' | 'phone';
+    role: 'developer' | 'user';
+    createdAt: string;
+  } | null;
+  expiresAt?: number;
+}
+
+export async function validateCurrentUserSession(): Promise<CurrentUserSessionResult | null> {
+  const token = getStoredSessionToken();
+
+  if (typeof window === 'undefined') {
+    return {
+      authenticated: false,
+      user: null,
+    };
+  }
+
+  const target = resolveApiUrl('/api/user/me');
+
+  if (!isTrustedBackendRequest(target)) {
+    return null;
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const controller = new AbortController();
+    timeoutId = setTimeout(() => controller.abort(), 6500);
+
+    const response = await fetch(target, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        ...(isStandaloneMobileApp() && token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      credentials: 'include',
+      signal: controller.signal,
+    });
+    captureCsrfToken(response);
+
+    if (response.status === 401) {
+      return {
+        authenticated: false,
+        user: null,
+      };
+    }
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+
+    if (!/\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(contentType)) {
+      return null;
+    }
+
+    const payload = await response.json();
+
+    if (
+      payload?.authenticated !== true ||
+      !(
+        payload.user === null ||
+        (
+          typeof payload.user?.id === 'string' &&
+          typeof payload.user?.name === 'string' &&
+          typeof payload.user?.createdAt === 'string' &&
+          ['google', 'outlook', 'email', 'phone'].includes(payload.user?.provider) &&
+          ['developer', 'user'].includes(payload.user?.role)
+        )
+      )
+    ) {
+      return {
+        authenticated: false,
+        user: null,
+      };
+    }
+
+    return {
+      authenticated: true,
+      user: payload.user,
+      expiresAt: payload.expiresAt,
+    };
+  } catch {
+    return null;
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 if (typeof window !== 'undefined') {
   (window as any).__RARE_RESOLVE_API_URL__ = resolveApiUrl;
 }
@@ -332,19 +625,75 @@ async function executeStandaloneLocalRoute(url: string, options?: RequestInit): 
     };
   }
 
-  // 2. Live Voice Conversation Endpoint
+    // 2. Live Voice Conversation Endpoint
   if (pathname === '/api/voice/chat' && method === 'POST') {
-    const speech = body.speech || '';
-    const history = getLocalJson<Array<{ role: string; content: string }>>('rare_voice_history_v1', []);
+    const speech =
+      typeof body.speech === 'string'
+        ? body.speech.trim()
+        : '';
+
+    if (!speech) {
+      return {
+        error: { message: 'Speech query is required.' },
+      };
+    }
+
+    const isGreeting = body.isGreeting === true;
+    const prompt = isGreeting ? 'Hello' : speech;
+
+    const storedHistory = getLocalJson<
+      Array<{ role: string; content: string }>
+    >('rare_voice_history_v1', []);
+
+    const submittedHistory = Array.isArray(body.recentMessages)
+      ? body.recentMessages
+          .slice(-10)
+          .filter(
+            (item: any) =>
+              item &&
+              (item.role === 'user' || item.role === 'assistant') &&
+              typeof item.content === 'string' &&
+              item.content.trim().length > 0
+          )
+          .map((item: any) => ({
+            role: item.role,
+            content: item.content.trim().slice(0, 800),
+          }))
+      : [];
+
+    const contextHistory = (
+      submittedHistory.length > 0
+        ? submittedHistory
+        : storedHistory.slice(-10)
+    ).slice(-10);
+
     const gen = await generateDynamicBrainReply({
-      prompt: speech,
+      prompt,
       assistantName,
+      personaMode: 'casual',
       isVoiceCall: true,
-      recentMessages: history.slice(-6),
+      recentMessages: contextHistory,
     });
-    history.push({ role: 'user', content: speech }, { role: 'assistant', content: gen.content });
-    setLocalJson('rare_voice_history_v1', history.slice(-20));
-    return { reply: gen.content };
+
+    // Do not record the synthetic "Hello" prompt as a user utterance.
+    if (isGreeting) {
+      storedHistory.push({
+        role: 'assistant',
+        content: gen.content,
+      });
+    } else {
+      storedHistory.push(
+        { role: 'user', content: speech },
+        { role: 'assistant', content: gen.content }
+      );
+    }
+
+    setLocalJson(
+      'rare_voice_history_v1',
+      storedHistory.slice(-20)
+    );
+
+    return { reply: gen.content, mode: 'offline_local' };
   }
 
   // 3. Conversations & Chat
@@ -437,6 +786,7 @@ async function executeStandaloneLocalRoute(url: string, options?: RequestInit): 
         reply: botMsg,
         conversationTitle: conv.title,
         conversation: conv,
+        mode: 'offline_local',
       };
     }
   }
@@ -564,39 +914,42 @@ async function executeStandaloneLocalRoute(url: string, options?: RequestInit): 
 
   // 7. Plugins
   if (pathname === '/api/plugins') {
+    // Offline fallback only. IDs MUST mirror the authoritative server directory
+    // (pluginsDirectory in server.ts) so the UI never shows phantom plugins when
+    // the backend is unreachable.
     return getLocalJson<any[]>('rare_standalone_plugins_v1', [
       {
-        id: 'plg_weather',
-        name: 'Live Weather & Environment Sensor',
+        id: 'plugin_smart_scheduler',
+        name: 'Intelligent Chronos Scheduler & Alarms',
         category: 'tools',
-        description: 'Real-time local temperature, rain detection, and global city forecasts.',
-        version: '1.2.0',
-        author: 'RARE Core',
+        description: 'Natural language cron and alarm scheduler. Set reminders, recurring chores, and build triggers directly from chat.',
+        version: '1.5.0',
+        author: 'RARE Automation',
         installed: true,
-        icon: 'CloudRain',
-        capabilities: ['Live Weather', 'Geolocation', 'Time Awareness'],
+        icon: 'Clock',
+        capabilities: ['Natural language time parsing', 'Alarm notifications', 'Recurring background jobs'],
       },
       {
-        id: 'plg_web_search',
-        name: 'Multi-Source Web Research Engine',
+        id: 'plugin_infinite_memory',
+        name: 'Infinite Persistent Neural Memory',
         category: 'data',
-        description: 'Queries Wikipedia, DuckDuckGo Instant Answer, and public knowledge graphs in real time.',
-        version: '1.4.0',
-        author: 'RARE Core',
+        description: 'Permanent local cross-chat memory core. Remembers conversations forever across tens of thousands of sessions.',
+        version: '4.0.1',
+        author: 'RARE Neural Core',
         installed: true,
-        icon: 'Globe',
-        capabilities: ['Live Search', 'Fact Synthesis', 'Zero API Key'],
+        icon: 'BrainCircuit',
+        capabilities: ['Cross-chat contextual recall', 'Full-text & tag search', 'Local disk persistence'],
       },
       {
-        id: 'plg_voice',
-        name: 'Human Neural Voice Prosody Engine',
+        id: 'plugin_live_audio',
+        name: 'Bidirectional Live Voice Engine',
         category: 'media',
-        description: '6 natural male/female voice personas with 2.5s silence detection and full-duplex barge-in.',
-        version: '2.0.0',
-        author: 'RARE Core',
+        description: 'Ultra-low latency conversational voice with listening, processing, and speaking audio visualizer.',
+        version: '1.9.5',
+        author: 'RARE Acoustics',
         installed: true,
         icon: 'Mic',
-        capabilities: ['6 Human Voices', 'Full-Duplex Call', '2.5s Auto-Turn'],
+        capabilities: ['Full-duplex conversation', 'Dynamic wave ripple visualizer', 'Sub-second reply'],
       },
     ]);
   }
@@ -608,50 +961,141 @@ export async function safeFetch<T>(
   url: string,
   options?: RequestInit,
   fallback?: T,
-  retries = 0
+  retries = 0,
+  timeoutMs = 6500
 ): Promise<T | null> {
-  // If running inside the standalone Android APK without an explicit custom server override,
-  // or if the network call fails, fulfill immediately via the built-in standalone router!
-  const storedCustomUrl = getStoredBackendUrl();
-  if (isStandaloneMobileApp() && !storedCustomUrl) {
-    const localResult = await executeStandaloneLocalRoute(url, options);
-    if (localResult !== null) {
-      updateConnectionState(true);
-      return localResult as T;
+  const configuredBackendUrl = getBackendUrl();
+  const useLocalFirst = isStandaloneMobileApp() && !configuredBackendUrl;
+
+  // Preserve explicit on-device standalone operation.
+  if (useLocalFirst) {
+    try {
+      const localResult = await executeStandaloneLocalRoute(url, options);
+      if (localResult !== null) {
+        updateConnectionState(true);
+        return localResult as T;
+      }
+    } catch {
+      // Continue only if the local route cannot handle this request.
     }
   }
 
+  // Conversation requests require a server-issued session when using a backend.
+  // Call fetch directly in the initializer so this cannot recurse through safeFetch.
+  if (
+    !useLocalFirst &&
+    isConversationApiRequest(url) &&
+    !getStoredSessionToken()
+  ) {
+    await initializeGuestSessionToken();
+  }
+
+  let lastNetworkError: unknown;
+  let receivedHttpResponse = false;
+
   for (let i = 0; i <= retries; i++) {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
     try {
       const fullUrl = resolveApiUrl(url);
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 6500);
-      const res = await fetch(fullUrl, { ...options, signal: controller.signal });
-      clearTimeout(timeout);
+      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      const headers = new Headers(options?.headers || {});
+      const token = getStoredSessionToken();
+
+      // Never send a stored bearer token to an unrelated absolute URL.
+      if (isStandaloneMobileApp() && token && token !== 'cookie-session' && isTrustedBackendRequest(fullUrl)) {
+        headers.set('Authorization', `Bearer ${token}`);
+      }
+      if (csrfToken && !['GET', 'HEAD', 'OPTIONS'].includes((options?.method || 'GET').toUpperCase())) {
+        headers.set('X-CSRF-Token', csrfToken);
+      }
+
+      if (!headers.has('Accept')) {
+        headers.set('Accept', 'application/json');
+      }
+
+      const res = await fetch(fullUrl, {
+        ...options,
+        headers,
+        credentials: 'include',
+        signal: controller.signal,
+      });
+      captureCsrfToken(res);
+
+      receivedHttpResponse = true;
+
+      if (!res.ok) {
+        updateConnectionState(false, `HTTP ${res.status}`);
+
+        // An HTTP denial or missing endpoint is not an offline fallback signal.
+        return null;
+      }
+
       const contentType = res.headers.get('content-type') || '';
 
-      if (res.ok && /\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(contentType)) {
-        const data = (await res.json()) as T;
-        updateConnectionState(true);
-        return data;
+      if (!/\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(contentType)) {
+        updateConnectionState(false, 'The endpoint did not return JSON.');
+        return null;
       }
-    } catch {}
+
+      const data = (await res.json()) as T;
+
+      updateConnectionState(true);
+      return data;
+    } catch (error) {
+      lastNetworkError = error;
+
+      if (receivedHttpResponse) {
+        // A response was already received; do not turn parsing or response
+        // failures into a successful local response.
+        updateConnectionState(
+          false,
+          error instanceof Error ? error.message : 'Invalid backend response.'
+        );
+        return null;
+      }
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    }
   }
 
-  // Seamless fallback to the on-device Standalone Local Router so no feature ever breaks offline
-  const localFallback = await executeStandaloneLocalRoute(url, options);
-  if (localFallback !== null) {
-    updateConnectionState(true);
-    return localFallback as T;
+  // Local mock routes are an intentional standalone-app mode only. A web
+  // browser must never disguise a failed online request as a successful reply.
+  if (isStandaloneMobileApp() && !getBackendUrl()) {
+    try {
+      const localFallback = await executeStandaloneLocalRoute(url, options);
+      if (localFallback !== null) {
+        updateConnectionState(true);
+        return localFallback as T;
+      }
+    } catch {
+      // Report the unavailable service below rather than fabricating a reply.
+    }
   }
 
-  return fallback !== undefined ? fallback : null;
+  if (fallback !== undefined) {
+    return fallback;
+  }
+
+  updateConnectionState(
+    false,
+    lastNetworkError instanceof Error
+      ? lastNetworkError.message
+      : 'Could not reach the backend.'
+  );
+
+  return null;
 }
 
 export async function safePost<T>(
   url: string,
   body?: any,
-  fallback?: T
+  fallback?: T,
+  timeoutMs = 6500
 ): Promise<T | null> {
   return safeFetch<T>(
     url,
@@ -661,6 +1105,7 @@ export async function safePost<T>(
       body: body ? JSON.stringify(body) : undefined,
     },
     fallback,
-    0
+    0,
+    timeoutMs
   );
 }

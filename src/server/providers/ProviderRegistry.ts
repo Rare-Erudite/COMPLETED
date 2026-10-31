@@ -203,6 +203,60 @@ export class ProviderRegistry {
     };
   }
 
+  /** Generate only from a real, reachable model provider. HTTP callers use this
+   * to ensure a deterministic offline heuristic can never masquerade as AI. */
+  public async generateOnline(
+    prompt: string,
+    context?: string,
+    options?: GenerationOptions
+  ): Promise<GenerationResult> {
+    const active = await this.getActiveProvider();
+    const preferred = this.preferredProviderId === 'gemini-coprocessor' ? this.geminiProvider
+      : this.preferredProviderId === 'local-ollama' ? this.ollamaProvider
+      : this.preferredProviderId === 'rare-intelligence' ? this.rareIntelligenceProvider
+      : this.localTransformersProvider;
+    const candidates = [
+      active.provider,
+      preferred,
+      this.geminiProvider,
+      this.localTransformersProvider,
+      this.ollamaProvider,
+      this.rareIntelligenceProvider,
+    ].filter((provider, index, all) =>
+      provider !== this.offlineEngine && all.indexOf(provider) === index,
+    );
+
+    for (const provider of candidates) {
+      let available = provider === active.provider;
+      if (!available) {
+        try {
+          available = await provider.isAvailable();
+        } catch {
+          available = false;
+        }
+      }
+      if (!available) continue;
+
+      try {
+        const result = await provider.generate(prompt, context, options);
+        if (result.providerType === 'offline_cognitive' || !result.reply?.trim()) {
+          console.warn(`[ProviderRegistry] Online provider ${provider.constructor.name} returned no usable model response.`);
+          continue;
+        }
+        return result;
+      } catch {
+        // Provider exceptions can contain request URLs or credentials. Keep the
+        // log useful for operations without exposing error payloads or secrets.
+        console.warn(`[ProviderRegistry] Online provider ${provider.constructor.name} failed; trying the next available provider.`);
+      }
+    }
+
+    throw Object.assign(new Error('No online AI provider returned a usable response.'), {
+      statusCode: 503,
+      code: 'ONLINE_PROVIDER_UNAVAILABLE',
+    });
+  }
+
   public getOfflineEngine(): OfflineCognitiveEngine {
     return this.offlineEngine;
   }

@@ -14,9 +14,9 @@ export const GOOGLE_TTS_PERSONA_VOICES = {
   olivia_quiet: 'en-US-Neural2-E',
   leo_confident: 'en-US-Neural2-I',
   sophia_empathetic: 'en-US-Neural2-H',
-  julian_resonant: 'en-US-Neural2-D',
-  chloe_casual: 'en-US-Neural2-F',
-  gabriel_thoughtful: 'en-US-Neural2-J',
+  julian_resonant: 'en-US-Wavenet-B',
+  chloe_casual: 'en-US-Wavenet-F',
+  gabriel_thoughtful: 'en-US-Wavenet-J',
 } as const;
 
 export type GoogleTtsPersonaId = keyof typeof GOOGLE_TTS_PERSONA_VOICES;

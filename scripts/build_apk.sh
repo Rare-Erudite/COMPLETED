@@ -3,8 +3,65 @@ set -e
 
 PROJECT_ROOT="$(pwd)"
 
+# The Android client must talk to the real RARE backend. Without an injected
+# URL the WebView falls back to the virtual `rare.local` origin and every API
+# call fails, so the build refuses to produce an APK that cannot reach a server.
+RARE_BACKEND_URL="${RARE_BACKEND_URL:-https://rareproject.vercel.app}"
+if [ -z "$RARE_BACKEND_URL" ]; then
+  echo "ERROR: RARE_BACKEND_URL is empty; refusing to build an APK with no backend." >&2
+  exit 1
+fi
+case "$RARE_BACKEND_URL" in
+  http://localhost*|http://127.0.0.1*|*localhost:*)
+    echo "ERROR: RARE_BACKEND_URL points at localhost ($RARE_BACKEND_URL); a shipped APK must use the deployed backend." >&2
+    exit 1
+    ;;
+esac
+echo "=== Backend for this APK: $RARE_BACKEND_URL ==="
+
+# Version identity. Android refuses to install an update whose versionCode is
+# not strictly greater than the installed one, so a hardcoded 1 makes every
+# future release uninstallable over the last. Both values are overridable and
+# default to a monotonically increasing value derived from the build date
+# (YYMMDDnn), which is always greater than any previous calendar day.
+APP_VERSION_NAME="${RARE_APP_VERSION_NAME:-1.0.0}"
+if [ -n "$RARE_APP_VERSION_CODE" ]; then
+  APP_VERSION_CODE="$RARE_APP_VERSION_CODE"
+else
+  APP_VERSION_CODE="$(date -u +%y%m%d)01"
+fi
+case "$APP_VERSION_CODE" in
+  ''|*[!0-9]*)
+    echo "ERROR: RARE_APP_VERSION_CODE must be a positive integer, got '$APP_VERSION_CODE'." >&2
+    exit 1
+    ;;
+esac
+if [ "$APP_VERSION_CODE" -lt 1 ]; then
+  echo "ERROR: RARE_APP_VERSION_CODE must be >= 1, got $APP_VERSION_CODE." >&2
+  exit 1
+fi
+echo "=== Version: ${APP_VERSION_NAME} (versionCode ${APP_VERSION_CODE}) ==="
+
 echo "=== [1/8] Building Web Production Assets with Vite ==="
 npm run build:web
+
+# Inject the backend URL into the packaged index.html so the WebView knows which
+# server to call before any JavaScript runs.
+if [ -f "dist/index.html" ]; then
+  python3 - "$RARE_BACKEND_URL" <<'PY'
+import sys, pathlib
+url = sys.argv[1]
+p = pathlib.Path("dist/index.html")
+html = p.read_text(encoding="utf-8")
+inject = f'<script>window.__RARE_BACKEND_URL__ = {url!r};</script>'
+if "__RARE_BACKEND_URL__" not in html:
+    html = html.replace("</head>", f"  {inject}\n  </head>", 1)
+    p.write_text(html, encoding="utf-8")
+    print(f"Injected backend URL into dist/index.html: {url}")
+else:
+    print("Backend URL already present in dist/index.html")
+PY
+fi
 
 BUILD_DIR="/tmp/android_apk_build"
 rm -rf "$BUILD_DIR"
@@ -43,12 +100,12 @@ cat << 'EOF' > "$BUILD_DIR/res/values/strings.xml"
 </resources>
 EOF
 
-cat << 'EOF' > "$BUILD_DIR/AndroidManifest.xml"
+cat << EOF > "$BUILD_DIR/AndroidManifest.xml"
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.rare.ai.intelligence"
-    android:versionCode="1"
-    android:versionName="1.0.0">
+    android:versionCode="${APP_VERSION_CODE}"
+    android:versionName="${APP_VERSION_NAME}">
 
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34" />
 
@@ -74,7 +131,7 @@ cat << 'EOF' > "$BUILD_DIR/AndroidManifest.xml"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false">
 
         <activity
             android:name="com.rare.ai.intelligence.MainActivity"
@@ -535,7 +592,24 @@ public class MainActivity extends Activity {
 }
 EOF
 
-ANDROID_JAR="/usr/lib/android-sdk/platforms/android-23/android.jar"
+# Toolchain locations. ANDROID_HOME may point at a full SDK (recommended); the
+# Debian-packaged build-tools are used as a fallback for aapt/zipalign/apksigner.
+ANDROID_HOME="${ANDROID_HOME:-/usr/lib/android-sdk}"
+ANDROID_JAR="${ANDROID_JAR:-$ANDROID_HOME/platforms/android-34/android.jar}"
+if [ ! -f "$ANDROID_JAR" ]; then
+  echo "ERROR: android.jar not found at $ANDROID_JAR" >&2
+  echo "       Install the Android SDK platform (sdkmanager 'platforms;android-34') or set ANDROID_JAR." >&2
+  exit 1
+fi
+D8="${D8:-$ANDROID_HOME/build-tools/34.0.0/d8}"
+if [ ! -x "$D8" ]; then
+  D8="$(command -v d8 || true)"
+fi
+if [ -z "$D8" ] || [ ! -x "$D8" ]; then
+  echo "ERROR: d8 (Dalvik compiler) not found. Install Android build-tools 34.0.0." >&2
+  exit 1
+fi
+echo "=== Toolchain: android.jar=$ANDROID_JAR d8=$D8 ==="
 
 echo "=== [5/8] Generating R.java with AAPT ==="
 aapt package -m -J "$BUILD_DIR/src" \
@@ -544,12 +618,32 @@ aapt package -m -J "$BUILD_DIR/src" \
   -I "$ANDROID_JAR"
 
 echo "=== [6/8] Compiling Java Bytecode with ECJ ==="
-ecj -proc:none -cp "$ANDROID_JAR" -source 1.8 -target 1.8 -d "$BUILD_DIR/bin/classes" \
-  "$BUILD_DIR/src/com/rare/ai/intelligence/R.java" \
-  "$BUILD_DIR/src/com/rare/ai/intelligence/MainActivity.java"
+# ecj is not part of the Android SDK and is not installed by default on CI
+# runners, so resolve it explicitly and fall back to javac (which ships with the
+# JDK the build already requires). Both produce Java 8 bytecode that d8 accepts.
+ECJ="${ECJ:-$(command -v ecj || true)}"
+if [ -n "$ECJ" ] && [ -x "$ECJ" ]; then
+  "$ECJ" -proc:none -cp "$ANDROID_JAR" -source 1.8 -target 1.8 -d "$BUILD_DIR/bin/classes" \
+    "$BUILD_DIR/src/com/rare/ai/intelligence/R.java" \
+    "$BUILD_DIR/src/com/rare/ai/intelligence/MainActivity.java"
+else
+  JAVAC="${JAVAC:-$(command -v javac || true)}"
+  if [ -z "$JAVAC" ]; then
+    echo "ERROR: neither ecj nor javac is available; a JDK is required to compile the Android sources." >&2
+    exit 1
+  fi
+  echo "ecj not found; using javac at $JAVAC"
+  "$JAVAC" -source 8 -target 8 -bootclasspath "$ANDROID_JAR" -classpath "$ANDROID_JAR" \
+    -d "$BUILD_DIR/bin/classes" \
+    "$BUILD_DIR/src/com/rare/ai/intelligence/R.java" \
+    "$BUILD_DIR/src/com/rare/ai/intelligence/MainActivity.java"
+fi
 
 echo "=== [7/8] Converting Bytecode to Dalvik classes.dex ==="
-dalvik-exchange --dex --output="$BUILD_DIR/bin/classes.dex" "$BUILD_DIR/bin/classes"
+# d8 is the current Dalvik compiler; dalvik-exchange/dx are long removed from
+# the Android SDK, so the previous script could not run on a modern toolchain.
+"$D8" --min-api 21 --output "$BUILD_DIR/bin" \
+  $(find "$BUILD_DIR/bin/classes" -name '*.class')
 
 echo "=== [8/8] Packaging, Aligning & Signing Standalone Release APK ==="
 aapt package -f \
@@ -567,24 +661,48 @@ aapt add unaligned.apk classes.dex
 zipalign -v -p 4 "$BUILD_DIR/bin/unaligned.apk" "$BUILD_DIR/bin/aligned.apk"
 
 # Keytool and Apksigner (v1 + v2 + v3)
-KEYSTORE="/tmp/rare_release.keystore"
+#
+# The signing identity MUST be stable: Android refuses to install an update
+# signed by a different key than the installed app. The previous script created
+# a fresh keystore in /tmp on every run, so every build produced a new identity
+# and no update could ever be installed over an existing RARE install.
+#
+# The keystore is therefore read from RARE_ANDROID_KEYSTORE (default
+# .rare/android/rare-release.keystore, gitignored) and its passwords from the
+# environment. If no keystore exists the build FAILS rather than silently
+# minting a new identity that would break update compatibility.
+KEYSTORE="${RARE_ANDROID_KEYSTORE:-$PROJECT_ROOT/.rare/android/rare-release.keystore}"
+KEY_ALIAS="${RARE_ANDROID_KEY_ALIAS:-rarekey}"
+STORE_PASS="${RARE_ANDROID_STORE_PASS:-}"
+KEY_PASS="${RARE_ANDROID_KEY_PASS:-$STORE_PASS}"
+
 if [ ! -f "$KEYSTORE" ]; then
-  keytool -genkey -v -keystore "$KEYSTORE" -alias rarekey -keyalg RSA -keysize 2048 -validity 10000 \
-    -storepass androidrare -keypass androidrare \
-    -dname "CN=RARE Intelligence, OU=Mobile, O=RARE Core, L=Global, S=Global, C=US"
+  echo "ERROR: release keystore not found at $KEYSTORE" >&2
+  echo "       A new key would break update compatibility with installed RARE apps." >&2
+  echo "       Restore the existing keystore, or set RARE_ANDROID_KEYSTORE to it." >&2
+  exit 1
+fi
+if [ -z "$STORE_PASS" ]; then
+  echo "ERROR: RARE_ANDROID_STORE_PASS is not set; cannot sign the release APK." >&2
+  exit 1
 fi
 
-apksigner sign --ks "$KEYSTORE" --ks-pass pass:androidrare --key-pass pass:androidrare \
-  --ks-key-alias rarekey --out "$BUILD_DIR/bin/rare-v1.0.0-release.apk" "$BUILD_DIR/bin/aligned.apk"
+apksigner sign --ks "$KEYSTORE" --ks-pass "pass:$STORE_PASS" --key-pass "pass:$KEY_PASS" \
+  --ks-key-alias "$KEY_ALIAS" --out "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk" "$BUILD_DIR/bin/aligned.apk"
 
 echo "=== Verifying APK Signature Schemes ==="
-apksigner verify --verbose "$BUILD_DIR/bin/rare-v1.0.0-release.apk"
+apksigner verify --verbose "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk"
+
+# Record the signing certificate so update compatibility can be checked against
+# the certificate of an already-installed build.
+echo "=== Signing certificate (must match the installed app) ==="
+apksigner verify --print-certs "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk" | head -5
 
 # Export APK to standard release locations
 mkdir -p "$PROJECT_ROOT/exports" "$PROJECT_ROOT/public" "$PROJECT_ROOT/dist"
-cp "$BUILD_DIR/bin/rare-v1.0.0-release.apk" "$PROJECT_ROOT/exports/rare-v1.0.0-release.apk"
-cp "$BUILD_DIR/bin/rare-v1.0.0-release.apk" "$PROJECT_ROOT/public/rare-v1.0.0-release.apk"
-cp "$BUILD_DIR/bin/rare-v1.0.0-release.apk" "$PROJECT_ROOT/dist/rare-v1.0.0-release.apk" 2>/dev/null || true
+cp "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk" "$PROJECT_ROOT/exports/rare-v${APP_VERSION_NAME}-release.apk"
+cp "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk" "$PROJECT_ROOT/public/rare-v${APP_VERSION_NAME}-release.apk"
+cp "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk" "$PROJECT_ROOT/dist/rare-v${APP_VERSION_NAME}-release.apk" 2>/dev/null || true
 
 echo "=== Android APK Successfully Created and Exported! ==="
-ls -lh "$PROJECT_ROOT/exports/rare-v1.0.0-release.apk"
+ls -lh "$PROJECT_ROOT/exports/rare-v${APP_VERSION_NAME}-release.apk"

@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from 'react';
+import { apiFetch } from '../api.js';
 import { Wrench, Play, CheckCircle2, AlertCircle, RotateCcw, ShieldCheck } from 'lucide-react';
 
 export function SelfRepairView() {
@@ -16,10 +17,14 @@ export function SelfRepairView() {
     setRunningRepair(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/repair/run', { method: 'POST' });
+      const res = await apiFetch('/api/intelligence/repair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sampleTask: 'Run the bounded self-diagnosis and repair cycle.' }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message || 'Repair failed');
-      setRepairResults(data.repairs || []);
+      setRepairResults([data]);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -29,17 +34,8 @@ export function SelfRepairView() {
 
   const runHarmlessFaultTest = async () => {
     setRunningHarmless(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/v1/repair/test-harmless-fault', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Harmless fault test failed');
-      setHarmlessResult(data);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setRunningHarmless(false);
-    }
+    setError('The harmless fault simulation is not implemented on the server and was not run.');
+    setRunningHarmless(false);
   };
 
   return (

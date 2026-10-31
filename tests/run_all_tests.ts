@@ -1,3 +1,24 @@
+/**
+ * Test runner — boots a real server, runs every suite against it, and fails
+ * loudly.
+ *
+ * Previously the auth suite fetched http://127.0.0.1:3000 assuming a server was
+ * already running. From a clean checkout nothing was listening, every request
+ * threw, and the runner still exited 0 — so a broken build looked green.
+ *
+ * Now the runner:
+ *   1. picks a free port,
+ *   2. starts `server.ts` with local storage fallback enabled,
+ *   3. waits for the health endpoint (with a hard timeout),
+ *   4. exports RARE_TEST_BASE_URL for the suites,
+ *   5. tears the server down and exits non-zero on any failure.
+ */
+
+import { spawn, type ChildProcess } from 'node:child_process';
+import net from 'node:net';
+import path from 'node:path';
+import { existsSync } from 'node:fs';
+
 import { runModelProviderTests } from './test_model_providers.js';
 import { runToolTests } from './test_tools.js';
 import { runMemoryTests } from './test_memory.js';
@@ -7,18 +28,114 @@ import { runApiConfigurationTests } from './test_api_configuration.js';
 import { runRareIntelligenceBridgeTests } from './test_rare_intelligence_bridge.js';
 import { runAuthenticationSecurityTests } from './test_authentication_security.js';
 import { runPersistentWorkflowTests } from './test_persistent_workflows.js';
+import { runOAuthValidationTests } from './test_oauth_validation.js';
+import { runStandaloneResearchTests } from './test_standalone_research.js';
+import { runToolchainRegistryTests, runToolchainRouteTests, runAssistantCommandTests } from './test_builder_and_assistant.js';
+import { runProjectBuildTests } from './test_project_build.js';
+import { runMediaBinaryTests } from './test_media_binaries.js';
+import { runUpdateStoreTests } from './test_update_store.js';
+import { runKeepAliveTests } from './test_keepalive.js';
+import { runServerlessFrontendAvailabilityTests } from './test_serverless_frontend.js';
+import { runContentEngineTests } from './test_content_engine.js';
+import { runChatPipelineTests } from './test_chat_pipeline.js';
+import { runDiarizationTests } from './test_diarization.js';
+import { runDocumentsIncrementTests } from './test_documents_increment.js';
+import { runResearchIncrementTests } from './test_research_increment.js';
+
+function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.unref();
+    server.on('error', reject);
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        server.close();
+        reject(new Error('Could not allocate a test port.'));
+        return;
+      }
+      const { port } = address;
+      server.close(() => resolve(port));
+    });
+  });
+}
+
+async function waitForServer(baseUrl: string, child: ChildProcess, timeoutMs = 90_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let exited = false;
+  child.once('exit', () => {
+    exited = true;
+  });
+
+  while (Date.now() < deadline) {
+    if (exited) throw new Error('The test server exited before it became reachable.');
+    try {
+      const response = await fetch(`${baseUrl}/api/health`, { signal: AbortSignal.timeout(2000) });
+      if (response.ok) return;
+    } catch {
+      /* not up yet */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`The test server did not become reachable at ${baseUrl} within ${timeoutMs}ms.`);
+}
 
 async function main() {
   console.log('=====================================================');
   console.log('  RARE CORE INTELLIGENCE — AUTOMATED VERIFICATION SUITE');
   console.log('=====================================================\n');
 
+  // The suites run in THIS process, and the self-development suite calls the
+  // RUN_TEST tool from here. Mark the runner itself, not only the server child,
+  // so that call cannot spawn `npm test` recursively.
+  process.env.RARE_TEST_RUNNING = 'true';
+
+  const port = await findFreePort();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  console.log(`[runner] Starting test server on ${baseUrl}`);
+
+  const child = spawn('npx', ['tsx', 'server.ts'], {
+    env: {
+      ...process.env,
+      PORT: String(port),
+      NODE_ENV: process.env.NODE_ENV || 'test',
+      // Tests must run from a clean checkout with no database configured.
+      RARE_ALLOW_LOCAL_STORAGE_FALLBACK: 'true',
+      // The server pins allowed origins; register the ephemeral test origin
+      // through the existing configuration rather than weakening the check.
+      RARE_ALLOWED_ORIGINS: [process.env.RARE_ALLOWED_ORIGINS, baseUrl].filter(Boolean).join(','),
+      // The suite exercises the API and the built SPA, never the dev bundler.
+      // Starting Vite's optimizer inside the test process can exceed a small
+      // container's memory budget and kill the server out from under the run,
+      // which shows up as a spurious connection failure rather than a real bug.
+      RARE_SKIP_DEV_BUNDLER: 'true',
+      // Marks this process tree as already running the suite. The RUN_TEST tool
+      // checks it so a self-development cycle cannot spawn `npm test` from
+      // inside `npm test` and recurse until the process is killed.
+      RARE_TEST_RUNNING: 'true',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  const serverLog: string[] = [];
+  child.stdout?.on('data', (chunk) => serverLog.push(String(chunk)));
+  child.stderr?.on('data', (chunk) => serverLog.push(String(chunk)));
+
+  let exitCode = 0;
   try {
+    await waitForServer(baseUrl, child);
+    console.log('[runner] Server is reachable.\n');
+    process.env.RARE_TEST_BASE_URL = baseUrl;
+
     await runApiConfigurationTests();
+    console.log();
+    await runStandaloneResearchTests();
     console.log();
     await runAuthenticationSecurityTests();
     console.log();
     await runPersistentWorkflowTests();
+    console.log();
+    await runOAuthValidationTests();
     console.log();
     await runModelProviderTests();
     console.log();
@@ -32,14 +149,67 @@ async function main() {
     console.log();
     await runEvaluationTests();
     console.log();
+    await runToolchainRegistryTests();
+    await runToolchainRouteTests();
+    console.log();
+    await runAssistantCommandTests();
+    console.log();
+    await runProjectBuildTests();
+    console.log();
+    await runMediaBinaryTests();
+    console.log();
+    await runUpdateStoreTests();
+    console.log();
+    await runKeepAliveTests();
+    console.log();
+    // The frontend availability suite asserts that a built SPA shell is served
+    // when the API fails to boot. That requires build output to exist, which a
+    // clean checkout does not have. Running it without one produces failures
+    // that describe a missing build, not a code defect — so the precondition is
+    // stated instead of being allowed to masquerade as a regression.
+    const hasBuiltSpa = existsSync(path.join(process.cwd(), 'dist', 'index.html'))
+      || existsSync(path.join(process.cwd(), 'public', 'index.html'));
+    if (hasBuiltSpa) {
+      await runServerlessFrontendAvailabilityTests();
+    } else {
+      console.log('[Test Group] Vercel serverless: frontend availability when API init fails');
+      console.log('  SKIP — no built SPA (run `npm run build` first). Not a code defect.');
+    }
+    console.log();
+    await runContentEngineTests();
+    console.log();
+    await runChatPipelineTests();
+    console.log();
+    await runDiarizationTests();
+    console.log();
+    const documents = await runDocumentsIncrementTests();
+    if (documents.failed > 0) {
+      throw new Error(`Documents increment: ${documents.failed} assertion(s) failed.`);
+    }
+    console.log();
+    const research = await runResearchIncrementTests();
+    if (research.failed > 0) {
+      throw new Error(`Research increment: ${research.failed} assertion(s) failed.`);
+    }
+    console.log();
     console.log('=====================================================');
     console.log('  ALL AUTOMATED VERIFICATION TESTS PASSED SUCCESSFULLY');
     console.log('=====================================================');
-    process.exit(0);
   } catch (err: any) {
+    exitCode = 1;
     console.error('\n❌ Test suite failed with error:', err);
-    process.exit(1);
+    if (serverLog.length > 0) {
+      console.error('\n--- server output (last 40 lines) ---');
+      console.error(serverLog.join('').split('\n').slice(-40).join('\n'));
+    }
+  } finally {
+    child.kill('SIGTERM');
+    // Give the server a moment to release the port, then force it.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (!child.killed) child.kill('SIGKILL');
   }
+
+  process.exit(exitCode);
 }
 
 main();

@@ -4,7 +4,8 @@ import crypto from 'crypto';
 import { CheckpointRecord } from '../types.js';
 import type { PersistentJsonStore, StoredSnapshotFile } from './PersistentJsonStore.js';
 
-const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+import { resolveWritableAppRoot } from './PersistentJsonStore.js';
+const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAppRoot());
 const CHECKPOINTS_DIR = path.resolve(PROJECT_ROOT, '.rare', 'checkpoints');
 const REGISTRY_FILE = path.resolve(CHECKPOINTS_DIR, 'checkpoints_registry.json');
 

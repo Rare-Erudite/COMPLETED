@@ -90,6 +90,14 @@ export function getUserInitials(user: { name?: string; email?: string; phone?: s
   return 'U';
 }
 
+function base64Url(bytes: Uint8Array): string {
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function randomOAuthValue(): string {
+  return base64Url(crypto.getRandomValues(new Uint8Array(32)));
+}
+
 interface AuthModalProps {
   t: ThemeConfig;
   isOpen: boolean;
@@ -124,13 +132,9 @@ export function AuthModal({
   const [showPassword, setShowPassword] = useState(false);
 
   // Google specific inputs
-  const [googleEmail, setGoogleEmail] = useState('');
-  const [googlePassword, setGooglePassword] = useState('');
   const [googleStep, setGoogleStep] = useState<'email' | 'password'>('email');
 
   // Outlook specific inputs
-  const [outlookEmail, setOutlookEmail] = useState('');
-  const [outlookPassword, setOutlookPassword] = useState('');
   const [outlookStep, setOutlookStep] = useState<'email' | 'password'>('email');
 
   // Phone specific inputs
@@ -169,6 +173,13 @@ export function AuthModal({
   useEffect(() => {
     if (isOpen) {
       setError('');
+      try {
+        const oauthError = sessionStorage.getItem('rare_oauth_error');
+        if (oauthError) {
+          setError(oauthError);
+          sessionStorage.removeItem('rare_oauth_error');
+        }
+      } catch { /* Error text is optional when browser storage is unavailable. */ }
       setLoading(false);
       setVerifyCode('');
       setSentNotice('');
@@ -217,48 +228,54 @@ export function AuthModal({
     setLoading(true);
     setError('');
 
-    // Check if Google Identity Services SDK or native token prompt is available
     try {
-      // If user provided a token directly or via Google Identity prompt
-      let tokenToVerify = (window as any).__GOOGLE_ID_TOKEN__;
-
-      // In browser web environment, initiate Google Sign-In prompt or request token
-      if (!tokenToVerify && typeof window !== 'undefined' && (window as any).google?.accounts?.id) {
+      const clientId = (window as any).__GOOGLE_CLIENT_ID__ || import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      if (!clientId) throw new Error('Google sign-in is not configured for this frontend. Set VITE_GOOGLE_CLIENT_ID and GOOGLE_CLIENT_ID to the same OAuth client ID.');
+      if (!(window as any).google?.accounts?.id) {
         await new Promise<void>((resolve, reject) => {
-          (window as any).google.accounts.id.initialize({
-            client_id: (window as any).__GOOGLE_CLIENT_ID__ || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
-            callback: (res: any) => {
-              if (res?.credential) {
-                tokenToVerify = res.credential;
-                resolve();
-              } else {
-                reject(new Error('Google Sign-In prompt cancelled or returned no credential.'));
-              }
-            },
-          });
-          (window as any).google.accounts.id.prompt((notification: any) => {
-            if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-              resolve();
-            }
-          });
+          const existing = document.querySelector<HTMLScriptElement>('script[data-rare-google-identity]');
+          const script = existing || document.createElement('script');
+          script.src = 'https://accounts.google.com/gsi/client';
+          script.async = true;
+          script.defer = true;
+          script.dataset.rareGoogleIdentity = 'true';
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error('Google Identity Services could not be loaded.'));
+          if (!existing) document.head.appendChild(script);
         });
       }
+      if (!(window as any).google?.accounts?.id) throw new Error('Google Identity Services is unavailable.');
 
-      // If no pre-initialized SDK token was caught, prompt user for their verified OpenID Connect token or auth token
-      if (!tokenToVerify) {
-        // Require verified token from user / identity provider
-        if (!googleEmail.trim()) {
-          setError('Please provide your verified Google Identity Token or sign-in credential.');
-          setLoading(false);
-          return;
-        }
-        // In developer or secure test mode, if token is entered in the token/secret field or input
-        tokenToVerify = googleEmail.trim();
-      }
+      const nonceBytes = crypto.getRandomValues(new Uint8Array(32));
+      const nonce = btoa(String.fromCharCode(...nonceBytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const tokenToVerify = await new Promise<string>((resolve, reject) => {
+        let settled = false;
+        const timer = window.setTimeout(() => reject(new Error('Google sign-in timed out. Please try again.')), 90_000);
+        (window as any).google.accounts.id.initialize({
+          client_id: clientId,
+          nonce,
+          callback: (credentialResponse: any) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            if (typeof credentialResponse?.credential === 'string') resolve(credentialResponse.credential);
+            else reject(new Error('Google did not return an identity credential.'));
+          },
+        });
+        (window as any).google.accounts.id.prompt((notification: any) => {
+          if (settled) return;
+          if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
+            settled = true;
+            window.clearTimeout(timer);
+            reject(new Error('Google sign-in was not displayed. Check the authorized frontend origin and try again.'));
+          }
+        });
+      });
 
-      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>('/api/user/oauth', {
+      const res = await safePost<{ success: boolean; user: UserAccount; expiresAt: number; error?: string }>('/api/user/oauth', {
         provider: 'google',
         token: tokenToVerify,
+        nonce,
       });
 
       if (res?.success && res.user) {
@@ -288,35 +305,29 @@ export function AuthModal({
     setError('');
 
     try {
-      let tokenToVerify = (window as any).__MICROSOFT_ACCESS_TOKEN__;
-
-      if (!tokenToVerify) {
-        if (!outlookEmail.trim()) {
-          setError('Please provide your verified Microsoft Identity or Access Token.');
-          setLoading(false);
-          return;
-        }
-        tokenToVerify = outlookEmail.trim();
-      }
-
-      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>('/api/user/oauth', {
-        provider: 'outlook',
-        token: tokenToVerify,
-      });
-
-      if (res?.success && res.user) {
-        saveDeviceAccount({
-          name: res.user.name,
-          email: res.user.email || 'microsoft_user',
-          provider: 'outlook',
-          avatarColor: '#0078D4',
-          lastUsed: new Date().toISOString(),
-        });
-        onLoginSuccess(res.user);
-        onClose();
-      } else {
-        setError(res?.error || 'Microsoft identity verification failed. Token rejected by server.');
-      }
+      const clientId = (window as any).__MICROSOFT_CLIENT_ID__ || import.meta.env.VITE_MICROSOFT_CLIENT_ID;
+      const redirectUri = (window as any).__MICROSOFT_REDIRECT_URI__ || import.meta.env.VITE_MICROSOFT_REDIRECT_URI || `${window.location.origin}${window.location.pathname}`;
+      const tenant = (window as any).__MICROSOFT_TENANT_ID__ || import.meta.env.VITE_MICROSOFT_TENANT_ID || 'common';
+      if (!clientId) throw new Error('Microsoft sign-in is not configured for this frontend. Set VITE_MICROSOFT_CLIENT_ID and the matching server OAuth settings.');
+      const verifier = randomOAuthValue();
+      const nonce = randomOAuthValue();
+      const state = randomOAuthValue();
+      const challenge = base64Url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+      sessionStorage.setItem('rare_microsoft_oauth_transaction', JSON.stringify({ verifier, nonce, state, redirectUri }));
+      const authorizationUrl = new URL(`https://login.microsoftonline.com/${encodeURIComponent(tenant)}/oauth2/v2.0/authorize`);
+      authorizationUrl.search = new URLSearchParams({
+        client_id: clientId,
+        response_type: 'code',
+        response_mode: 'query',
+        redirect_uri: redirectUri,
+        scope: 'openid profile email',
+        state,
+        nonce,
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+        prompt: 'select_account',
+      }).toString();
+      window.location.assign(authorizationUrl.toString());
     } catch (err: any) {
       setError(err?.message || 'Microsoft sign-in error. Identity could not be verified.');
     } finally {
@@ -329,10 +340,8 @@ export function AuthModal({
     setError('');
     // Switch to respective provider authentication view rather than trusting unverified email
     if (account.provider === 'google') {
-      setGoogleEmail(account.email);
       setActiveView('google-signin');
     } else {
-      setOutlookEmail(account.email);
       setActiveView('outlook-signin');
     }
   };
@@ -349,7 +358,7 @@ export function AuthModal({
     try {
       const endpoint = tab === 'signin' ? '/api/user/login' : '/api/user/signup';
       const cleanEmail = email.trim();
-      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>(endpoint, {
+      const res = await safePost<{ success: boolean; user: UserAccount; expiresAt: number; error?: string }>(endpoint, {
         email: cleanEmail,
         password,
         name: name.trim() || cleanEmail.split('@')[0],
@@ -403,7 +412,7 @@ export function AuthModal({
     setError('');
     setLoading(true);
     try {
-      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>('/api/user/verify-email-otp', {
+      const res = await safePost<{ success: boolean; user: UserAccount; expiresAt: number; error?: string }>('/api/user/verify-email-otp', {
         email: email.trim(),
         code: verifyCode.trim(),
         name: name.trim() || email.trim().split('@')[0],
@@ -463,7 +472,7 @@ export function AuthModal({
     setLoading(true);
     const fullPhone = `${countryCode} ${phoneRaw.trim()}`;
     try {
-      const res = await safePost<{ success: boolean; user: UserAccount; error?: string }>('/api/user/verify-otp', {
+      const res = await safePost<{ success: boolean; user: UserAccount; expiresAt: number; error?: string }>('/api/user/verify-otp', {
         phone: fullPhone,
         code: verifyCode.trim(),
         name: name.trim() || `User ${phoneRaw.slice(-4)}`,
@@ -558,18 +567,10 @@ export function AuthModal({
             <form onSubmit={handleGoogleSubmit} className="space-y-3.5">
               <div className="space-y-1.5">
                 <label className="text-[11px] font-semibold text-slate-300">
-                  {savedGoogleAccounts.length > 0 ? 'Or use another Google account' : 'Google Account Email'}
+                  {savedGoogleAccounts.length > 0 ? 'Or use another Google account' : 'Google Account'}
                 </label>
-                <input
-                  type="email"
-                  value={googleEmail}
-                  onChange={(e) => setGoogleEmail(e.target.value)}
-                  placeholder="Enter your Gmail or Google account..."
-                  className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none`}
-                  autoFocus={savedGoogleAccounts.length === 0}
-                />
                 <p className="text-[10px] text-slate-400">
-                  Syncs with your phone or device Google profile to protect all your personal workspace data and chat history.
+                  Continue through Google Identity Services. RARE verifies the signed identity token on the server.
                 </p>
               </div>
 
@@ -586,7 +587,7 @@ export function AuthModal({
                 </button>
                 <button
                   type="submit"
-                  disabled={loading || !googleEmail.trim()}
+                  disabled={loading}
                   className={`px-5 py-2 rounded-xl text-xs font-semibold ${t.accentBg} ${t.accentBgHover} text-white flex items-center space-x-1.5 shadow-md disabled:opacity-50`}
                 >
                   <span>{loading ? 'Authenticating...' : 'Continue with Google'}</span>
@@ -660,18 +661,10 @@ export function AuthModal({
             <form onSubmit={handleOutlookSubmit} className="space-y-3.5">
               <div className="space-y-1.5">
                 <label className="text-[11px] font-semibold text-slate-300">
-                  {savedOutlookAccounts.length > 0 ? 'Or use another Microsoft account' : 'Microsoft Account Email'}
+                  {savedOutlookAccounts.length > 0 ? 'Or use another Microsoft account' : 'Microsoft Account'}
                 </label>
-                <input
-                  type="email"
-                  value={outlookEmail}
-                  onChange={(e) => setOutlookEmail(e.target.value)}
-                  placeholder="Enter your Outlook, Hotmail, or Live ID..."
-                  className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none`}
-                  autoFocus={savedOutlookAccounts.length === 0}
-                />
                 <p className="text-[10px] text-slate-400">
-                  Sign in with your Microsoft account to sync your personal chat history & workspace.
+                  Sign in through Microsoft using a one-time authorization code and PKCE-protected browser flow.
                 </p>
               </div>
 
@@ -688,7 +681,7 @@ export function AuthModal({
                 </button>
                 <button
                   type="submit"
-                  disabled={loading || !outlookEmail.trim()}
+                  disabled={loading}
                   className={`px-5 py-2 rounded-xl text-xs font-semibold bg-[#0078D4] hover:bg-[#006bbd] text-white flex items-center space-x-1.5 shadow-md disabled:opacity-50`}
                 >
                   <span>{loading ? 'Authenticating...' : 'Continue with Microsoft'}</span>

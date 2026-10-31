@@ -3,6 +3,7 @@
  */
 
 import React, { useState } from 'react';
+import { apiFetch } from '../api.js';
 import { Wrench, Play, Shield, Terminal, CheckCircle2 } from 'lucide-react';
 
 export function ToolsExplorerView() {
@@ -25,10 +26,10 @@ export function ToolsExplorerView() {
     setResult(null);
     try {
       const parsedArgs = JSON.parse(argsJson);
-      const res = await fetch('/api/v1/tools/execute', {
+      const res = await apiFetch('/api/tools/execute', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toolName: selectedTool, args: parsedArgs }),
+        body: JSON.stringify({ tool: selectedTool, inputs: parsedArgs }),
       });
       const data = await res.json();
       setResult(data);

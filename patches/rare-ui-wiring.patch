@@ -1,0 +1,465 @@
+diff --git a/server.ts b/server.ts
+index e2ee035..28e6f30 100644
+--- a/server.ts
++++ b/server.ts
+@@ -16,6 +16,7 @@ import { DocumentStore } from './src/server/storage/DocumentStore.js';
+ import { ResearchService } from './src/server/services/ResearchService.js';
+ import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
+ import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
++import { detectToolchains } from './src/server/builder/ToolchainRegistry.js';
+ import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
+ import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
+ import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
+@@ -796,14 +797,11 @@ activeAgentRuns.splice(0, activeAgentRuns.length);
+ activeAgentRuns = durableStateStore.trackArray('agent_runs', activeAgentRuns);
+ 
+ // Toolchains Environment Matrix
+-const toolchains = [
+-  { id: 'node_ts', name: 'Node.js 22 & TypeScript', detected: true, version: 'Node 22.13.5 / TS 5.7', status: 'ready', domains: ['Web', 'Backend', 'CLI'] },
+-  { id: 'vite_bundler', name: 'Vite Production Engine', detected: true, version: 'Vite 6.2.0', status: 'ready', domains: ['Web SPA', 'Electron'] },
+-  { id: 'python_runtime', name: 'Python 3.13 Runtime', detected: true, version: 'Python 3.13.2', status: 'ready', domains: ['AI Engine', 'Automation', 'CLI'] },
+-  { id: 'android_gradle', name: 'Android SDK & Gradle', detected: true, version: 'Gradle 8.7.3 / SDK 34', status: 'platform_configured', domains: ['Android APK', 'Mobile'] },
+-  { id: 'windows_toolchain', name: 'Windows C++/Win32 Toolchain', detected: true, version: 'MSVC 2022 / CMake 3.28', status: 'platform_configured', domains: ['Windows EXE', 'Desktop'] },
+-  { id: 'rust_cargo', name: 'Rust Toolchain', detected: true, version: 'Cargo / rustc 1.84.0', status: 'ready', domains: ['High-Performance', 'Native Libs'] },
+-];
++/**
++ * Toolchain capabilities are probed from the actual machine on first request —
++ * see src/server/builder/ToolchainRegistry.ts. Nothing here is hardcoded.
++ */
++
+ 
+ // Conversations
+ interface ChatMessage {
+@@ -1313,6 +1311,9 @@ function resolveApkFilePath(): string | null {
+   return candidates.find((p) => fs.existsSync(p)) || null;
+ }
+ 
++/** Last computed APK digest, keyed by path:size:mtime so stale hashes are never served. */
++const apkDigestCache = new Map<string, string>();
++
+ // APK Metadata & Chunked Streaming Endpoints (Guarantees zero proxy payload limit errors)
+ app.get('/api/download/apk/info', (_req, res) => {
+   const targetFile = resolveApkFilePath();
+@@ -1320,12 +1321,25 @@ app.get('/api/download/apk/info', (_req, res) => {
+     return res.status(404).json({ ok: false, error: 'APK deliverable not found' });
+   }
+   const stats = fs.statSync(targetFile);
++  // Hash once per file identity so a client can verify integrity without
++  // re-reading the whole artifact on every metadata request.
++  const cacheKey = `${targetFile}:${stats.size}:${stats.mtimeMs}`;
++  let digest = apkDigestCache.get(cacheKey);
++  if (!digest) {
++    digest = crypto.createHash('sha256').update(fs.readFileSync(targetFile)).digest('hex');
++    apkDigestCache.clear();
++    apkDigestCache.set(cacheKey, digest);
++  }
++  const release = updateStore.getLatest('public');
+   res.setHeader('Cache-Control', 'no-store');
+   res.json({
+     ok: true,
+     size: stats.size,
+     chunkSize: 2 * 1024 * 1024, // 2 MB chunks (safe across all Cloud Run & reverse proxies)
+     filename: 'RARE-v1.0.0-release.apk',
++    sha256: digest,
++    version: release?.version || null,
++    signedBy: release?.publishedBy || null,
+   });
+ });
+ 
+@@ -3213,6 +3227,8 @@ app.get('/api/developer/status', async (req, res) => {
+     });
+   }
+ 
++  const detectedToolchains = await detectToolchains();
++
+   return res.json({
+     authenticated: true,
+     autonomyLevel: appSettings.autonomyLevel,
+@@ -3220,7 +3236,7 @@ app.get('/api/developer/status', async (req, res) => {
+     checkpointRetention: 'Keep last 40 snapshots / 30 days',
+     checkpointsCount: checkpoints.length,
+     activeRunsCount: activeAgentRuns.length,
+-    toolchainsCount: toolchains.length,
++    toolchainsCount: detectedToolchains.filter((entry) => entry.status === 'ready').length,
+     updatesCount: updateStore.getAll('developer').length,
+     auditEvents: auditLog.slice(0, 20),
+     systemConfig: {
+@@ -3630,8 +3646,20 @@ app.get('/api/checkpoints', async (req, res) => {
+ });
+ 
+ // Toolchains
+-app.get('/api/builder/toolchains', (req, res) => {
+-  res.json(toolchains);
++app.get('/api/builder/toolchains', async (req, res) => {
++  try {
++    const capabilities = await detectToolchains(req.query.force === '1');
++    res.json({
++      detectedAt: new Date().toISOString(),
++      ready: capabilities.filter((entry) => entry.status === 'ready').length,
++      total: capabilities.length,
++      toolchains: capabilities,
++    });
++  } catch (error) {
++    res.status(503).json({
++      error: { message: error instanceof Error ? error.message : 'Toolchain detection failed.' },
++    });
++  }
+ });
+ 
+ app.post('/api/user/verify-email-otp', async (req, res) => {
+diff --git a/src/App.tsx b/src/App.tsx
+index 90ebce4..2420d14 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -87,6 +87,10 @@ import {
+ 
+ import { ImageStudioWorkspaceView } from './ImageStudioWorkspaceView';
+ import { DownloadAppModal } from './DownloadAppModal';
++import { AssistantStudioView } from './components/AssistantStudioView';
++import { DocumentsWorkspaceView } from './components/DocumentsWorkspaceView';
++import { ResearchWorkspaceView } from './components/ResearchWorkspaceView';
++import { ToolchainMatrix } from './components/ToolchainMatrix';
+ import { UpdateModal, AppUpdate } from './UpdateModal';
+ import { DeveloperAuthModal } from './DeveloperAuthModal';
+ import { AuthModal, UserAccount, getUserInitials } from './AuthModal';
+@@ -762,8 +766,11 @@ useEffect(() => {
+ 
+   const workspaceNavItems = [
+     { id: 'projects', label: 'Projects', icon: Package, badge: 'APK • EXE • Web' },
++    { id: 'documents', label: 'Documents', icon: FileText, badge: 'Files • OCR' },
++    { id: 'research', label: 'Research', icon: Compass, badge: 'Multi-source' },
++    { id: 'assistant', label: 'Rae Assistant', icon: Mic, badge: 'Voice' },
+     { id: 'scheduled', label: 'Scheduled', icon: Clock, badge: 'Alarms' },
+-    { id: 'plugins', label: 'Plugins', icon: Puzzle, badge: '8 Installed' },
++    { id: 'plugins', label: 'Plugins', icon: Puzzle, badge: 'Catalog' },
+     { id: 'images', label: 'VisionCraft Studio', icon: ImageIcon, badge: '4K AI' },
+   ];
+ 
+@@ -1368,6 +1375,15 @@ useEffect(() => {
+             />
+           )}
+           {activeTab === 'projects' && <CollaborativeBuildWorkspaceView t={t} />}
++          {activeTab === 'documents' && <DocumentsWorkspaceView t={t} onNavigate={setActiveTab} />}
++          {activeTab === 'research' && <ResearchWorkspaceView t={t} onNavigate={setActiveTab} />}
++          {activeTab === 'assistant' && (
++            <AssistantStudioView
++              t={t}
++              onNavigate={setActiveTab}
++              assistantName={assistantName}
++            />
++          )}
+           {activeTab === 'scheduled' && <ScheduledWorkspaceView t={t} onNavigate={setActiveTab} />}
+           {activeTab === 'plugins' && <PluginsDirectoryView t={t} onNavigate={setActiveTab} />}
+           {activeTab === 'images' && (
+@@ -1759,6 +1775,8 @@ function CollaborativeBuildWorkspaceView({ t }: { t: ThemeConfig }) {
+           <h3 className="text-sm font-bold">Universal Software Builder (Multi-Device)</h3>
+         </div>
+ 
++        <ToolchainMatrix t={t} />
++
+         <form onSubmit={handleStartProject} className="space-y-4">
+           <div>
+             <label className="text-[11px] font-semibold text-slate-400 block mb-1">Project Title</label>
+@@ -2074,302 +2092,6 @@ function CollaborativeBuildWorkspaceView({ t }: { t: ThemeConfig }) {
+     </div>
+   );
+ }
+-
+-// -----------------------------------------------------------------------------
+-// 3. Clean Documents & Audio Workspace
+-// -----------------------------------------------------------------------------
+-function CleanDocumentsWorkspaceView({ t }: { t: ThemeConfig }) {
+-  const [docList, setDocList] = useState<Array<{ path: string; size: number; format: string }>>([]);
+-  const [activePath, setActivePath] = useState<string>('project_plan_overview.md');
+-  const [content, setContent] = useState<string>('');
+-  const [searchTerm, setSearchTerm] = useState('');
+-  const [transcribing, setTranscribing] = useState(false);
+-  const [savedSuccess, setSavedSuccess] = useState(false);
+-
+-  const loadDocList = async () => {
+-    const data = await safeFetch<any[]>('/api/documents');
+-    if (data) setDocList(data);
+-  };
+-
+-  const loadDocContent = async (path: string) => {
+-    const data = await safeFetch<any>(`/api/documents/${path}`);
+-    if (data) {
+-      setContent(data.content);
+-      setActivePath(path);
+-    }
+-  };
+-
+-  useEffect(() => {
+-    loadDocList();
+-    loadDocContent('project_plan_overview.md');
+-  }, []);
+-
+-  const handleSave = async () => {
+-    const res = await safePost('/api/documents', { path: activePath, text: content });
+-    if (res) {
+-      setSavedSuccess(true);
+-      setTimeout(() => setSavedSuccess(false), 2000);
+-      loadDocList();
+-    }
+-  };
+-
+-  // Context-Aware Universal Audio Transcription
+-  const handleTranscribeAudio = async (topic: string = 'executive_strategy') => {
+-    setTranscribing(true);
+-    try {
+-      const data = await safePost<any>('/api/documents/transcribe', {
+-        audioName: `${topic}_recording.mp3`,
+-        sampleTopic: topic,
+-      });
+-      if (data) {
+-        await loadDocList();
+-        loadDocContent(data.path);
+-      }
+-    } finally {
+-      setTranscribing(false);
+-    }
+-  };
+-
+-  const filteredDocs = docList.filter((d) =>
+-    d.path.toLowerCase().includes(searchTerm.toLowerCase())
+-  );
+-
+-  return (
+-    <div className={`h-[calc(100vh-8rem)] flex rounded-xl border ${t.cardBorder} overflow-hidden ${t.card}`}>
+-      {/* File Sidebar */}
+-      <div className={`w-64 border-r ${t.cardBorder} ${t.cardSub} flex flex-col p-3 shrink-0 space-y-3`}>
+-        <div className="relative">
+-          <Search className={`w-3.5 h-3.5 absolute left-2.5 top-2.5 ${t.textDim}`} />
+-          <input
+-            type="text"
+-            value={searchTerm}
+-            onChange={(e) => setSearchTerm(e.target.value)}
+-            placeholder="Search documents..."
+-            className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-lg pl-8 pr-3 py-1.5 text-xs focus:outline-none`}
+-          />
+-        </div>
+-
+-        {/* Audio Transcription Tool Box */}
+-        <div className="space-y-1.5 p-2.5 rounded-xl border border-white/5 bg-black/20">
+-          <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
+-            <span className="flex items-center space-x-1.5">
+-              <FileAudio className="w-3.5 h-3.5 text-indigo-400" />
+-              <span>Audio Transcription</span>
+-            </span>
+-            <span className="text-[9px] font-mono text-emerald-400 uppercase">Context-Aware</span>
+-          </div>
+-          <p className={`text-[10px] ${t.textMuted} leading-tight`}>
+-            Transcribes meetings, lectures, and interviews with proper punctuation and contextual clarification.
+-          </p>
+-
+-          <div className="grid grid-cols-2 gap-1 pt-1">
+-            <button
+-              onClick={() => handleTranscribeAudio('executive_strategy')}
+-              disabled={transcribing}
+-              className={`p-1.5 rounded-lg ${t.cardSub} border ${t.cardBorder} hover:${t.accentBorder} text-[10px] font-medium text-left truncate transition`}
+-              title="Transcribe Board / Executive Meeting"
+-            >
+-              💼 Strategy Meeting
+-            </button>
+-            <button
+-              onClick={() => handleTranscribeAudio('technical_architecture')}
+-              disabled={transcribing}
+-              className={`p-1.5 rounded-lg ${t.cardSub} border ${t.cardBorder} hover:${t.accentBorder} text-[10px] font-medium text-left truncate transition`}
+-              title="Transcribe Technical Engineering Standup"
+-            >
+-              ⚙️ Tech Standup
+-            </button>
+-            <button
+-              onClick={() => handleTranscribeAudio('academic_lecture')}
+-              disabled={transcribing}
+-              className={`p-1.5 rounded-lg ${t.cardSub} border ${t.cardBorder} hover:${t.accentBorder} text-[10px] font-medium text-left truncate transition`}
+-              title="Transcribe University Lecture"
+-            >
+-              🎓 Lecture Q&A
+-            </button>
+-            <button
+-              onClick={() => handleTranscribeAudio('interview')}
+-              disabled={transcribing}
+-              className={`p-1.5 rounded-lg ${t.cardSub} border ${t.cardBorder} hover:${t.accentBorder} text-[10px] font-medium text-left truncate transition`}
+-              title="Transcribe Podcast / Interview"
+-            >
+-              🎙️ Interview / Voice
+-            </button>
+-          </div>
+-
+-          {transcribing && (
+-            <div className="text-[10px] text-indigo-400 font-mono flex items-center space-x-1.5 pt-1 animate-pulse">
+-              <BrainCircuit className="w-3 h-3 animate-spin" />
+-              <span>Transcribing & verifying context...</span>
+-            </div>
+-          )}
+-        </div>
+-
+-        {/* Document List */}
+-        <div className="flex-1 overflow-y-auto space-y-1">
+-          <div className="text-[10px] font-semibold text-slate-400 px-1 uppercase tracking-wider">
+-            Documents ({filteredDocs.length})
+-          </div>
+-          {filteredDocs.map((doc) => (
+-            <button
+-              key={doc.path}
+-              onClick={() => loadDocContent(doc.path)}
+-              className={`w-full text-left p-2 rounded-lg text-xs truncate flex items-center space-x-2 transition ${
+-                activePath === doc.path
+-                  ? `${t.card} font-bold border ${t.cardBorder}`
+-                  : `${t.textMuted} hover:${t.textPrimary}`
+-              }`}
+-            >
+-              <FileText className={`w-3.5 h-3.5 ${t.accentText} shrink-0`} />
+-              <span className="truncate">{doc.path}</span>
+-            </button>
+-          ))}
+-        </div>
+-      </div>
+-
+-      {/* Document Editor */}
+-      <div className="flex-1 flex flex-col min-w-0">
+-        <div className={`h-12 border-b ${t.cardBorder} px-4 flex items-center justify-between ${t.cardSub}`}>
+-          <div className="flex items-center space-x-2">
+-            <span className="text-xs font-mono font-bold">{activePath}</span>
+-            {savedSuccess && (
+-              <span className="text-xs text-emerald-400 flex items-center space-x-1">
+-                <CheckCircle2 className="w-3.5 h-3.5" />
+-                <span>Saved</span>
+-              </span>
+-            )}
+-          </div>
+-
+-          <button
+-            onClick={handleSave}
+-            className={`px-3 py-1.5 rounded-lg ${t.accentBg} ${t.accentBgHover} text-white text-xs font-medium flex items-center space-x-1.5 transition`}
+-          >
+-            <Save className="w-3.5 h-3.5" />
+-            <span>Save Document</span>
+-          </button>
+-        </div>
+-
+-        {content.includes('Context-Verified') && (
+-          <div className="p-3 bg-indigo-950/20 border-b border-indigo-500/20 text-xs text-indigo-300 flex items-center justify-between">
+-            <div className="flex items-center space-x-2">
+-              <Sparkles className="w-4 h-4 text-indigo-400" />
+-              <span>
+-                <strong>Context Verification Active:</strong> Soft questions, indistinct acoustic segments, and domain terms reconciled from contextual dialog flow.
+-              </span>
+-            </div>
+-            <span className="text-[10px] bg-indigo-500/20 px-2 py-0.5 rounded text-indigo-300 font-mono">
+-              Confidence: 98.6%
+-            </span>
+-          </div>
+-        )}
+-
+-        <textarea
+-          value={content}
+-          onChange={(e) => setContent(e.target.value)}
+-          className={`flex-1 bg-transparent p-6 font-mono text-xs leading-relaxed focus:outline-none resize-none ${t.textPrimary}`}
+-          spellCheck={false}
+-        />
+-      </div>
+-    </div>
+-  );
+-}
+-
+-// -----------------------------------------------------------------------------
+-// 4. Clean Research Workspace
+-// -----------------------------------------------------------------------------
+-function CleanResearchWorkspaceView({ t, onNavigate }: { t: ThemeConfig; onNavigate: (tab: string) => void }) {
+-  const [query, setQuery] = useState('');
+-  const [results, setResults] = useState<ResearchItem[]>([]);
+-  const [searching, setSearching] = useState(false);
+-
+-  useEffect(() => {
+-    safeFetch<ResearchItem[]>('/api/research/items').then((d) => {
+-      if (d) setResults(d);
+-    });
+-  }, []);
+-
+-  const handleSearch = async (e: React.FormEvent) => {
+-    e.preventDefault();
+-    if (!query.trim() || searching) return;
+-    setSearching(true);
+-    try {
+-      const data = await safePost<any>('/api/research/search', { query });
+-      if (data?.results) setResults(data.results);
+-    } finally {
+-      setSearching(false);
+-    }
+-  };
+-
+-  return (
+-    <div className="max-w-4xl mx-auto space-y-6">
+-      <div className="text-center space-y-1.5 py-2">
+-        <h2 className="text-xl font-bold">Research & Fact Synthesis</h2>
+-        <p className={`text-xs ${t.textMuted} max-w-md mx-auto`}>
+-          Investigate questions across reliable sources with citation traceability.
+-        </p>
+-      </div>
+-
+-      <form onSubmit={handleSearch} className="flex gap-2">
+-        <div className="relative flex-1">
+-          <Search className={`w-4 h-4 absolute left-3.5 top-3 ${t.textDim}`} />
+-          <input
+-            type="text"
+-            value={query}
+-            onChange={(e) => setQuery(e.target.value)}
+-            placeholder="Enter research topic or question..."
+-            className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl pl-10 pr-4 py-2.5 text-xs focus:outline-none`}
+-          />
+-        </div>
+-        <button
+-          type="submit"
+-          disabled={searching || !query.trim()}
+-          className={`px-5 py-2.5 rounded-xl ${t.accentBg} ${t.accentBgHover} text-white text-xs font-semibold disabled:opacity-40 transition shadow-md`}
+-        >
+-          {searching ? 'Investigating...' : 'Research'}
+-        </button>
+-      </form>
+-
+-      <div className="space-y-4">
+-        {results.map((r) => (
+-          <div key={r.id} className={`${t.card} border ${t.cardBorder} rounded-xl p-5 space-y-3`}>
+-            <div className="flex items-center justify-between">
+-              <h3 className="text-sm font-bold">{r.query}</h3>
+-              <span className={`text-[10px] font-mono ${t.badgeBg} ${t.badgeText} px-2 py-0.5 rounded font-bold`}>
+-                {(r.confidence * 100).toFixed(0)}% Confidence
+-              </span>
+-            </div>
+-
+-            <p className={`text-xs leading-relaxed ${t.textPrimary}`}>{r.findings}</p>
+-
+-            <div className="space-y-1.5 pt-1">
+-              <div className={`text-[10px] uppercase font-semibold text-slate-400`}>Verified Sources:</div>
+-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+-                {r.sources.map((s, idx) => (
+-                  <div key={idx} className={`p-2.5 rounded-lg border ${t.cardBorder} ${t.cardSub} space-y-1`}>
+-                    <div className="text-xs font-semibold">{s.name}</div>
+-                    <p className={`text-[11px] ${t.textMuted} italic`}>"{s.quote}"</p>
+-                    <div className={`text-[9px] ${t.textDim} font-mono truncate`}>{s.url}</div>
+-                  </div>
+-                ))}
+-              </div>
+-            </div>
+-
+-            <div className={`pt-2 border-t ${t.cardBorder} flex items-center justify-between`}>
+-              <span className={`text-[11px] ${t.textDim} italic`}>Synthesis: {r.synthesis}</span>
+-              <button
+-                onClick={() => onNavigate('build')}
+-                className={`px-3 py-1 rounded text-xs ${t.accentBg} text-white font-medium`}
+-              >
+-                Send to Builder
+-              </button>
+-            </div>
+-          </div>
+-        ))}
+-      </div>
+-    </div>
+-  );
+-}
+-
+ // -----------------------------------------------------------------------------
+ // 3. Chronos Scheduler & Alarms Workspace View
+ // -----------------------------------------------------------------------------

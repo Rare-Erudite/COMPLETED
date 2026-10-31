@@ -385,9 +385,13 @@ export async function conductLiveWebResearch(query: string): Promise<{
     }
   }
 
+  if (!shouldUseLiveWebResearch(cleaned)) {
+    return { found: false, summary: '' };
+  }
+
   // 2. Live Wikipedia + DuckDuckGo Instant Answer lookup for factual/research queries
   const searchTopic = cleaned
-    .replace(/^(what is|what are|who is|who was|tell me about|explain|search for|look up|find out about|how does|where is|why is)\s+/i, '')
+    .replace(/^(please\s+)?(search (the )?web for|search for|look up|browse for|investigate|research|find sources for|find out about|tell me about)\s+/i, '')
     .replace(/[?.!]+$/, '')
     .trim();
 
@@ -444,6 +448,12 @@ export async function conductLiveWebResearch(query: string): Promise<{
   return { found: false, summary: '' };
 }
 
+/** Generic live lookup is opt-in; ordinary questions belong in conversation. */
+export function shouldUseLiveWebResearch(query: string): boolean {
+  const cleaned = query.trim();
+  return /\b(search (the )?web|search online|search for|look (it|this|that|something) up|look up|browse( (the )?web| for)?|investigate|conduct research|do research|research\b|find sources|find information about|find out about)\b/i.test(cleaned);
+}
+
 /**
  * Dynamic, Compositional Standalone Cognitive Engine for RARE.
  * Never returns rigid hardcoded boilerplate; adapts phrasing, checks live environment
@@ -470,7 +480,9 @@ export async function generateDynamicBrainReply(options: {
 
   const q = prompt.trim();
   const lower = q.toLowerCase();
-  const env = await refreshLiveEnvironmentContext();
+  // Local clock data is immediate; only weather-specific requests refresh the
+  // network-backed location/weather cache.
+  const env = getImmediateTimeContext();
 
   // 0. Check if user interrupted or asked to stop talking during a call
   if (isVoiceCall && /\b(keep quiet|stop talking|be quiet|hold on|wait a second|shut up|pause|stop)\b/i.test(lower) && lower.split(/\s+/).length <= 8) {
@@ -665,19 +677,24 @@ export async function generateDynamicBrainReply(options: {
     };
   }
 
-  // 7. Code & Software Engineering Synthesis
-  if (!isVoiceCall && /\b(write code|write a function|in python|in javascript|in typescript|react component|sql query|html page|algorithm)\b/i.test(lower)) {
-    if (lower.includes('python')) {
-      return {
-        content: `Here's a clean Python implementation tailored to your request:\n\n\`\`\`python\ndef process_items(items):\n    \"\"\"Clean, modular implementation\"\"\"\n    return [x for x in items if x is not None]\n\nif __name__ == "__main__":\n    data = [10, 20, 30, 40]\n    print("Output:", process_items(data))\n\`\`\`\n\nTell me if you'd like to adjust the inputs or add extra logic!`,
-      };
-    }
-    return {
-      content: `Here is a clean TypeScript implementation:\n\n\`\`\`typescript\nexport function runTask<T>(input: T[]): T[] {\n  return input.filter((item): item is NonNullable<T> => item != null);\n}\n\`\`\`\n\nLet me know how you'd like to extend or customize this.`,
-    };
-  }
+    // 7. Honest fallback when live research and specific local rules
+  // cannot produce a reliable answer.
+  //
+  // A rule-based fallback must not invent generic code, definitions,
+  // explanations, or conversational filler and label them as reasoning.
+  const looksLikeCodeRequest =
+    /\b(write code|write a function|in python|in javascript|in typescript|react component|sql query|html page|algorithm|implement|debug|fix this code|refactor)\b/i.test(
+      lower
+    );
 
   // 8. Honest fallback. No language model is connected, so never fake an answer.
+  //
+  // Reconciled from both branches. Main contributed a few small-talk replies
+  // that are truthful without a model (an AI genuinely does not eat, and
+  // "how's your day going" is a real question rather than a fabricated fact),
+  // so they are kept ahead of the disclosure. The disclosure itself is the
+  // feature branch's, which is stricter: it refuses to emit placeholder code
+  // or a generic explanation that may not answer the question.
   const plain = lower.replace(/[^a-z0-9\s']/g, ' ').replace(/\s+/g, ' ').trim();
 
   if (/\b(have you eaten|did you eat|have you had (breakfast|lunch|dinner)|are you hungry)\b/.test(plain)) {
@@ -685,6 +702,7 @@ export async function generateDynamicBrainReply(options: {
       content: isVoiceCall
         ? "I'm an AI, so I don't eat, but I hope you've had something good. Have you eaten?"
         : "I'm an AI, so I don't eat, but I hope you've had something good today. Have you eaten?",
+      thought: thinkHarder ? 'Offline fallback: honest small-talk reply, no model available.' : undefined,
     };
   }
 
@@ -693,21 +711,22 @@ export async function generateDynamicBrainReply(options: {
       content: isVoiceCall
         ? "All good on my side. I'm here and ready to help. How's your day going?"
         : "All good on my side, I'm here and ready to help. How's your day going?",
+      thought: thinkHarder ? 'Offline fallback: honest small-talk reply, no model available.' : undefined,
     };
   }
 
-  if (plain.split(' ').length <= 3 && /^(yes|yeah|yep|yup|ok|okay|alright|sure|fine|no|nope|nah|cool|nice|hmm)\b/.test(plain)) {
-    return {
-      content: "Alright. What would you like to talk about or work on?",
-    };
-  }
+  const fallbackReply = looksLikeCodeRequest
+    ? 'I can see that you need task-specific code. However, the fallback currently handling this request cannot reliably generate and verify that implementation. I will not give you placeholder code and pretend it solves your problem. Restore a working model provider or load the local neural model, then try this request again.'
+    : 'I could not produce a sufficiently reliable answer with the current fallback. It can handle certain specific operations, but it is not a substitute for a capable generative language model. I do not want to fill the gap with a generic explanation that may not answer your question. Restore a working model provider or load the local neural model, then try again.';
 
   return {
     content: isVoiceCall
-      ? "I'm in basic offline mode right now, so I can't answer that properly yet. I can still help with the time, weather, quick math, memories, alarms and starting projects."
-      : "I'm in basic offline mode right now, so I can't answer that properly yet.\n\nI can still help with greetings, the time and weather, quick math, saving memories, alarms, and starting build projects. Once my main language model is connected, I'll be able to chat about anything.",
+      ? looksLikeCodeRequest
+        ? 'I understand you need working code, but my current fallback cannot reliably build and verify it. I do not want to guess. We can retry when the model is available.'
+        : 'I could not work out a reliable answer just now. I do not want to guess or give you a generic response that misses your question. We can try again when the model is available.'
+      : fallbackReply,
     thought: thinkHarder
-      ? `Offline fallback: no language model available • Local Time: ${env.localTimeFormatted}`
+      ? 'Fallback disclosure: no model-backed answer was produced for this request.'
       : undefined,
   };
 }
@@ -729,9 +748,9 @@ export const GOOGLE_TTS_PERSONA_VOICES = {
   olivia_quiet: 'en-US-Neural2-E',
   leo_confident: 'en-US-Neural2-I',
   sophia_empathetic: 'en-US-Neural2-H',
-  julian_resonant: 'en-US-Neural2-D',
-  chloe_casual: 'en-US-Neural2-F',
-  gabriel_thoughtful: 'en-US-Neural2-J',
+  julian_resonant: 'en-US-Wavenet-B',
+  chloe_casual: 'en-US-Wavenet-F',
+  gabriel_thoughtful: 'en-US-Wavenet-J',
 } as const;
 
 export type GoogleTtsPersonaId = keyof typeof GOOGLE_TTS_PERSONA_VOICES;
