@@ -5,7 +5,7 @@
 **Working branch:** `New-Fixes-by-Erudite`
 **Baseline commit (previous report):** `2cd67d8a0e18045b82b05872c7db037fef55f7b4`
 **Branch HEAD at start of this run:** `95bbd87c4c6cf18b928f589b3ab52ee792c2598a`
-**Branch HEAD after this run's fix:** `d2d1cafb4bd14f6fb0d2af37d8ca2443f9bd00f2`
+**Branch HEAD after this run's fixes:** `23fba0972cce9b7806a40c02de85b55289467cf3`
 **Author:** verification agent (automated)
 **Credentials:** the Vercel / Supabase / GitHub credentials supplied for this task are referenced only as **"provided credentials"**; no secret value appears in this document, the repository, or any commit.
 
@@ -20,49 +20,55 @@
 - Working tree was **clean** at start (no uncommitted work overwritten). `origin/New-Fixes-by-Erudite` was in sync with local HEAD (`95bbd87`).
 - A safety checkpoint tag **`rare-checkpoint-2026-10-31-pre-final`** was created at `95bbd87` before any change.
 - `main` was **not** merged; the branch was **not** force-pushed or reset; `Rare-Erudite/RARE-INTELLIGENCE-MODEL` was **not** touched.
-- This run's commit `d2d1caf` was pushed fast-forward (`95bbd87..d2d1caf`).
+- Commits created this run (all pushed fast-forward):
 
-**Files changed in `d2d1caf`:**
-
-| File | Change |
+| Commit | Summary |
 |---|---|
-| `src/server/content/MediaProcessor.ts` | +29 — self-healing executable bit for bundled ffmpeg/ffprobe |
-| `server.ts` | +98/−13 — honest voice-transcribe failure; real Project & Build lifecycle in the run flow |
-| `src/server/tools/ToolExecutor.ts` | +106 — `SCAFFOLD_PROJECT` and `RUN_PROJECT_STAGE` tools |
-| `src/server/types.ts` | +2 — new tool names |
-| `src/server/builder/ProjectScaffolder.ts` | new — real project templates |
-| `tests/test_project_build.ts` | new — regression test |
-| `tests/run_all_tests.ts` | +3 — register the new suite |
-| `.gitignore` | +1 — ignore the local credentials file |
+| `d2d1caf` | ffprobe executable-bit fix; honest voice-transcribe failure; real Project & Build lifecycle |
+| `0f606b1` | first release-verification document |
+| `2b61047` | run bundled ffmpeg/ffprobe from a writable copy on read-only hosts |
+| `55d9bcd` | send Gemini audio as Part objects; log the real provider error |
+| `943c8b9` | prefer discovered Gemini models; retry transient 503s |
+| `23fba09` | skip non-audio models; stop retrying quota errors |
+
+**Files changed across the run:** `src/server/content/MediaProcessor.ts`, `src/server/providers/GeminiCoprocessorProvider.ts`, `src/server/tools/ToolExecutor.ts`, `src/server/types.ts`, `src/server/builder/ProjectScaffolder.ts` (new), `server.ts`, `tests/test_project_build.ts` (new), `tests/test_media_binaries.ts` (new), `tests/run_all_tests.ts`, `.gitignore`, `docs/RELEASE_VERIFICATION_2026-10-31_FINAL.md`.
 
 ---
 
 ## 2. Defects discovered and fixed
 
-### 2.1 FFmpeg/FFprobe not runnable in the Vercel runtime — **FIXED, VERIFIED locally**
+### 2.1 FFmpeg/FFprobe not runnable in the Vercel runtime — **FIXED, VERIFIED in production**
 
-**Root cause (established by evidence, not assumption).** `@ffprobe-installer/linux-x64` ships its binary with mode **0644** in the npm tarball (`tar -tvf` → `-rw-r--r--`) and relies on a `postinstall` script (`chmod u+x ffprobe`) to make it executable. Vercel installs with `--ignore-scripts` (per `vercel.json` `installCommand`), so that script never runs and the binary stays non-executable. `execFile` then fails with `EACCES`, every candidate in `resolveMediaBinaries()` fails, and the whole transcription path returns a **false** `FFMPEG_UNAVAILABLE` even though the file is present. `@ffmpeg-installer` happens to ship 0755, which is why only ffprobe was affected.
+**Root cause (two distinct problems, both established by evidence).**
+1. `@ffprobe-installer/linux-x64` ships its binary with mode **0644** in the npm tarball (`tar -tvf` → `-rw-r--r--`) and relies on a `postinstall` chmod that Vercel's `--ignore-scripts` install skips.
+2. Vercel mounts the deployment root (`/var/task`) **read-only**, so even a correct chmod fails with `EROFS` and `execFile` still gets `EACCES`. A chmod-only fix was therefore insufficient — confirmed by the deployed capability probe still reporting `media.decoding: false` after the first fix.
 
-**Fix.** `resolveMediaBinaries()` now calls a best-effort `ensureExecutable()` on each candidate before probing, restoring mode 0755 when the executable bit is missing. It is a no-op on a read-only filesystem, where the probe still decides honestly.
+**Fix.** `MediaProcessor.prepareBinary()` repairs the mode in place when possible and, when the file is still not executable (read-only mount), copies it into the writable temp directory with mode 0755 and runs that copy. The copy name carries size+mtime so a new deployment never reuses a stale binary and a warm invocation reuses the copy.
 
 **Evidence.**
-- Reproduced the defect: a simulated `npm install --ignore-scripts` left `ffprobe` at `-rw-r--r--` and it was **not runnable**.
-- After the fix, the same 0644 binary **self-healed to `-rwxr-xr-x`** and `probeMedia()` returned real data for the real speech fixture: `{durationSeconds: 20.844, hasAudio: true, audioCodec: "mp3", sampleRate: 16000, channels: 1}`.
-- The documents suite's `media-info reports the real duration measured by ffprobe` assertion **passed** in the full run.
+- Reproduced against a real read-only bind mount: the 0644 binaries were copied to `/tmp/rare-media-bin/` and `probeMedia()` returned real metadata (20.844 s, mp3, 16 kHz mono).
+- **Production logs** now show `[media] using ffmpeg=/var/task/node_modules/@ffmpeg-installer/linux-x64/ffmpeg ffprobe=/tmp/rare-media-bin/ffprobe-…`.
+- **Production capability probe** now returns `media.decoding: true`.
 
 ### 2.2 `/api/voice/transcribe` returned a fabricated transcript — **FIXED**
 
-When no speech provider was configured, the endpoint returned HTTP 200 with the canned string *"Voice message recorded and processed successfully."* and `confidence: 0.95`. That presents a fabricated transcript as a real recognition result. It now returns **503 `TRANSCRIPTION_PROVIDER_UNAVAILABLE`** with an honest message and next step.
+When no speech provider was configured, the endpoint returned HTTP 200 with the canned string *"Voice message recorded and processed successfully."* and `confidence: 0.95`. It now returns **503 `TRANSCRIPTION_PROVIDER_UNAVAILABLE`**.
 
-### 2.3 Project & Build produced no project — **FIXED, VERIFIED locally**
+### 2.3 Gemini audio request used an invalid shape — **FIXED, VERIFIED in production**
 
-The Universal Build run (`POST /api/agents/runs`) only inspected RARE's own workspace (`SEARCH`/`RESEARCH`/`RUN_TEST`/`BUILD_PROJECT`) and never created a user project, so "build a project" could not build anything. Added:
+`transcribeAudio()` passed `contents: [{ inlineData: {...} }, 'Transcribe …']` — a Part object mixed with a bare string. The API rejects that shape, so every transcription model failed while text generation (a plain string) kept working. Both parts are now Part objects, matching Google's documented form. The catch block also swallowed the reason; it now logs the provider message.
 
-- **`ProjectScaffolder`** — writes a real, buildable project for `node-cli`, `node-api`, `static-web`, `python-cli`, `react-vite` (manifest + source + test + README), refusing to overwrite an existing project.
-- **`SCAFFOLD_PROJECT`** and **`RUN_PROJECT_STAGE`** tools — the latter runs the real `build`/`test`/`run` stage for a scaffolded project and returns the **actual exit code and output**. The command is chosen by the server from the stage (never supplied by the caller) and only allowlisted binaries run.
-- The run flow now scaffolds a project (stack inferred from the objective), then runs its real build and test stages, and records the project and its commands in the run report.
+**Evidence.** The corrected shape was tested against the live API: it is accepted and fails only on an invalid key (`API_KEY_INVALID`), not on request format.
 
-**Evidence.** New regression suite `tests/test_project_build.ts` passes: 5 templates scaffold real non-empty files; existing projects are not overwritten; the real test stage passes with exit code 0 and returns the real output; a deliberately failing test is reported as a failure with a non-zero exit code; unknown projects/stages are refused.
+### 2.4 Stale Gemini model catalog — **FIXED, VERIFIED in production**
+
+Production logs showed five of six hardcoded model ids are retired (`404 "no longer available"`) and the catalog includes TTS/gemma models that reject audio (`"Audio input modality is not enabled"`). `candidateModelIds()` now leads with the ids the key's catalog actually exposes, `canAcceptAudio()` filters out TTS/embedding/aqa/gemma ids, and only genuine capacity errors (500/503) are retried — a 429 quota error is not, since retrying it turned a fast failure into a multi-minute hang.
+
+**Evidence.** Production transcription went from a hard failure to a **successful 39 s** request returning a real transcript.
+
+### 2.5 Project & Build produced no project — **FIXED, VERIFIED locally**
+
+The Universal Build run only inspected RARE's own workspace and never created a user project. Added `ProjectScaffolder` plus `SCAFFOLD_PROJECT` / `RUN_PROJECT_STAGE` tools; the run now scaffolds a real project (stack inferred from the objective) and runs its actual build/test stages, reporting real exit codes. Regression suite `tests/test_project_build.ts` passes.
 
 ---
 
@@ -72,40 +78,51 @@ The Universal Build run (`POST /api/agents/runs`) only inspected RARE's own work
 |---|---|
 | `npm ci` | **exit 0** — VERIFIED |
 | `npm run lint` (`tsc --noEmit`) | **exit 0** — VERIFIED |
-| `npm run build` | **exit 0** — VERIFIED (`dist/` + `public/` populated, `server-build/server.js` 821.8 kb) |
+| `npm run build` | **exit 0** — VERIFIED (`server-build/server.js` ≈ 823 kb) |
 | `npm test` | **BLOCKED in this sandbox** — see below |
 
-**`npm test` — BLOCKED (sandbox resource limit, not a product defect).** The suite runs and passes every group up to the documents increment, then the container is **OOM-killed** at the documented **2 GB cgroup cap** while the documents suite synthesises a 25-minute audio fixture. Confirmed by the kernel's own counters: `/sys/fs/cgroup/memory.events` → `oom_kill 1`, `memory.peak` ≈ 2.0 GB. The cgroup limit is read-only (`Permission denied` on write), so it cannot be raised from inside the sandbox. **No test was modified, skipped or weakened.**
+**`npm test` — BLOCKED (sandbox resource limit, not a product defect).** The suite runs and passes every group up to the documents increment, then the container is **OOM-killed** at the documented **2 GB cgroup cap** while the documents suite synthesises a 25-minute audio fixture. Confirmed by the kernel's own counters: `/sys/fs/cgroup/memory.events` → `oom_kill 1`, `memory.peak` ≈ 2.0 GB. The cgroup limit is read-only (`Permission denied` on write). **No test was modified, skipped or weakened.**
 
-Groups that **passed** in the full run before the OOM: backend URL config; standalone conversation & research routing; authentication & verification-code security; durable state / document safety / real-source research; OAuth validation; model providers & offline intelligence; RARE-INTELLIGENCE bridge; 12 tool primitives & security boundaries; memory persistence; 10-step self-development & checkpointing; benchmark evaluation; toolchain detection (10 probed, 5 ready); assistant command interpretation; **Project & Build lifecycle (new)**; serverless frontend availability (**9/9**); universal content engine; chat pipeline; and the documents increment up to and including the ffprobe-backed media-info assertion.
+Groups that **passed** in the full run before the OOM: backend URL config; standalone conversation & research routing; authentication & verification-code security; durable state / document safety / real-source research; OAuth validation; model providers & offline intelligence; RARE-INTELLIGENCE bridge; 12 tool primitives & security boundaries; memory persistence; 10-step self-development & checkpointing; benchmark evaluation; toolchain detection (10 probed, 5 ready); assistant command interpretation; **Project & Build lifecycle (new)**; **media binary resolution (new)**; serverless frontend availability (**9/9**); universal content engine; chat pipeline; and the documents increment up to and including the ffprobe-backed media-info assertion.
 
 ---
 
-## 4. Deployment state — VERIFIED
+## 4. Production deployment — VERIFIED
 
 Queried the Vercel REST API with the provided Vercel token (project `rareproject`, `prj_362nUbmvvjkLYEuGKTuV8agADQzF`, team `team_6EF6Dxce6xr00Gc64dDPMHA0`):
 
 - **Git integration:** connected to GitHub repo `COMPLETED`; production branch `main`.
-- **Latest branch deployment (pre-fix):** `dpl_FiGZLPy9qrpRYUqdbHX2Gzdhd1ow`, commit `95bbd87`, READY.
-- **Production deployment:** `dpl_FFf5t7V8RzuncSJM8QANAq7iD9Nv`, commit **`38adfbbca0`** — **older** than the transcription fixes.
-- **Production is still broken at the edge:** `https://rareproject.vercel.app/` → **HTTP 404** (bare Express "Cannot GET /"), `/chat` → 404, while `/api/status` → 200 healthy (postgresql, schemaReady). The latest preview (`95bbd87`) serves `/` = 200, `/chat` = 200, `/api/status` = 200.
+- **Production before this run:** `dpl_FFf5t7V8…`, commit `38adfbbca0` — older than the transcription fixes, and serving a **broken frontend** (`/` → 404).
+- **Production after this run:** deployment `dpl_6SDEHpTDGuB8vbGYNaWgoHnoSgME`, commit **`23fba09`**, target `production`, state `READY`, aliased to `rareproject.vercel.app`.
 
-**Conclusion:** a green deployment status did **not** mean production was promoted. Production still serves the pre-fix build.
+**Production smoke test (against `https://rareproject.vercel.app`):**
+
+| Check | Result |
+|---|---|
+| `/` | **200** (SPA shell) |
+| `/chat` | **200** |
+| `/nonexistent-deep-link` (SPA fallback) | **200** |
+| `/api/status` | **200** — `storage: postgresql`, `databaseReachable: true`, `schemaReady: true` |
+| `/api/documents/capabilities` | **200** — `media.decoding: true`, `transcription.available: true` |
+| Chat (real provider) | **200** — assistant replied `PROVIDER_OK` |
+| Transcription (20.8 s real speech) | **200 in 39 s** — real transcript, 1 turn, coverage 1.0 |
+| Transcript owner retrieval | **200** |
+| Transcript other-user retrieval | **404** (owner isolation) |
+| Transcript no-session retrieval | **401** |
+
+**Transcription transcript (production, real audio):**
+`[00:00 – 00:21] Speaker 1: The quarterly planning meeting opened at 9:00. [inaudible] confirmed that the migration to the new billing system is complete. We decided to launch the customer portal on the 14th of November. …`
+
+The transcript header honestly states *"Speakers detected: 1 (provider did not distinguish …)"* — **no speaker diarisation is claimed**.
 
 ---
 
-## 5. Final deployment — see §6 of the run summary
-
-The single final production deployment is performed as the concluding stage of this assignment, after the fixes above were committed and pushed. Production is verified against the exact release commit; the result is recorded in the run summary delivered to the owner.
-
----
-
-## 6. Remaining blockers / unverified
+## 5. Remaining blockers / unverified
 
 1. **`npm test` full completion** — BLOCKED by the 2 GB sandbox cgroup cap (OOM at the 25-minute-audio fixture). Needs a > 2 GB container. The suite itself is healthy; no test was weakened.
-2. **Transcription end-to-end in the deployed runtime** — the ffprobe fix is verified locally against a simulated `--ignore-scripts` install; the deployed-runtime confirmation is part of the final production smoke test.
-3. **Speaker diarisation** — **NOT IMPLEMENTED**; not claimed anywhere.
-4. **Android APK rebuild** — no Android/Gradle project exists in the repository (only a prebuilt signed APK); a reproducible rebuild is **NOT IMPLEMENTED**. No APK was built or installed in this run.
+2. **Speaker diarisation** — **NOT IMPLEMENTED**; not claimed anywhere.
+3. **Android APK rebuild** — no Android/Gradle project exists in the repository (only a prebuilt signed APK); a reproducible rebuild is **NOT IMPLEMENTED**. No APK was built or installed in this run.
+4. **Gemini quota** — the account's free-tier quota is exhausted for some models (429). Transcription succeeds on the live flash model; sustained throughput depends on the account's quota/billing.
 
 ---
 
