@@ -163,6 +163,17 @@ function looksLikeBoilerplate(sentence: string): boolean {
   const words = sentence.split(/\s+/).filter(Boolean);
   const lowercaseWords = words.filter((word) => /^[a-z]/.test(word)).length;
   if (words.length >= 4 && lowercaseWords / words.length < 0.2) return true;
+  // Form and consent chrome. A live run surfaced a country list and a
+  // newsletter consent block as a "finding", which is exactly the kind of
+  // non-evidence this filter exists to keep out of the report.
+  if (/\b(email address|e-?mail address|invalid email|confirm email|enter your email)\b/i.test(sentence)) return true;
+  if (/\b(i agree|terms (and|&) conditions|privacy (and|&) cookies|i would like to receive)\b/i.test(sentence)) return true;
+  if (/\b(subscribe|newsletter|sign up|register now|create an account)\b/i.test(sentence)) return true;
+  // A run of country names is a dropdown, not prose.
+  const countryRun = (sentence.match(/\b(Wallis and Futuna|Western Sahara|Yemen|Zambia|Zimbabwe|Afghanistan|Albania|Algeria|Andorra|Angola)\b/gi) || []).length;
+  if (countryRun >= 2) return true;
+  // Long runs of capitalised proper nouns with no sentence punctuation.
+  if (words.length >= 8 && !/[.!?]/.test(sentence) && lowercaseWords / words.length < 0.35) return true;
   return false;
 }
 
@@ -177,6 +188,9 @@ function relevantPassages(text: string, terms: string[], limit = 6): string[] {
     });
   return scored
     .filter((entry) => entry.score > 0)
+    // A passage must look like a statement, not a fragment. Requiring a verb-ish
+    // shape and a minimum length keeps navigation text out of the findings.
+    .filter((entry) => entry.sentence.split(/\s+/).length >= 6)
     .sort((left, right) => right.score - left.score)
     .slice(0, limit)
     .map((entry) => entry.sentence);

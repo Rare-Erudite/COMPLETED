@@ -68,6 +68,11 @@ function extractQuestion(text: string): string {
       '',
     )
     .replace(/\s+(thoroughly|in depth|in-depth|comprehensively|for me)\s*$/i, '')
+    // Trailing instructions about the output are not part of the subject. A
+    // live run searched for "…and cite sources" literally, which pulled in
+    // citation-style pages instead of material about the topic.
+    .replace(/\s+(and\s+)?(cite|with|include|show|give me|provide)\s+(the\s+)?(sources?|citations?|references?|links?)\s*$/i, '')
+    .replace(/\s+(and\s+)?(cite|with)\s+(sources?|citations?|references?)\s*$/i, '')
     .trim();
   return stripped.length >= 8 ? stripped : text.trim();
 }

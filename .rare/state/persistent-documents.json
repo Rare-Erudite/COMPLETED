@@ -7840,6 +7840,13 @@
         "userId": "guest_bbc381ae-9865-49f3-b537-4e71e92e8097",
         "expiresAt": 1796012576043
       }
+    ],
+    [
+      "00776d04777485a1e21b70df18136b14cfc0a0040ab41ceac6c1aa06e78ccaf1",
+      {
+        "userId": "guest_84d023c0-5e9d-482f-8552-49fd5bf2e083",
+        "expiresAt": 1796012665942
+      }
     ]
   ],
   "rare_auth_users": [
@@ -11592,6 +11599,14 @@
         "accountId": null,
         "expiresAt": 1796012576043
       }
+    ],
+    [
+      "00776d04777485a1e21b70df18136b14cfc0a0040ab41ceac6c1aa06e78ccaf1",
+      {
+        "ownerId": "guest_84d023c0-5e9d-482f-8552-49fd5bf2e083",
+        "accountId": null,
+        "expiresAt": 1796012665942
+      }
     ]
   ],
   "rare_auth_oauth_identities": [],
@@ -14313,6 +14328,514 @@
       ],
       "origin": "chat",
       "conversationId": "conv_bf26896e-e9d6-4d24-bef2-c88411da6cc8"
+    }
+  ],
+  "rare_user_state:guest_84d023c0-5e9d-482f-8552-49fd5bf2e083:conversations": [
+    {
+      "id": "conv_a9de8348-d645-4b9b-9b47-6220815a7d26",
+      "title": "R2",
+      "created_at": "2026-10-31T04:24:26.046Z",
+      "userId": "guest_84d023c0-5e9d-482f-8552-49fd5bf2e083",
+      "messages": [
+        {
+          "id": "msg_17a466d3-3bf0-421c-8f58-3be10264090b",
+          "role": "assistant",
+          "content": "Hello! I am RARE — your personal AI companion and software builder. What would you like to work on today?",
+          "timestamp": "2026-10-31T04:24:26.046Z"
+        },
+        {
+          "id": "msg_f032adb1-a7a9-4011-a916-efe18a82d740",
+          "role": "user",
+          "content": "Research the history of the Transformer architecture and cite sources",
+          "timestamp": "2026-10-31T04:24:26.077Z"
+        },
+        {
+          "id": "msg_511e8368-65b9-4d65-82c0-8e989bca217c",
+          "role": "assistant",
+          "content": "# Research report: the history of the Transformer architecture\n\n_Depth: standard · 12 source(s) read · generated 2026-10-31T04:24:46.387Z_\n\n## Scope and method\n\nDiscovery providers used: wikipedia, crossref, openalex, github, openlibrary, duckduckgo.\nQueries issued: \"the history of the Transformer architecture\".\n\n## Findings\n\n- Here we modify the GPT 6 (generative pretrained transformer) architecture to model the progression and competing nature of human diseases. [2]\n- To model disease history data, which, in contrast to text, occurs on a continuous time axis, we extended the GPT-2 architecture 6 (Fig. [2]\n- A promising feature of Delphi-2M’s implementation is the relative simplicity of incorporating additional data layers, rendered possible by the transformer-based architecture. [2]\n- Ethics declarations Competing interests A patent has been filed for the use of generative transformer architectures to model competing risk and timings of diseases (application number: PCT/EP2025/065771; applicants: DKFZ, EMBL), with M.G., A.S., T.F., E.B., K.G. and A.W.J. listed as inventors. [2]\n- Learning the natural history of human disease with generative transformers. [2]\n- Delphi-2M predicts the rates of more than 1,000 diseases, conditional on each individual’s past disease history, with accuracy comparable to that of existing single-disease models. [2]\n- This paper presents EmpTransfo, a multi-head Transformer architecture for creating an empathetic dialog system. [3]\n- We show that utilizing the history of emotions and other metadata can improve the quality of generated conversations by the dialog system. [3]\n- GitHub - alexpashevich/E.T.: Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation. [4]\n- Public - Notifications You must be signed in to change notification settings - Fork 19 ( 19 ) - Star 93 ( 93 ) You must be signed in to star a repository About Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation. [4]\n- E.T. is based on a multimodal transformer that encodes language inputs and the full episode history of visual observations and actions. [4]\n- Citation If you find this repository useful, please cite our work: @inproceedings{pashevich2021episodic, title = {{Episodic Transformer for Vision-and-Language Navigation}}, author = {Alexander Pashevich and Cordelia Schmid and Chen Sun}, booktitle = {ICCV}, year = {2021}, } About Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation. [4]\n- E.T. with human data only Train an E.T. agent: $ python -m alfred.model.train with exp.model=transformer exp.name=et_s1 exp.data.train=lmdb_human train.seed=1 Evaluate the trained E.T. agent: $ python -m alfred.eval.eval_agent with eval.exp=et_s1 eval.object_predictor= $ET_LOGS /pretrained/maskrcnn_model.pth exp.num_workers=5 Note: you may need to train up to 5 agents using different random seeds to reproduce the results of the paper. [4]\n- GitHub - advaithmall/transformer_language_model: The following is the code for a decoder based language model, similar to the architecture principle of GPT. [5]\n- Dismiss alert {{ message }} Repository navigation transformer_language_model Public - Notifications You must be signed in to change notification settings - Fork 0 ( 0 ) - Star 0 ( 0 ) You must be signed in to star a repository About The following is the code for a decoder based language model, similar to the architecture principle of GPT. [5]\n- The task of this language model is to predict the next word given the previous history. [5]\n- Recurrent Transformers address this limitation by maintaining fixed-size memory but their performance lags behind that of transformers operating over the full observation history. [6]\n- In this work, we propose a distillation approach that transfers the compression strategy of a classical full-history transformer to a recurrent variant. [6]\n- We show that this approach allows to train a recurrent latent robotic memory with linear-time complexity on the Mem-RPE task while substantially narrowing the performance gap to full-history transformers. [6]\n- We target long-horizon streaming vision and robotics applications, where it is particularly impractical to store and maintain a history of observations. [6]\n- Without access to an observation history, recurrent models must explicitly decide what to retain in memory at each step, a significantly harder learning problem. [6]\n- We enable this by designing a teacher model that explicitly compresses its observation history into a fixed-size bottleneck representation and directly supervise the student's memory with this bottleneck representation, effectively aligning the two compression mechanisms. [6]\n- ( June 2026 ) ( Learn how and when to remove this message ) ( Learn how and when to remove this message ) A standard transformer architecture, showing on the left an encoder, and on the right a decoder. [7]\n- They are used in large-scale natural language processing , computer vision ( vision transformers ), reinforcement learning , [ 5 ] audio , [ 6 ] multimodal learning , robotics , [ 7 ] and playing chess . [ 8 ] It has also led to the development of pre-trained systems , such as generative pre-trained transformers (GPTs). [ 9 ] History [ edit ] This section's style of writing may not reflect the encyclopedic tone used on Wikipedia . [7]\n- These multiplicative units are conceptually distinct from the additive attention mechanism later introduced for sequence-to-sequence models. [ 10 ] Neural networks using multiplicative units were later called sigma-pi networks [ 11 ] or higher-order networks . [ 12 ] LSTM became the standard architecture for long sequence modelling until the 2017 publication of transformers. [7]\n\n## Sources\n\n1. **From Chamber to Transformer: Epistemological Challenges and Tendencies in the Intersection of Architectural Histories and Critical Theories | OpenAlex** — https://openalex.org/works/W904904948\n   Iain Borden, Jane Rendell · 2000-01-01\n   _openalex · academic · 712 chars read_\n2. **Learning the natural history of human disease with generative transformers | Nature** — https://www.nature.com/articles/s41586-025-09529-3?error=cookies_not_supported&code=e9c92a40-19ee-4956-9a8f-62d846a5d33b\n   Artem Shmatko, Alexander W. Jung, Kumar Gaurav, Søren Brunak, Laust Hvas Mortensen, Ewan Birney · 2025-09-17 · https://doi.org/10.1038/s41586-025-09529-3\n   _openalex · academic · 103,729 chars read_\n3. **[2003.02958] EmpTransfo: A Multi-head Transformer Architecture for Creating Empathetic Dialog Systems** — https://arxiv.org/abs/2003.02958\n   Rohola Zandie, Mohammad H. Mahoor · 2020-03-05 · https://doi.org/10.48550/arxiv.2003.02958\n   _openalex · academic · 4,031 chars read_\n4. **GitHub - alexpashevich/E.T.: Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation. E.T. is based on a multimodal transformer that encodes language inputs and the full episode history of visual observations and actions. · GitHub** — https://github.com/alexpashevich/E.T.\n   2026-01-14\n   _github · code · 6,848 chars read_\n5. **GitHub - advaithmall/transformer_language_model: The following is the code for a decoder based language model, similar to the architecture principle of GPT. The task of this language model is to predict the next word given the previous history. · GitHub** — https://github.com/advaithmall/transformer_language_model\n   2023-09-04\n   _github · code · 2,640 chars read_\n6. **[2606.21562] Compressing History into Memory: Distilling Transformers into Recurrent Transformers** — https://arxiv.org/abs/2606.21562\n   Philippe Weinzaepfel, Christian Wolf, Mert Bülent Sarıyıldız, Guillaume Bono, Gianluca Monaci · 2026-06-19 · https://doi.org/10.48550/arxiv.2606.21562\n   _openalex · academic · 5,014 chars read_\n7. **Transformer (deep learning) - Wikipedia** — https://en.wikipedia.org/?curid=61603971\n   2026-10-29T01:35:22Z\n   _wikipedia · encyclopedia · 107,014 chars read_\n8. **The Architecture of Death (1984) by Richard A. Etlin | Open Library** — https://openlibrary.org/works/OL3752341W/The_architecture_of_death\n   Richard A. Etlin · 1984\n   _openlibrary · books · 4,632 chars read_\n9. **Style-architecture and building-art (1994) by Hermann Muthesius | Open Library** — https://openlibrary.org/works/OL3477270W/Style-Architecture_and_Building-Art\n   Hermann Muthesius · 1994\n   _openlibrary · books · 5,929 chars read_\n10. **History of the World's fair (1893) by Benjamin Cummings Truman | Open Library** — https://openlibrary.org/works/OL1618262W/History_of_the_World%27s_Fair\n   Benjamin Cummings Truman · 1893\n   _openlibrary · books · 52,428 chars read_\n11. **Urban Transformations and the Architecture of Additions (2014) by Rodrigo Perez de Arce | Open Library** — https://openlibrary.org/works/OL21269420W/Urban_Transformations_and_the_Architecture_of_Additions\n   Rodrigo Perez de Arce · 2014\n   _openlibrary · books · 5,967 chars read_\n12. **The ascent of man (1973) by Jacob Bronowski | Open Library** — https://openlibrary.org/works/OL4803881W/The_ascent_of_man\n   Jacob Bronowski · 1973\n   _openlibrary · books · 10,180 chars read_\n\n## Sources that could not be read\n\n- https://doi.org/10.1080/136023600408719 — Only public HTTPS URLs can be retrieved.\n- https://doi.org/10.1007/979-8-8688-2785-3_3 — The source redirected too many times.\n- https://doi.org/10.7717/peerj-cs.3276/fig-9 — The source returned HTTP 403.\n- https://doi.org/10.7717/peerj-cs.4069/fig-6 — The source returned HTTP 403.\n- https://doi.org/10.7717/peerj-cs.1224/fig-8 — The source returned HTTP 403.\n- https://doi.org/10.7717/peerj-cs.3510/fig-8 — The source returned HTTP 403.\n- https://doi.org/10.7717/peerj-cs.3072/fig-4 — The source returned HTTP 403.\n- https://doi.org/10.17816/dd629866-4230420 — The source returned HTTP 403.\n\n## Limitations\n\n- 8 discovered source(s) could not be read (paywall, JavaScript-only page, or retrieval error).\n- 1 discovery provider(s) failed; coverage is narrower than requested.\n- Only public web sources reachable from this server were searched; private databases, paywalled archives and print-only material were not.\n",
+          "timestamp": "2026-10-31T04:24:46.419Z"
+        }
+      ],
+      "messageCount": 3
+    }
+  ],
+  "rare_user_state:guest_84d023c0-5e9d-482f-8552-49fd5bf2e083:guest_usage": {
+    "online_chat_messages": 1
+  },
+  "rare_user_state:guest_84d023c0-5e9d-482f-8552-49fd5bf2e083:research_items": [
+    {
+      "id": "res_1793420686413_ed8971",
+      "query": "the history of the Transformer architecture",
+      "subquestions": [],
+      "findings": "Here we modify the GPT 6 (generative pretrained transformer) architecture to model the progression and competing nature of human diseases.\n\nTo model disease history data, which, in contrast to text, occurs on a continuous time axis, we extended the GPT-2 architecture 6 (Fig.\n\nA promising feature of Delphi-2M’s implementation is the relative simplicity of incorporating additional data layers, rendered possible by the transformer-based architecture.\n\nEthics declarations Competing interests A patent has been filed for the use of generative transformer architectures to model competing risk and timings of diseases (application number: PCT/EP2025/065771; applicants: DKFZ, EMBL), with M.G., A.S., T.F., E.B., K.G. and A.W.J. listed as inventors.\n\nLearning the natural history of human disease with generative transformers.\n\nDelphi-2M predicts the rates of more than 1,000 diseases, conditional on each individual’s past disease history, with accuracy comparable to that of existing single-disease models.\n\nThis paper presents EmpTransfo, a multi-head Transformer architecture for creating an empathetic dialog system.\n\nWe show that utilizing the history of emotions and other metadata can improve the quality of generated conversations by the dialog system.\n\nGitHub - alexpashevich/E.T.: Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation.\n\nPublic - Notifications You must be signed in to change notification settings - Fork 19 ( 19 ) - Star 93 ( 93 ) You must be signed in to star a repository About Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation.\n\nE.T. is based on a multimodal transformer that encodes language inputs and the full episode history of visual observations and actions.\n\nCitation If you find this repository useful, please cite our work: @inproceedings{pashevich2021episodic, title = {{Episodic Transformer for Vision-and-Language Navigation}}, author = {Alexander Pashevich and Cordelia Schmid and Chen Sun}, booktitle = {ICCV}, year = {2021}, } About Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation.\n\nE.T. with human data only Train an E.T. agent: $ python -m alfred.model.train with exp.model=transformer exp.name=et_s1 exp.data.train=lmdb_human train.seed=1 Evaluate the trained E.T. agent: $ python -m alfred.eval.eval_agent with eval.exp=et_s1 eval.object_predictor= $ET_LOGS /pretrained/maskrcnn_model.pth exp.num_workers=5 Note: you may need to train up to 5 agents using different random seeds to reproduce the results of the paper.\n\nGitHub - advaithmall/transformer_language_model: The following is the code for a decoder based language model, similar to the architecture principle of GPT.\n\nDismiss alert {{ message }} Repository navigation transformer_language_model Public - Notifications You must be signed in to change notification settings - Fork 0 ( 0 ) - Star 0 ( 0 ) You must be signed in to star a repository About The following is the code for a decoder based language model, similar to the architecture principle of GPT.\n\nThe task of this language model is to predict the next word given the previous history.\n\nRecurrent Transformers address this limitation by maintaining fixed-size memory but their performance lags behind that of transformers operating over the full observation history.\n\nIn this work, we propose a distillation approach that transfers the compression strategy of a classical full-history transformer to a recurrent variant.\n\nWe show that this approach allows to train a recurrent latent robotic memory with linear-time complexity on the Mem-RPE task while substantially narrowing the performance gap to full-history transformers.\n\nWe target long-horizon streaming vision and robotics applications, where it is particularly impractical to store and maintain a history of observations.\n\nWithout access to an observation history, recurrent models must explicitly decide what to retain in memory at each step, a significantly harder learning problem.\n\nWe enable this by designing a teacher model that explicitly compresses its observation history into a fixed-size bottleneck representation and directly supervise the student's memory with this bottleneck representation, effectively aligning the two compression mechanisms.\n\n( June 2026 ) ( Learn how and when to remove this message ) ( Learn how and when to remove this message ) A standard transformer architecture, showing on the left an encoder, and on the right a decoder.\n\nThey are used in large-scale natural language processing , computer vision ( vision transformers ), reinforcement learning , [ 5 ] audio , [ 6 ] multimodal learning , robotics , [ 7 ] and playing chess . [ 8 ] It has also led to the development of pre-trained systems , such as generative pre-trained transformers (GPTs). [ 9 ] History [ edit ] This section's style of writing may not reflect the encyclopedic tone used on Wikipedia .\n\nThese multiplicative units are conceptually distinct from the additive attention mechanism later introduced for sequence-to-sequence models. [ 10 ] Neural networks using multiplicative units were later called sigma-pi networks [ 11 ] or higher-order networks . [ 12 ] LSTM became the standard architecture for long sequence modelling until the 2017 publication of transformers.",
+      "sources": [
+        {
+          "name": "openalex",
+          "url": "https://openalex.org/works/W904904948",
+          "credibility": 0.78,
+          "date": "2000-01-01",
+          "quote": "In the summer of 1985, I lay on a beach on Crete, struggling to read a text whose pages and words seemed to me to be wholly resistant to offering up their meaning. The book, Raymond Williams’ Marxism and Literature, i had been ‘suggested reading’ for a course in architectural history that I was about to start in London the following September. And I struggled with it for a number of reasons. Firstly, and perhaps understandably, it was my first real introduction to marxist thought, and for anyone’s initial forays into that conceptual schema, any book, no matter how well written (and Williams’ script is a model of reasoned clarity), was always going to be hard work. Second, and though I barely knew it, this was also my first real introduction to the realm of critical theory in general. Up to that juncture, my education had been in history of various kinds – architecture, art, ancient world – but none of it held much truck with ideas beyond the world of its own objects of study, still les",
+          "title": "From Chamber to Transformer: Epistemological Challenges and Tendencies in the Intersection of Architectural Histories and Critical Theories | OpenAlex"
+        },
+        {
+          "name": "openalex",
+          "url": "https://www.nature.com/articles/s41586-025-09529-3?error=cookies_not_supported&code=e9c92a40-19ee-4956-9a8f-62d846a5d33b",
+          "credibility": 0.78,
+          "date": "2025-09-17",
+          "quote": "Here we modify the GPT 6 (generative pretrained transformer) architecture to model the progression and competing nature of human diseases.",
+          "title": "Learning the natural history of human disease with generative transformers | Nature"
+        },
+        {
+          "name": "openalex",
+          "url": "https://arxiv.org/abs/2003.02958",
+          "credibility": 0.78,
+          "date": "2020-03-05",
+          "quote": "This paper presents EmpTransfo, a multi-head Transformer architecture for creating an empathetic dialog system.",
+          "title": "[2003.02958] EmpTransfo: A Multi-head Transformer Architecture for Creating Empathetic Dialog Systems"
+        },
+        {
+          "name": "github",
+          "url": "https://github.com/alexpashevich/E.T.",
+          "credibility": 0.6,
+          "date": "2026-01-14",
+          "quote": "GitHub - alexpashevich/E.T.: Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation.",
+          "title": "GitHub - alexpashevich/E.T.: Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation. E.T. is based on a multimodal transformer that encodes language inputs and the full episode history of visual observations and actions. · GitHub"
+        },
+        {
+          "name": "github",
+          "url": "https://github.com/advaithmall/transformer_language_model",
+          "credibility": 0.6,
+          "date": "2023-09-04",
+          "quote": "GitHub - advaithmall/transformer_language_model: The following is the code for a decoder based language model, similar to the architecture principle of GPT.",
+          "title": "GitHub - advaithmall/transformer_language_model: The following is the code for a decoder based language model, similar to the architecture principle of GPT. The task of this language model is to predict the next word given the previous history. · GitHub"
+        },
+        {
+          "name": "openalex",
+          "url": "https://arxiv.org/abs/2606.21562",
+          "credibility": 0.78,
+          "date": "2026-06-19",
+          "quote": "Recurrent Transformers address this limitation by maintaining fixed-size memory but their performance lags behind that of transformers operating over the full observation history.",
+          "title": "[2606.21562] Compressing History into Memory: Distilling Transformers into Recurrent Transformers"
+        },
+        {
+          "name": "wikipedia",
+          "url": "https://en.wikipedia.org/?curid=61603971",
+          "credibility": 0.55,
+          "date": "2026-10-29T01:35:22Z",
+          "quote": "( June 2026 ) ( Learn how and when to remove this message ) ( Learn how and when to remove this message ) A standard transformer architecture, showing on the left an encoder, and on the right a decoder.",
+          "title": "Transformer (deep learning) - Wikipedia"
+        },
+        {
+          "name": "openlibrary",
+          "url": "https://openlibrary.org/works/OL3752341W/The_architecture_of_death",
+          "credibility": 0.65,
+          "date": "1984",
+          "quote": "The Architecture of Death (1984) by Richard A.",
+          "title": "The Architecture of Death (1984) by Richard A. Etlin | Open Library"
+        },
+        {
+          "name": "openlibrary",
+          "url": "https://openlibrary.org/works/OL3477270W/Style-Architecture_and_Building-Art",
+          "credibility": 0.65,
+          "date": "1994",
+          "quote": "Hermann Muthesius",
+          "title": "Style-architecture and building-art (1994) by Hermann Muthesius | Open Library"
+        },
+        {
+          "name": "openlibrary",
+          "url": "https://openlibrary.org/works/OL1618262W/History_of_the_World%27s_Fair",
+          "credibility": 0.65,
+          "date": "1893",
+          "quote": "It was placed on a area of more then two square kilometers, featuring nearly 200 new buildings of classical architecture, many of which represented some of the 50 participating countries from around the world, as wells as canals and lagoons.",
+          "title": "History of the World's fair (1893) by Benjamin Cummings Truman | Open Library"
+        },
+        {
+          "name": "openlibrary",
+          "url": "https://openlibrary.org/works/OL21269420W/Urban_Transformations_and_the_Architecture_of_Additions",
+          "credibility": 0.65,
+          "date": "2014",
+          "quote": "Jencks' first essays formalising the term Post Modernism in architecture and the revised Learning from Las Vegas were published the previous year.",
+          "title": "Urban Transformations and the Architecture of Additions (2014) by Rodrigo Perez de Arce | Open Library"
+        },
+        {
+          "name": "openlibrary",
+          "url": "https://openlibrary.org/works/OL4803881W/The_ascent_of_man",
+          "credibility": 0.65,
+          "date": "1973",
+          "quote": "Publish Date 1974 Publisher Little, Brown Language English Pages 448 Previews available in: English Subjects History Human beings Philosophy Science Natuurwetenschappen Histoire Sciences Civilization Philosophie Homme Science and civilization Science, philosophy Science, history Biological Evolution Showing 6 featured editions.",
+          "title": "The ascent of man (1973) by Jacob Bronowski | Open Library"
+        }
+      ],
+      "synthesis": "# Research report: the history of the Transformer architecture\n\n_Depth: standard · 12 source(s) read · generated 2026-10-31T04:24:46.387Z_\n\n## Scope and method\n\nDiscovery providers used: wikipedia, crossref, openalex, github, openlibrary, duckduckgo.\nQueries issued: \"the history of the Transformer architecture\".\n\n## Findings\n\n- Here we modify the GPT 6 (generative pretrained transformer) architecture to model the progression and competing nature of human diseases. [2]\n- To model disease history data, which, in contrast to text, occurs on a continuous time axis, we extended the GPT-2 architecture 6 (Fig. [2]\n- A promising feature of Delphi-2M’s implementation is the relative simplicity of incorporating additional data layers, rendered possible by the transformer-based architecture. [2]\n- Ethics declarations Competing interests A patent has been filed for the use of generative transformer architectures to model competing risk and timings of diseases (application number: PCT/EP2025/065771; applicants: DKFZ, EMBL), with M.G., A.S., T.F., E.B., K.G. and A.W.J. listed as inventors. [2]\n- Learning the natural history of human disease with generative transformers. [2]\n- Delphi-2M predicts the rates of more than 1,000 diseases, conditional on each individual’s past disease history, with accuracy comparable to that of existing single-disease models. [2]\n- This paper presents EmpTransfo, a multi-head Transformer architecture for creating an empathetic dialog system. [3]\n- We show that utilizing the history of emotions and other metadata can improve the quality of generated conversations by the dialog system. [3]\n- GitHub - alexpashevich/E.T.: Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation. [4]\n- Public - Notifications You must be signed in to change notification settings - Fork 19 ( 19 ) - Star 93 ( 93 ) You must be signed in to star a repository About Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation. [4]\n- E.T. is based on a multimodal transformer that encodes language inputs and the full episode history of visual observations and actions. [4]\n- Citation If you find this repository useful, please cite our work: @inproceedings{pashevich2021episodic, title = {{Episodic Transformer for Vision-and-Language Navigation}}, author = {Alexander Pashevich and Cordelia Schmid and Chen Sun}, booktitle = {ICCV}, year = {2021}, } About Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation. [4]\n- E.T. with human data only Train an E.T. agent: $ python -m alfred.model.train with exp.model=transformer exp.name=et_s1 exp.data.train=lmdb_human train.seed=1 Evaluate the trained E.T. agent: $ python -m alfred.eval.eval_agent with eval.exp=et_s1 eval.object_predictor= $ET_LOGS /pretrained/maskrcnn_model.pth exp.num_workers=5 Note: you may need to train up to 5 agents using different random seeds to reproduce the results of the paper. [4]\n- GitHub - advaithmall/transformer_language_model: The following is the code for a decoder based language model, similar to the architecture principle of GPT. [5]\n- Dismiss alert {{ message }} Repository navigation transformer_language_model Public - Notifications You must be signed in to change notification settings - Fork 0 ( 0 ) - Star 0 ( 0 ) You must be signed in to star a repository About The following is the code for a decoder based language model, similar to the architecture principle of GPT. [5]\n- The task of this language model is to predict the next word given the previous history. [5]\n- Recurrent Transformers address this limitation by maintaining fixed-size memory but their performance lags behind that of transformers operating over the full observation history. [6]\n- In this work, we propose a distillation approach that transfers the compression strategy of a classical full-history transformer to a recurrent variant. [6]\n- We show that this approach allows to train a recurrent latent robotic memory with linear-time complexity on the Mem-RPE task while substantially narrowing the performance gap to full-history transformers. [6]\n- We target long-horizon streaming vision and robotics applications, where it is particularly impractical to store and maintain a history of observations. [6]\n- Without access to an observation history, recurrent models must explicitly decide what to retain in memory at each step, a significantly harder learning problem. [6]\n- We enable this by designing a teacher model that explicitly compresses its observation history into a fixed-size bottleneck representation and directly supervise the student's memory with this bottleneck representation, effectively aligning the two compression mechanisms. [6]\n- ( June 2026 ) ( Learn how and when to remove this message ) ( Learn how and when to remove this message ) A standard transformer architecture, showing on the left an encoder, and on the right a decoder. [7]\n- They are used in large-scale natural language processing , computer vision ( vision transformers ), reinforcement learning , [ 5 ] audio , [ 6 ] multimodal learning , robotics , [ 7 ] and playing chess . [ 8 ] It has also led to the development of pre-trained systems , such as generative pre-trained transformers (GPTs). [ 9 ] History [ edit ] This section's style of writing may not reflect the encyclopedic tone used on Wikipedia . [7]\n- These multiplicative units are conceptually distinct from the additive attention mechanism later introduced for sequence-to-sequence models. [ 10 ] Neural networks using multiplicative units were later called sigma-pi networks [ 11 ] or higher-order networks . [ 12 ] LSTM became the standard architecture for long sequence modelling until the 2017 publication of transformers. [7]\n\n## Sources\n\n1. **From Chamber to Transformer: Epistemological Challenges and Tendencies in the Intersection of Architectural Histories and Critical Theories | OpenAlex** — https://openalex.org/works/W904904948\n   Iain Borden, Jane Rendell · 2000-01-01\n   _openalex · academic · 712 chars read_\n2. **Learning the natural history of human disease with generative transformers | Nature** — https://www.nature.com/articles/s41586-025-09529-3?error=cookies_not_supported&code=e9c92a40-19ee-4956-9a8f-62d846a5d33b\n   Artem Shmatko, Alexander W. Jung, Kumar Gaurav, Søren Brunak, Laust Hvas Mortensen, Ewan Birney · 2025-09-17 · https://doi.org/10.1038/s41586-025-09529-3\n   _openalex · academic · 103,729 chars read_\n3. **[2003.02958] EmpTransfo: A Multi-head Transformer Architecture for Creating Empathetic Dialog Systems** — https://arxiv.org/abs/2003.02958\n   Rohola Zandie, Mohammad H. Mahoor · 2020-03-05 · https://doi.org/10.48550/arxiv.2003.02958\n   _openalex · academic · 4,031 chars read_\n4. **GitHub - alexpashevich/E.T.: Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation. E.T. is based on a multimodal transformer that encodes language inputs and the full episode history of visual observations and actions. · GitHub** — https://github.com/alexpashevich/E.T.\n   2026-01-14\n   _github · code · 6,848 chars read_\n5. **GitHub - advaithmall/transformer_language_model: The following is the code for a decoder based language model, similar to the architecture principle of GPT. The task of this language model is to predict the next word given the previous history. · GitHub** — https://github.com/advaithmall/transformer_language_model\n   2023-09-04\n   _github · code · 2,640 chars read_\n6. **[2606.21562] Compressing History into Memory: Distilling Transformers into Recurrent Transformers** — https://arxiv.org/abs/2606.21562\n   Philippe Weinzaepfel, Christian Wolf, Mert Bülent Sarıyıldız, Guillaume Bono, Gianluca Monaci · 2026-06-19 · https://doi.org/10.48550/arxiv.2606.21562\n   _openalex · academic · 5,014 chars read_\n7. **Transformer (deep learning) - Wikipedia** — https://en.wikipedia.org/?curid=61603971\n   2026-10-29T01:35:22Z\n   _wikipedia · encyclopedia · 107,014 chars read_\n8. **The Architecture of Death (1984) by Richard A. Etlin | Open Library** — https://openlibrary.org/works/OL3752341W/The_architecture_of_death\n   Richard A. Etlin · 1984\n   _openlibrary · books · 4,632 chars read_\n9. **Style-architecture and building-art (1994) by Hermann Muthesius | Open Library** — https://openlibrary.org/works/OL3477270W/Style-Architecture_and_Building-Art\n   Hermann Muthesius · 1994\n   _openlibrary · books · 5,929 chars read_\n10. **History of the World's fair (1893) by Benjamin Cummings Truman | Open Library** — https://openlibrary.org/works/OL1618262W/History_of_the_World%27s_Fair\n   Benjamin Cummings Truman · 1893\n   _openlibrary · books · 52,428 chars read_\n11. **Urban Transformations and the Architecture of Additions (2014) by Rodrigo Perez de Arce | Open Library** — https://openlibrary.org/works/OL21269420W/Urban_Transformations_and_the_Architecture_of_Additions\n   Rodrigo Perez de Arce · 2014\n   _openlibrary · books · 5,967 chars read_\n12. **The ascent of man (1973) by Jacob Bronowski | Open Library** — https://openlibrary.org/works/OL4803881W/The_ascent_of_man\n   Jacob Bronowski · 1973\n   _openlibrary · books · 10,180 chars read_\n\n## Sources that could not be read\n\n- https://doi.org/10.1080/136023600408719 — Only public HTTPS URLs can be retrieved.\n- https://doi.org/10.1007/979-8-8688-2785-3_3 — The source redirected too many times.\n- https://doi.org/10.7717/peerj-cs.3276/fig-9 — The source returned HTTP 403.\n- https://doi.org/10.7717/peerj-cs.4069/fig-6 — The source returned HTTP 403.\n- https://doi.org/10.7717/peerj-cs.1224/fig-8 — The source returned HTTP 403.\n- https://doi.org/10.7717/peerj-cs.3510/fig-8 — The source returned HTTP 403.\n- https://doi.org/10.7717/peerj-cs.3072/fig-4 — The source returned HTTP 403.\n- https://doi.org/10.17816/dd629866-4230420 — The source returned HTTP 403.\n\n## Limitations\n\n- 8 discovered source(s) could not be read (paywall, JavaScript-only page, or retrieval error).\n- 1 discovery provider(s) failed; coverage is narrower than requested.\n- Only public web sources reachable from this server were searched; private databases, paywalled archives and print-only material were not.\n",
+      "confidence": 0.95,
+      "timestamp": "2026-10-31T04:24:46.413Z",
+      "depth": "standard",
+      "status": "completed",
+      "scope": "12 source(s) read in full · providers: wikipedia, crossref, openalex, github, openlibrary, duckduckgo · categories: academic, code, encyclopedia, books · 1 discovery query",
+      "queries": [
+        "the history of the Transformer architecture"
+      ],
+      "providersUsed": [
+        "wikipedia",
+        "crossref",
+        "openalex",
+        "github",
+        "openlibrary",
+        "duckduckgo"
+      ],
+      "providerErrors": [
+        "arXiv returned HTTP 429."
+      ],
+      "sourceErrors": [
+        "arXiv returned HTTP 429."
+      ],
+      "limitations": [
+        "8 discovered source(s) could not be read (paywall, JavaScript-only page, or retrieval error).",
+        "1 discovery provider(s) failed; coverage is narrower than requested.",
+        "Only public web sources reachable from this server were searched; private databases, paywalled archives and print-only material were not."
+      ],
+      "unreadable": [
+        {
+          "url": "https://doi.org/10.1080/136023600408719",
+          "reason": "Only public HTTPS URLs can be retrieved."
+        },
+        {
+          "url": "https://doi.org/10.1007/979-8-8688-2785-3_3",
+          "reason": "The source redirected too many times."
+        },
+        {
+          "url": "https://doi.org/10.7717/peerj-cs.3276/fig-9",
+          "reason": "The source returned HTTP 403."
+        },
+        {
+          "url": "https://doi.org/10.7717/peerj-cs.4069/fig-6",
+          "reason": "The source returned HTTP 403."
+        },
+        {
+          "url": "https://doi.org/10.7717/peerj-cs.1224/fig-8",
+          "reason": "The source returned HTTP 403."
+        },
+        {
+          "url": "https://doi.org/10.7717/peerj-cs.3510/fig-8",
+          "reason": "The source returned HTTP 403."
+        },
+        {
+          "url": "https://doi.org/10.7717/peerj-cs.3072/fig-4",
+          "reason": "The source returned HTTP 403."
+        },
+        {
+          "url": "https://doi.org/10.17816/dd629866-4230420",
+          "reason": "The source returned HTTP 403."
+        }
+      ],
+      "claims": [
+        {
+          "text": "Here we modify the GPT 6 (generative pretrained transformer) architecture to model the progression and competing nature of human diseases.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41586_025_09529_3"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "To model disease history data, which, in contrast to text, occurs on a continuous time axis, we extended the GPT-2 architecture 6 (Fig.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41586_025_09529_3"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "A promising feature of Delphi-2M’s implementation is the relative simplicity of incorporating additional data layers, rendered possible by the transformer-based architecture.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41586_025_09529_3"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Ethics declarations Competing interests A patent has been filed for the use of generative transformer architectures to model competing risk and timings of diseases (application number: PCT/EP2025/065771; applicants: DKFZ, EMBL), with M.G., A.S., T.F., E.B., K.G. and A.W.J. listed as inventors.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41586_025_09529_3"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Learning the natural history of human disease with generative transformers.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41586_025_09529_3"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Delphi-2M predicts the rates of more than 1,000 diseases, conditional on each individual’s past disease history, with accuracy comparable to that of existing single-disease models.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41586_025_09529_3"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "This paper presents EmpTransfo, a multi-head Transformer architecture for creating an empathetic dialog system.",
+          "supportedBy": [
+            "src_doi_org_10_48550_arxiv_2003_02958"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "We show that utilizing the history of emotions and other metadata can improve the quality of generated conversations by the dialog system.",
+          "supportedBy": [
+            "src_doi_org_10_48550_arxiv_2003_02958"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "GitHub - alexpashevich/E.T.: Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation.",
+          "supportedBy": [
+            "src_github_com_alexpashevich_e_t_"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Public - Notifications You must be signed in to change notification settings - Fork 19 ( 19 ) - Star 93 ( 93 ) You must be signed in to star a repository About Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation.",
+          "supportedBy": [
+            "src_github_com_alexpashevich_e_t_"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "E.T. is based on a multimodal transformer that encodes language inputs and the full episode history of visual observations and actions.",
+          "supportedBy": [
+            "src_github_com_alexpashevich_e_t_"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Citation If you find this repository useful, please cite our work: @inproceedings{pashevich2021episodic, title = {{Episodic Transformer for Vision-and-Language Navigation}}, author = {Alexander Pashevich and Cordelia Schmid and Chen Sun}, booktitle = {ICCV}, year = {2021}, } About Episodic Transformer (E.T.) is a novel attention-based architecture for vision-and-language navigation.",
+          "supportedBy": [
+            "src_github_com_alexpashevich_e_t_"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "E.T. with human data only Train an E.T. agent: $ python -m alfred.model.train with exp.model=transformer exp.name=et_s1 exp.data.train=lmdb_human train.seed=1 Evaluate the trained E.T. agent: $ python -m alfred.eval.eval_agent with eval.exp=et_s1 eval.object_predictor= $ET_LOGS /pretrained/maskrcnn_model.pth exp.num_workers=5 Note: you may need to train up to 5 agents using different random seeds to reproduce the results of the paper.",
+          "supportedBy": [
+            "src_github_com_alexpashevich_e_t_"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "GitHub - advaithmall/transformer_language_model: The following is the code for a decoder based language model, similar to the architecture principle of GPT.",
+          "supportedBy": [
+            "src_github_com_advaithmall_transformer_language_model"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Dismiss alert {{ message }} Repository navigation transformer_language_model Public - Notifications You must be signed in to change notification settings - Fork 0 ( 0 ) - Star 0 ( 0 ) You must be signed in to star a repository About The following is the code for a decoder based language model, similar to the architecture principle of GPT.",
+          "supportedBy": [
+            "src_github_com_advaithmall_transformer_language_model"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "The task of this language model is to predict the next word given the previous history.",
+          "supportedBy": [
+            "src_github_com_advaithmall_transformer_language_model"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Recurrent Transformers address this limitation by maintaining fixed-size memory but their performance lags behind that of transformers operating over the full observation history.",
+          "supportedBy": [
+            "src_doi_org_10_48550_arxiv_2606_21562"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "In this work, we propose a distillation approach that transfers the compression strategy of a classical full-history transformer to a recurrent variant.",
+          "supportedBy": [
+            "src_doi_org_10_48550_arxiv_2606_21562"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "We show that this approach allows to train a recurrent latent robotic memory with linear-time complexity on the Mem-RPE task while substantially narrowing the performance gap to full-history transformers.",
+          "supportedBy": [
+            "src_doi_org_10_48550_arxiv_2606_21562"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "We target long-horizon streaming vision and robotics applications, where it is particularly impractical to store and maintain a history of observations.",
+          "supportedBy": [
+            "src_doi_org_10_48550_arxiv_2606_21562"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Without access to an observation history, recurrent models must explicitly decide what to retain in memory at each step, a significantly harder learning problem.",
+          "supportedBy": [
+            "src_doi_org_10_48550_arxiv_2606_21562"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "We enable this by designing a teacher model that explicitly compresses its observation history into a fixed-size bottleneck representation and directly supervise the student's memory with this bottleneck representation, effectively aligning the two compression mechanisms.",
+          "supportedBy": [
+            "src_doi_org_10_48550_arxiv_2606_21562"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "( June 2026 ) ( Learn how and when to remove this message ) ( Learn how and when to remove this message ) A standard transformer architecture, showing on the left an encoder, and on the right a decoder.",
+          "supportedBy": [
+            "src_en_wikipedia_org"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "They are used in large-scale natural language processing , computer vision ( vision transformers ), reinforcement learning , [ 5 ] audio , [ 6 ] multimodal learning , robotics , [ 7 ] and playing chess . [ 8 ] It has also led to the development of pre-trained systems , such as generative pre-trained transformers (GPTs). [ 9 ] History [ edit ] This section's style of writing may not reflect the encyclopedic tone used on Wikipedia .",
+          "supportedBy": [
+            "src_en_wikipedia_org"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "These multiplicative units are conceptually distinct from the additive attention mechanism later introduced for sequence-to-sequence models. [ 10 ] Neural networks using multiplicative units were later called sigma-pi networks [ 11 ] or higher-order networks . [ 12 ] LSTM became the standard architecture for long sequence modelling until the 2017 publication of transformers.",
+          "supportedBy": [
+            "src_en_wikipedia_org"
+          ],
+          "corroborated": false
+        }
+      ],
+      "stats": {
+        "discovered": 20,
+        "retrieved": 20,
+        "fullText": 12,
+        "referencesFollowed": 0,
+        "durationMs": 20334
+      },
+      "progress": [
+        {
+          "stage": "plan",
+          "detail": "Question understood; 3 key terms; depth standard.",
+          "at": "2026-10-31T04:24:26.080Z"
+        },
+        {
+          "stage": "search",
+          "detail": "Discovery round 1: \"the history of the Transformer architecture\"",
+          "at": "2026-10-31T04:24:26.080Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: From chamber to transformer: epistemological challenges in the methodology of th",
+          "at": "2026-10-31T04:24:28.175Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: From Chamber to Transformer: Epistemological Challenges and Tendencies in the In",
+          "at": "2026-10-31T04:24:28.214Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: Advanced Transformer Architectures",
+          "at": "2026-10-31T04:24:28.614Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: Learning the natural history of human disease with generative transformers",
+          "at": "2026-10-31T04:24:29.475Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: EmpTransfo: A Multi-head Transformer Architecture for Creating Empathetic Dialog",
+          "at": "2026-10-31T04:24:30.663Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading github: alexpashevich/E.T.",
+          "at": "2026-10-31T04:24:30.783Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading github: advaithmall/transformer_language_model",
+          "at": "2026-10-31T04:24:31.327Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: Compressing History into Memory: Distilling Transformers into Recurrent Transfor",
+          "at": "2026-10-31T04:24:31.859Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: Figure 9: Transformer architecture.",
+          "at": "2026-10-31T04:24:31.973Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: Figure 6: Vision transformer architecture.",
+          "at": "2026-10-31T04:24:32.200Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: Figure 8: The Transformer architecture.",
+          "at": "2026-10-31T04:24:32.275Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: Figure 8: Transformer-based architecture.",
+          "at": "2026-10-31T04:24:32.339Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: Figure 4: Transformer architecture (Vaswani, 2017).",
+          "at": "2026-10-31T04:24:32.391Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: Fig. 4. Architecture combining transformer blocks with a U-shaped architecture [",
+          "at": "2026-10-31T04:24:32.470Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading wikipedia: Transformer (deep learning)",
+          "at": "2026-10-31T04:24:33.028Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openlibrary: The architecture of death",
+          "at": "2026-10-31T04:24:33.637Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openlibrary: Style-Architecture and Building-Art",
+          "at": "2026-10-31T04:24:36.712Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openlibrary: History of the World's Fair",
+          "at": "2026-10-31T04:24:38.411Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openlibrary: Urban Transformations and the Architecture of Additions",
+          "at": "2026-10-31T04:24:42.582Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openlibrary: The ascent of man",
+          "at": "2026-10-31T04:24:43.835Z"
+        },
+        {
+          "stage": "analyse",
+          "detail": "Extracting claims from 12 source(s).",
+          "at": "2026-10-31T04:24:46.385Z"
+        },
+        {
+          "stage": "report",
+          "detail": "Composing the cited report.",
+          "at": "2026-10-31T04:24:46.387Z"
+        }
+      ],
+      "origin": "chat",
+      "conversationId": "conv_a9de8348-d645-4b9b-9b47-6220815a7d26"
     }
   ]
 }
