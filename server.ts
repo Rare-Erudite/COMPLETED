@@ -6267,6 +6267,20 @@ async function startServer() {
   }
 
   const httpServer = http.createServer(app);
+
+  // Keep-alive tuning. Node's default keepAliveTimeout (5s) is shorter than the
+  // idle window a client pool may hold a socket open for, so a client can pick a
+  // socket the server is about to close and get EPIPE mid-upload. That showed up
+  // as an intermittent failure on large document uploads (a 25-minute recording)
+  // immediately after a small request on the same pooled connection.
+  //
+  // Raising keepAliveTimeout above the client's idle window, and headersTimeout
+  // above keepAliveTimeout (Node requires this), removes the race. requestTimeout
+  // stays generous because media probing and transcription are long operations.
+  httpServer.keepAliveTimeout = 65_000;
+  httpServer.headersTimeout = 66_000;
+  httpServer.requestTimeout = 300_000;
+
   let vite: import('vite').ViteDevServer | undefined;
 
   if (!isProduction) {
