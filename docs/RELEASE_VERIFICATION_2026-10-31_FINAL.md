@@ -100,15 +100,33 @@ Queried the Vercel REST API with the provided Vercel token (project `rareproject
 | Check | Result |
 |---|---|
 | `/` | **200** (SPA shell) |
-| `/chat` | **200** |
-| `/nonexistent-deep-link` (SPA fallback) | **200** |
-| `/api/status` | **200** — `storage: postgresql`, `databaseReachable: true`, `schemaReady: true` |
+| `/chat`, `/documents`, `/research` | **200** |
+| `/deep/link/test` (SPA fallback) | **200** |
+| `/api/status` | **200** — `services.storage.type: postgresql`, `databaseReachable: true`, `schemaReady: true` |
 | `/api/documents/capabilities` | **200** — `media.decoding: true`, `transcription.available: true` |
+| Unknown API route | **401** JSON `{"error":{"message":"A valid RARE session is required."}}` (auth before 404) |
+| Signup / session continuity | **200 / 200** |
+| POST without CSRF token | **403** |
+| POST with bad `Origin` | **403** |
+| Developer-only `/api/tools/execute` | **403** |
 | Chat (real provider) | **200** — assistant replied `PROVIDER_OK` |
-| Transcription (20.8 s real speech) | **200 in 39 s** — real transcript, 1 turn, coverage 1.0 |
+| Chat research-intent routing | **200** — `event: intent → {"intent":"research","depth":"standard"}` then live `retrieve` events |
+| Research providers | **200** — 7 providers (wikipedia, crossref, openalex, arxiv, github, openlibrary, duckduckgo) |
+| Research query | **200 in 4.9 s** — 6 sources read in full, honest `providerErrors` and `limitations` |
+| Research owner isolation | owner **200** / other user **404** / no session **401** |
+| Document upload | **201** — 179 chars extracted, `method: text-utf8` |
+| Grounded Q&A | **200** — *"The project codename is ORION-7 [1] and the lead engineer is Adaora Okonkwo [1]."*, `groundedIn: 1 passage(s)` |
+| DOCX export | **200** — 2576 bytes, magic `504b0304`, `file` → *Microsoft Word 2007+* |
+| PDF export | **200** — 1225 bytes, magic `25504446`, `file` → *PDF document, version 1.7* |
+| Transcription (20.8 s real speech) | **200 in 48 s** — real transcript, 1 turn, coverage 1.0 |
 | Transcript owner retrieval | **200** |
 | Transcript other-user retrieval | **404** (owner isolation) |
 | Transcript no-session retrieval | **401** |
+| `/api/download/apk/info` | **200** — `RARE-v1.0.0-release.apk`, 308827 bytes |
+| `/api/download/apk` | **200** — 308827 bytes, `file` → *Android package (APK) … with APK Signing Block*, sha256 `9d5eb21e…` |
+| `/api/updates/check` | **200** — `hasUpdate:false`, `latestVersion:1.0.0` |
+
+**Supabase (direct PostgreSQL, provided credentials):** PostgreSQL **17.11**; **16** public tables; **all 16 with RLS enabled**; `rare_schema_migrations` present. Tables: `PROFILES, PROJECTS, USERS, agent_events, artifacts, project_tasks, projects, rare_checkpoint_files, rare_developer_credentials, rare_developer_grants, rare_oauth_identities, rare_persistent_documents, rare_schema_migrations, rare_sessions, rare_user_state, rare_users`.
 
 **Transcription transcript (production, real audio):**
 `[00:00 – 00:21] Speaker 1: The quarterly planning meeting opened at 9:00. [inaudible] confirmed that the migration to the new billing system is complete. We decided to launch the customer portal on the 14th of November. …`
@@ -117,12 +135,32 @@ The transcript header honestly states *"Speakers detected: 1 (provider did not d
 
 ---
 
-## 5. Remaining blockers / unverified
+## 5. Feature status summary
+
+| Area | Status |
+|---|---|
+| Chat (real provider, streaming, persistence, research routing) | **VERIFIED** in production |
+| Documents (upload, extraction, grounded Q&A, DOCX/PDF export, owner isolation) | **VERIFIED** in production |
+| Research (7 providers, full-text retrieval, citations, honest errors, history, owner isolation) | **VERIFIED** in production |
+| RESEARCH tool (lazy DeepResearchEngine) | **VERIFIED** — no "not ready" error |
+| Transcription (real audio, FFmpeg in the deployment runtime, timestamps, persistence, isolation) | **VERIFIED** in production |
+| Supabase (connectivity, 16 tables, RLS on all 16, schema migrations) | **VERIFIED** |
+| Auth & security (signup, session, CSRF, origin, dev-only 403, owner isolation) | **VERIFIED** in production |
+| Project & Build (real scaffold + build/test stages) | **VERIFIED** locally; **IMPLEMENTED — NOT VERIFIED** in production |
+| Android APK download + update endpoints | **VERIFIED** in production |
+| Android APK reproducible rebuild | **NOT IMPLEMENTED** (no Android/Gradle project in the repo) |
+| Speaker diarisation | **NOT IMPLEMENTED** (not claimed) |
+| Full `npm test` completion | **BLOCKED** (2 GB sandbox cgroup cap) |
+
+---
+
+## 6. Remaining blockers / unverified
 
 1. **`npm test` full completion** — BLOCKED by the 2 GB sandbox cgroup cap (OOM at the 25-minute-audio fixture). Needs a > 2 GB container. The suite itself is healthy; no test was weakened.
 2. **Speaker diarisation** — **NOT IMPLEMENTED**; not claimed anywhere.
-3. **Android APK rebuild** — no Android/Gradle project exists in the repository (only a prebuilt signed APK); a reproducible rebuild is **NOT IMPLEMENTED**. No APK was built or installed in this run.
+3. **Android APK rebuild** — no Android/Gradle project exists in the repository (only a prebuilt signed APK); a reproducible rebuild is **NOT IMPLEMENTED**. No APK was built or installed in this run. The existing signed APK is served correctly and its update endpoints work.
 4. **Gemini quota** — the account's free-tier quota is exhausted for some models (429). Transcription succeeds on the live flash model; sustained throughput depends on the account's quota/billing.
+5. **Project & Build in production** — the new scaffold/build/test lifecycle is verified locally and covered by a passing regression test, but was not exercised against the deployed instance in this run.
 
 ---
 
