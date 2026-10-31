@@ -19,6 +19,29 @@ case "$RARE_BACKEND_URL" in
 esac
 echo "=== Backend for this APK: $RARE_BACKEND_URL ==="
 
+# Version identity. Android refuses to install an update whose versionCode is
+# not strictly greater than the installed one, so a hardcoded 1 makes every
+# future release uninstallable over the last. Both values are overridable and
+# default to a monotonically increasing value derived from the build date
+# (YYMMDDnn), which is always greater than any previous calendar day.
+APP_VERSION_NAME="${RARE_APP_VERSION_NAME:-1.0.0}"
+if [ -n "$RARE_APP_VERSION_CODE" ]; then
+  APP_VERSION_CODE="$RARE_APP_VERSION_CODE"
+else
+  APP_VERSION_CODE="$(date -u +%y%m%d)01"
+fi
+case "$APP_VERSION_CODE" in
+  ''|*[!0-9]*)
+    echo "ERROR: RARE_APP_VERSION_CODE must be a positive integer, got '$APP_VERSION_CODE'." >&2
+    exit 1
+    ;;
+esac
+if [ "$APP_VERSION_CODE" -lt 1 ]; then
+  echo "ERROR: RARE_APP_VERSION_CODE must be >= 1, got $APP_VERSION_CODE." >&2
+  exit 1
+fi
+echo "=== Version: ${APP_VERSION_NAME} (versionCode ${APP_VERSION_CODE}) ==="
+
 echo "=== [1/8] Building Web Production Assets with Vite ==="
 npm run build:web
 
@@ -77,12 +100,12 @@ cat << 'EOF' > "$BUILD_DIR/res/values/strings.xml"
 </resources>
 EOF
 
-cat << 'EOF' > "$BUILD_DIR/AndroidManifest.xml"
+cat << EOF > "$BUILD_DIR/AndroidManifest.xml"
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.rare.ai.intelligence"
-    android:versionCode="1"
-    android:versionName="1.0.0">
+    android:versionCode="${APP_VERSION_CODE}"
+    android:versionName="${APP_VERSION_NAME}">
 
     <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34" />
 
@@ -108,7 +131,7 @@ cat << 'EOF' > "$BUILD_DIR/AndroidManifest.xml"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false">
 
         <activity
             android:name="com.rare.ai.intelligence.MainActivity"
@@ -665,21 +688,21 @@ if [ -z "$STORE_PASS" ]; then
 fi
 
 apksigner sign --ks "$KEYSTORE" --ks-pass "pass:$STORE_PASS" --key-pass "pass:$KEY_PASS" \
-  --ks-key-alias "$KEY_ALIAS" --out "$BUILD_DIR/bin/rare-v1.0.0-release.apk" "$BUILD_DIR/bin/aligned.apk"
+  --ks-key-alias "$KEY_ALIAS" --out "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk" "$BUILD_DIR/bin/aligned.apk"
 
 echo "=== Verifying APK Signature Schemes ==="
-apksigner verify --verbose "$BUILD_DIR/bin/rare-v1.0.0-release.apk"
+apksigner verify --verbose "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk"
 
 # Record the signing certificate so update compatibility can be checked against
 # the certificate of an already-installed build.
 echo "=== Signing certificate (must match the installed app) ==="
-apksigner verify --print-certs "$BUILD_DIR/bin/rare-v1.0.0-release.apk" | head -5
+apksigner verify --print-certs "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk" | head -5
 
 # Export APK to standard release locations
 mkdir -p "$PROJECT_ROOT/exports" "$PROJECT_ROOT/public" "$PROJECT_ROOT/dist"
-cp "$BUILD_DIR/bin/rare-v1.0.0-release.apk" "$PROJECT_ROOT/exports/rare-v1.0.0-release.apk"
-cp "$BUILD_DIR/bin/rare-v1.0.0-release.apk" "$PROJECT_ROOT/public/rare-v1.0.0-release.apk"
-cp "$BUILD_DIR/bin/rare-v1.0.0-release.apk" "$PROJECT_ROOT/dist/rare-v1.0.0-release.apk" 2>/dev/null || true
+cp "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk" "$PROJECT_ROOT/exports/rare-v${APP_VERSION_NAME}-release.apk"
+cp "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk" "$PROJECT_ROOT/public/rare-v${APP_VERSION_NAME}-release.apk"
+cp "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk" "$PROJECT_ROOT/dist/rare-v${APP_VERSION_NAME}-release.apk" 2>/dev/null || true
 
 echo "=== Android APK Successfully Created and Exported! ==="
-ls -lh "$PROJECT_ROOT/exports/rare-v1.0.0-release.apk"
+ls -lh "$PROJECT_ROOT/exports/rare-v${APP_VERSION_NAME}-release.apk"
