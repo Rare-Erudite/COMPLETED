@@ -20,9 +20,16 @@ import { execFile } from 'child_process';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { createRequire } from 'module';
 import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
+
+// The server is bundled as ESM, where `require` does not exist. createRequire
+// gives us a real CommonJS resolver so the optional installer packages can be
+// located at runtime without a static import that would break a build where
+// they are absent.
+const requireFromHere = createRequire(import.meta.url);
 
 export interface MediaProbe {
   durationSeconds: number;
@@ -61,17 +68,67 @@ export class MediaProcessorError extends Error {
 }
 
 let cachedFfmpeg: boolean | undefined;
+let cachedBinaries: { ffmpeg: string; ffprobe: string } | null | undefined;
+
+/**
+ * Resolve the ffmpeg/ffprobe executables.
+ *
+ * A serverless host (Vercel) has no system ffmpeg and no writable PATH, so
+ * relying on `ffmpeg` being on PATH made transcription impossible there. The
+ * npm packages `@ffmpeg-installer/ffmpeg` and `@ffprobe-installer/ffprobe`
+ * ship prebuilt binaries as optional dependencies, which survive an
+ * `--ignore-scripts` install. Resolution order:
+ *
+ *   1. RARE_FFMPEG_PATH / RARE_FFPROBE_PATH, for an operator override.
+ *   2. The bundled installer packages, when present.
+ *   3. Bare `ffmpeg` / `ffprobe` on PATH, for a normal self-hosted box.
+ *
+ * Returns null when neither is usable, so callers can report the real reason.
+ */
+export async function resolveMediaBinaries(): Promise<{ ffmpeg: string; ffprobe: string } | null> {
+  if (cachedBinaries !== undefined) return cachedBinaries;
+
+  const candidates: Array<{ ffmpeg: string; ffprobe: string }> = [];
+
+  const overrideFfmpeg = process.env.RARE_FFMPEG_PATH?.trim();
+  const overrideFfprobe = process.env.RARE_FFPROBE_PATH?.trim();
+  if (overrideFfmpeg && overrideFfprobe) {
+    candidates.push({ ffmpeg: overrideFfmpeg, ffprobe: overrideFfprobe });
+  }
+
+  // Bundled binaries. Resolved through createRequire so a build without the
+  // optional packages still loads this module and falls through to PATH.
+  try {
+    const ffmpegInstaller = requireFromHere('@ffmpeg-installer/ffmpeg');
+    const ffprobeInstaller = requireFromHere('@ffprobe-installer/ffprobe');
+    if (ffmpegInstaller?.path && ffprobeInstaller?.path) {
+      candidates.push({ ffmpeg: ffmpegInstaller.path, ffprobe: ffprobeInstaller.path });
+    }
+  } catch {
+    /* not installed; fall through to PATH */
+  }
+
+  candidates.push({ ffmpeg: 'ffmpeg', ffprobe: 'ffprobe' });
+
+  for (const candidate of candidates) {
+    try {
+      await execFileAsync(candidate.ffmpeg, ['-version'], { timeout: 15_000 });
+      await execFileAsync(candidate.ffprobe, ['-version'], { timeout: 15_000 });
+      cachedBinaries = candidate;
+      return candidate;
+    } catch {
+      continue;
+    }
+  }
+
+  cachedBinaries = null;
+  return null;
+}
 
 /** True when ffmpeg/ffprobe can actually be executed here. */
 export async function ffmpegAvailable(): Promise<boolean> {
   if (cachedFfmpeg !== undefined) return cachedFfmpeg;
-  try {
-    await execFileAsync('ffmpeg', ['-version'], { timeout: 10_000 });
-    await execFileAsync('ffprobe', ['-version'], { timeout: 10_000 });
-    cachedFfmpeg = true;
-  } catch {
-    cachedFfmpeg = false;
-  }
+  cachedFfmpeg = (await resolveMediaBinaries()) !== null;
   return cachedFfmpeg;
 }
 
@@ -86,14 +143,15 @@ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
 
 /** Probe a media buffer. Returns null when ffprobe cannot read it. */
 export async function probeMedia(buffer: Buffer, filenameHint = 'input'): Promise<MediaProbe | null> {
-  if (!(await ffmpegAvailable())) return null;
+  const binaries = await resolveMediaBinaries();
+  if (!binaries) return null;
   const extension = path.extname(filenameHint) || '.bin';
   return withTempDir(async (dir) => {
     const input = path.join(dir, `input${extension}`);
     await fs.writeFile(input, buffer);
     try {
       const { stdout } = await execFileAsync(
-        'ffprobe',
+        binaries.ffprobe,
         ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', input],
         { timeout: 30_000, maxBuffer: 8 * 1024 * 1024 },
       );
@@ -131,7 +189,8 @@ export async function segmentMedia(
   filenameHint: string,
   options: SegmentationOptions = {},
 ): Promise<{ segments: MediaSegment[]; probe: MediaProbe | null; warnings: string[] }> {
-  if (!(await ffmpegAvailable())) {
+  const binaries = await resolveMediaBinaries();
+  if (!binaries) {
     throw new MediaProcessorError(
       'ffmpeg is not installed in this runtime, so audio cannot be decoded or split.',
       'FFMPEG_UNAVAILABLE',
@@ -161,7 +220,7 @@ export async function segmentMedia(
 
     try {
       await execFileAsync(
-        'ffmpeg',
+        binaries.ffmpeg,
         [
           '-hide_banner', '-loglevel', 'error',
           '-i', input,
@@ -240,9 +299,11 @@ export async function segmentMedia(
 
 /** Probe an already-written file path (avoids double-writing the buffer). */
 async function probeMediaBuffer(inputPath: string): Promise<MediaProbe | null> {
+  const binaries = await resolveMediaBinaries();
+  if (!binaries) return null;
   try {
     const { stdout } = await execFileAsync(
-      'ffprobe',
+      binaries.ffprobe,
       ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', inputPath],
       { timeout: 30_000, maxBuffer: 8 * 1024 * 1024 },
     );
@@ -294,9 +355,14 @@ export async function extractVideoFrames(
     const interval = options.intervalSeconds
       ?? (probe.durationSeconds > 0 ? Math.max(1, probe.durationSeconds / (maxFrames + 1)) : 10);
 
+    const binaries = await resolveMediaBinaries();
+    if (!binaries) {
+      return { frames: [], warnings: ['ffmpeg is not installed, so video frames cannot be extracted.'] };
+    }
+
     try {
       await execFileAsync(
-        'ffmpeg',
+        binaries.ffmpeg,
         [
           '-hide_banner', '-loglevel', 'error',
           '-i', input,

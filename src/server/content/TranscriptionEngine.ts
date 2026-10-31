@@ -64,7 +64,19 @@ export interface SpeechProvider {
     audioBase64: string,
     mimeType: string,
     options?: { prompt?: string; detectSpeakers?: boolean },
-  ): Promise<{ text: string; model: string }>;
+  ): Promise<{
+    text: string;
+    model: string;
+    /**
+     * Provider-native utterance timings, relative to the audio it was given.
+     *
+     * When a provider can time individual utterances (faster-whisper does, from
+     * its own VAD), those timings are the truth and must be used. Falling back
+     * to one turn per segment would stretch a two-minute stretch of speech into
+     * a single block and make every timestamp in it wrong.
+     */
+    segments?: Array<{ start: number; end: number; text: string }>;
+  }>;
 }
 
 export interface TranscriptionOptions {
@@ -234,22 +246,59 @@ export async function transcribeBuffer(
           `No speech was detected between ${formatClock(segment.startSeconds)} and ${formatClock(segment.startSeconds + segment.durationSeconds)}.`,
         );
       } else {
-        const parsed = parseTranscriptText(text, segment.startSeconds, defaultSpeaker);
-        sawSpeakerLabel = sawSpeakerLabel || parsed.sawSpeakerLabel;
+        // Prefer the provider's own utterance timings. They are measured from
+        // the audio's VAD, so they place each sentence on the clock exactly;
+        // parsing the flat text can only guess. Text parsing remains the
+        // fallback for providers that return prose without timings.
+        const nativeSegments = (response.segments || []).filter(
+          (segment) => segment && typeof segment.start === 'number' && String(segment.text || '').trim().length > 0,
+        );
 
-        for (const parsedTurn of parsed.turns) {
-          const start = parsedTurn.startSeconds ?? cursorSeconds;
-          turns.push({
-            index: turns.length,
-            speaker: parsedTurn.speaker,
-            startSeconds: Number(start.toFixed(3)),
-            // An exact end is unknown per turn; the next turn's start (or the
-            // segment end) closes it after the loop below.
-            endSeconds: Number(Math.max(start, cursorSeconds + segment.durationSeconds).toFixed(3)),
-            startClock: formatClock(start),
-            endClock: formatClock(start + segment.durationSeconds),
-            text: parsedTurn.text,
-          });
+        if (nativeSegments.length > 0) {
+          for (const native of nativeSegments) {
+            const start = segment.startSeconds + Math.max(0, native.start);
+            const end = segment.startSeconds + Math.max(native.start, native.end);
+            const nativeText = String(native.text).trim();
+            const parsed = parseTranscriptText(nativeText, start, defaultSpeaker);
+            sawSpeakerLabel = sawSpeakerLabel || parsed.sawSpeakerLabel;
+
+            // A provider segment may itself carry a speaker label; when it does
+            // not, the whole segment is one turn.
+            const turnsFromSegment = parsed.turns.length > 0
+              ? parsed.turns
+              : [{ speaker: defaultSpeaker, startSeconds: start, text: nativeText }];
+
+            for (const parsedTurn of turnsFromSegment) {
+              const turnStart = parsedTurn.startSeconds ?? start;
+              turns.push({
+                index: turns.length,
+                speaker: parsedTurn.speaker,
+                startSeconds: Number(turnStart.toFixed(3)),
+                endSeconds: Number(Math.max(turnStart, end).toFixed(3)),
+                startClock: formatClock(turnStart),
+                endClock: formatClock(end),
+                text: parsedTurn.text,
+              });
+            }
+          }
+        } else {
+          const parsed = parseTranscriptText(text, segment.startSeconds, defaultSpeaker);
+          sawSpeakerLabel = sawSpeakerLabel || parsed.sawSpeakerLabel;
+
+          for (const parsedTurn of parsed.turns) {
+            const start = parsedTurn.startSeconds ?? cursorSeconds;
+            turns.push({
+              index: turns.length,
+              speaker: parsedTurn.speaker,
+              startSeconds: Number(start.toFixed(3)),
+              // An exact end is unknown per turn; the next turn's start (or the
+              // segment end) closes it after the loop below.
+              endSeconds: Number(Math.max(start, cursorSeconds + segment.durationSeconds).toFixed(3)),
+              startClock: formatClock(start),
+              endClock: formatClock(start + segment.durationSeconds),
+              text: parsedTurn.text,
+            });
+          }
         }
 
         previousTail = text;
@@ -305,10 +354,18 @@ export async function transcribeBuffer(
   }
 
   // Close each turn at the next turn's start so timestamps are contiguous.
+  // A measured end is kept when it is already sane: only an end that runs past
+  // the following turn (or a placeholder end from the text-parsing fallback)
+  // is trimmed, so provider timings are not overwritten with guesses.
   for (let index = 0; index < turns.length; index += 1) {
     const next = turns[index + 1];
-    const end = next ? next.startSeconds : turns[index].endSeconds;
-    turns[index].endSeconds = Number(Math.max(turns[index].startSeconds, end).toFixed(3));
+    if (!next) {
+      turns[index].endClock = formatClock(turns[index].endSeconds);
+      continue;
+    }
+    if (turns[index].endSeconds > next.startSeconds || turns[index].endSeconds <= turns[index].startSeconds) {
+      turns[index].endSeconds = Number(Math.max(turns[index].startSeconds, next.startSeconds).toFixed(3));
+    }
     turns[index].endClock = formatClock(turns[index].endSeconds);
   }
 
