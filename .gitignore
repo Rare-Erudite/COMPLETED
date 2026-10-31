@@ -26,3 +26,7 @@ server-build/
 .rare/android/
 *.keystore
 *.jks
+
+# Python bytecode
+__pycache__/
+*.pyc
