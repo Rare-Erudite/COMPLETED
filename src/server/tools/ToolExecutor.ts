@@ -309,7 +309,11 @@ export class ToolExecutor {
   }
 
   private requireResearchEngine(): DeepResearchEngine {
-    if (!this.researchEngine) throw new Error('The research engine is not ready yet.');
+    // The engine is stateless and needs no storage, so a lazily created one is
+    // equivalent to the shared instance. Constructing it here means the RESEARCH
+    // tool works in any context — including a unit test that never ran the
+    // server's startup wiring — instead of failing with "not ready yet".
+    if (!this.researchEngine) this.researchEngine = new DeepResearchEngine();
     return this.researchEngine;
   }
 
