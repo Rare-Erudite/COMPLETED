@@ -9,6 +9,7 @@ import { DocumentsService } from '../services/DocumentsService.js';
 import { DeepResearchEngine } from '../services/DeepResearchEngine.js';
 import { OwnerSearchIndexRegistry } from '../content/SearchIndex.js';
 import { processUrl, describeResult } from '../content/ContentEngine.js';
+import { scaffoldProject, PROJECT_TEMPLATES, type ProjectTemplate } from '../builder/ProjectScaffolder.js';
 
 const execFileAsync = promisify(execFile);
 import { resolveWritableAppRoot } from '../storage/PersistentJsonStore.js';
@@ -272,6 +273,37 @@ export const TOOL_SPECS: Record<ToolName, ToolSpec> = {
         depth: { type: 'string', description: 'quick, standard or deep', enum: ['quick', 'standard', 'deep'] },
       },
       required: ['question'],
+    },
+  },
+  SCAFFOLD_PROJECT: {
+    name: 'SCAFFOLD_PROJECT',
+    description: 'Create a real, buildable project on disk (node-cli, node-api, static-web, python-cli, react-vite) with source, tests and a README, and return the build/test/run commands for that stack.',
+    category: 'execution',
+    risk: 'medium',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Project name (used as the folder under projects/)' },
+        template: { type: 'string', description: 'Stack to generate', enum: ['node-cli', 'node-api', 'static-web', 'python-cli', 'react-vite'] },
+        objective: { type: 'string', description: 'What the project is for; written into the README and source header' },
+      },
+      required: ['name', 'template'],
+    },
+  },
+  RUN_PROJECT_STAGE: {
+    name: 'RUN_PROJECT_STAGE',
+    description: 'Run a real build, test or run stage for a scaffolded project and return the actual exit code and output. Only allowlisted stage commands are executed.',
+    category: 'execution',
+    risk: 'medium',
+    requiresDeveloperAuth: false,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project: { type: 'string', description: 'Project folder name under projects/' },
+        stage: { type: 'string', description: 'Which stage to run', enum: ['build', 'test', 'run'] },
+      },
+      required: ['project', 'stage'],
     },
   },
 };
@@ -635,6 +667,80 @@ export class ToolExecutor {
             restoredCheckpointId: checkpointId,
             restoredFiles: res.restoredFiles,
           };
+          break;
+        }
+
+        case 'SCAFFOLD_PROJECT': {
+          const { name: projectName, template, objective = '' } = inputs;
+          if (!projectName || typeof projectName !== 'string') throw new Error('name is required');
+          if (!PROJECT_TEMPLATES.includes(template)) {
+            throw new Error(`template must be one of: ${PROJECT_TEMPLATES.join(', ')}`);
+          }
+          // Writes into the workspace root so the build/test stages can act on
+          // the real files. Refuses to clobber an existing project.
+          output = scaffoldProject(PROJECT_ROOT, projectName, template as ProjectTemplate, String(objective));
+          break;
+        }
+
+        case 'RUN_PROJECT_STAGE': {
+          const { project, stage } = inputs;
+          if (!project || typeof project !== 'string') throw new Error('project is required');
+          if (!['build', 'test', 'run'].includes(stage)) {
+            throw new Error('stage must be one of: build, test, run');
+          }
+          const projectRoot = path.resolve(PROJECT_ROOT, 'projects', project);
+          if (!projectRoot.startsWith(path.resolve(PROJECT_ROOT, 'projects') + path.sep)) {
+            throw new Error('The project path escapes the projects directory.');
+          }
+          if (!fs.existsSync(projectRoot)) {
+            throw new Error(`No project named "${project}" exists under projects/.`);
+          }
+          // Only allowlisted binaries may run, and only from the project folder.
+          // The command is chosen by the server from the stage, never supplied
+          // by the caller, so this cannot be turned into arbitrary execution.
+          const stageCommands: Record<string, { command: string; args: string[] }> = {
+            build: { command: 'npm', args: ['run', 'build'] },
+            test: { command: 'npm', args: ['test'] },
+            run: { command: 'npm', args: ['start'] },
+          };
+          const chosen = stageCommands[stage];
+          if (!COMMAND_ALLOWLIST.has(chosen.command)) {
+            throw new Error(`Command "${chosen.command}" is not in the security allowlist.`);
+          }
+          try {
+            const res = await execFileAsync(chosen.command, chosen.args, {
+              cwd: projectRoot,
+              timeout: 120000,
+              maxBuffer: 2 * 1024 * 1024,
+              env: {
+                ...process.env,
+                OPENAI_API_KEY: '',
+                ANTHROPIC_API_KEY: '',
+                GEMINI_API_KEY: '',
+                RARE_API_TOKEN: '',
+                RARE_DEV_KEY: '',
+              },
+            });
+            output = {
+              project,
+              stage,
+              command: `${chosen.command} ${chosen.args.join(' ')}`,
+              success: true,
+              exitCode: 0,
+              stdout: res.stdout.slice(0, 4000),
+              stderr: res.stderr.slice(0, 2000),
+            };
+          } catch (err: any) {
+            output = {
+              project,
+              stage,
+              command: `${chosen.command} ${chosen.args.join(' ')}`,
+              success: false,
+              exitCode: typeof err.code === 'number' ? err.code : 1,
+              stdout: err.stdout ? String(err.stdout).slice(0, 2000) : '',
+              stderr: err.stderr ? String(err.stderr).slice(0, 2000) : err.message,
+            };
+          }
           break;
         }
 

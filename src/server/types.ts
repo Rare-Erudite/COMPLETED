@@ -75,7 +75,9 @@ export type ToolName =
   | 'OPEN_URL'
   | 'READ_DOCUMENT'
   | 'SEARCH_LIBRARY'
-  | 'START_RESEARCH';
+  | 'START_RESEARCH'
+  | 'SCAFFOLD_PROJECT'
+  | 'RUN_PROJECT_STAGE';
 
 export type RiskLevel = 'low' | 'medium' | 'high' | 'prohibited';
 

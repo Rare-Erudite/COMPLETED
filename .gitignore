@@ -20,3 +20,4 @@ server-build/
 
 # Local verification harnesses and generated audio (not shipped)
 .verify/
+.env.rare-verify

@@ -31,6 +31,7 @@ import {
 import { exportDocument, EXPORT_FORMATS } from './src/server/content/DocumentExporter.js';
 import { resolveLink, downloadMediaFromLink } from './src/server/content/LinkResolver.js';
 import { resolveSpeechProvider, LocalWhisperProvider } from './src/server/content/SpeechProviders.js';
+import { type ProjectTemplate } from './src/server/builder/ProjectScaffolder.js';
 import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
 import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
@@ -1992,10 +1993,15 @@ app.post('/api/voice/transcribe', async (req, res) => {
       }
     }
 
-    return res.json({
-      transcript: 'Voice message recorded and processed successfully.',
-      confidence: 0.95,
-      source: 'rare_native_acoustic',
+    // No speech provider could actually transcribe this audio. Returning a
+    // canned sentence here would present a fabricated transcript as a real
+    // recognition result, so fail honestly instead of faking success.
+    return res.status(503).json({
+      error: {
+        message: 'Speech recognition is unavailable: no transcription provider is configured on this server.',
+        code: 'TRANSCRIPTION_PROVIDER_UNAVAILABLE',
+        nextStep: 'Set GEMINI_API_KEY (or another speech provider) on the server.',
+      },
     });
   }
 
@@ -3792,15 +3798,62 @@ app.post('/api/agents/runs', async (req, res) => {
     teamRun.currentStage = 'Inspecting workspace';
     teamRun.agents[0].status = 'working';
     teamRun.agents[0].currentTask = 'Search project files for objective-related evidence';
-    const toolPlan = [
-      { agent: teamRun.agents[0], tool: 'SEARCH' as const, inputs: { query: teamRun.objective, scope: 'all' } },
-      { agent: teamRun.agents[1], tool: 'RESEARCH' as const, inputs: { query: teamRun.objective, maxResults: 5 } },
-      { agent: teamRun.agents[2], tool: 'RUN_TEST' as const, inputs: {} },
-      { agent: teamRun.agents[3], tool: 'BUILD_PROJECT' as const, inputs: {} },
+
+    // Real project lifecycle: scaffold a genuine project on disk, then run its
+    // actual build and test stages. The stack is chosen from the objective so
+    // the run produces something the user can open, build and run — not just an
+    // inspection of RARE's own workspace.
+    const objectiveText = teamRun.objective.toLowerCase();
+    const template: ProjectTemplate =
+      /(react|vite|frontend|web app|spa|dashboard)/.test(objectiveText)
+        ? 'react-vite'
+        : /(api|server|backend|endpoint|rest|service)/.test(objectiveText)
+          ? 'node-api'
+          : /(python|script|data|cli tool)/.test(objectiveText)
+            ? 'python-cli'
+            : /(website|landing|static|html|page)/.test(objectiveText)
+              ? 'static-web'
+              : 'node-cli';
+    const projectName = `run-${runId.replace(/[^a-z0-9]/gi, '').slice(-10)}`;
+    const scaffold = await toolExecutor.execute(
+      'SCAFFOLD_PROJECT',
+      { name: projectName, template, objective: teamRun.objective },
+      { actor: 'agent:ag_dev' },
+    );
+    const scaffolded = scaffold.success ? (scaffold.output as any) : null;
+    if (scaffolded) {
+      teamRun.agents[1].status = 'completed';
+      teamRun.agents[1].progressPercent = 100;
+      teamRun.agents[1].lastAction = `Scaffolded ${template} project at ${scaffolded.relativeRoot}`;
+      teamRun.agents[1].completedTasks.push(`Scaffold ${template} project`);
+      await recordEvent('ag_dev', 'Implementation Engineer', `Created ${scaffolded.files.length} real files under ${scaffolded.relativeRoot}.`, 'success', 'SCAFFOLD_PROJECT');
+    } else {
+      teamRun.agents[1].status = 'failed';
+      teamRun.agents[1].lastAction = `Scaffold failed: ${scaffold.error || 'unknown error'}`;
+      await recordEvent('ag_dev', 'Implementation Engineer', `Scaffold failed: ${scaffold.error || 'unknown error'}`, 'error', 'SCAFFOLD_PROJECT');
+    }
+
+    const toolPlan: Array<{ agent: (typeof teamRun.agents)[number]; tool: any; inputs: Record<string, unknown> }> = [
+      { agent: teamRun.agents[0], tool: 'SEARCH', inputs: { query: teamRun.objective, scope: 'all' } },
+      { agent: teamRun.agents[1], tool: 'RESEARCH', inputs: { query: teamRun.objective, maxResults: 5 } },
     ];
+    if (scaffolded) {
+      toolPlan.push({ agent: teamRun.agents[2], tool: 'RUN_PROJECT_STAGE', inputs: { project: scaffolded.name, stage: 'build' } });
+      toolPlan.push({ agent: teamRun.agents[2], tool: 'RUN_PROJECT_STAGE', inputs: { project: scaffolded.name, stage: 'test' } });
+    } else {
+      toolPlan.push({ agent: teamRun.agents[2], tool: 'RUN_TEST', inputs: {} });
+    }
+    toolPlan.push({ agent: teamRun.agents[3], tool: 'BUILD_PROJECT', inputs: {} });
     const toolResults: Array<{ tool: string; success: boolean; executionTimeMs: number; output?: unknown; error?: string }> = [];
     for (const [index, step] of toolPlan.entries()) {
-      teamRun.currentStage = step.tool === 'RUN_TEST' ? 'Running verification' : step.tool === 'BUILD_PROJECT' ? 'Verifying build' : 'Inspecting workspace';
+      teamRun.currentStage =
+        step.tool === 'RUN_PROJECT_STAGE'
+          ? (step.inputs.stage === 'build' ? 'Building the generated project' : 'Testing the generated project')
+          : step.tool === 'RUN_TEST'
+            ? 'Running verification'
+            : step.tool === 'BUILD_PROJECT'
+              ? 'Verifying build'
+              : 'Inspecting workspace';
       teamRun.userProgressMessage = `${step.agent.title}: executing ${step.tool}`;
       step.agent.status = 'working';
       step.agent.currentTask = `Execute ${step.tool} against the actual workspace or source`;
@@ -3835,6 +3888,18 @@ app.post('/api/agents/runs', async (req, res) => {
       objective: teamRun.objective,
       generatedAt: finishedAt,
       model: { provider: plan.providerType, model: plan.modelUsed, plan: plan.reply },
+      project: scaffolded
+        ? {
+            name: scaffolded.name,
+            template: scaffolded.template,
+            root: scaffolded.relativeRoot,
+            files: scaffolded.files,
+            buildCommand: scaffolded.buildCommand,
+            testCommand: scaffolded.testCommand,
+            runCommand: scaffolded.runCommand,
+            requiresInstall: scaffolded.requiresInstall,
+          }
+        : null,
       tools: toolResults,
     };
     const reportPath = `agent-runs/${runId}.json`;
@@ -3856,11 +3921,20 @@ app.post('/api/agents/runs', async (req, res) => {
     teamRun.currentStage = toolResults.every((result) => result.success) ? 'Verification complete' : 'Verification finished with failures';
     teamRun.status = toolResults.every((result) => result.success) ? 'completed' : 'failed';
     teamRun.userProgressMessage = teamRun.status === 'completed'
-      ? 'Workspace inspection, research, tests, and build verification completed. See the run report for evidence.'
+      ? (scaffolded
+          ? `Generated a real ${scaffolded.template} project at ${scaffolded.relativeRoot}, then built and tested it. See the run report for the actual command output.`
+          : 'Workspace inspection, research, tests, and build verification completed. See the run report for evidence.')
       : 'Verification finished with one or more tool failures. See the run report for actual outputs.';
     teamRun.coordinator.status = teamRun.status === 'completed' ? 'completed' : 'failed';
     teamRun.coordinator.lastAction = `Run report saved to ${reportPath}`;
-    await recordEvent('ag_coord', 'Project Coordinator', `Saved evidence report to ${reportPath}. No platform package was generated.`, 'info');
+    await recordEvent(
+      'ag_coord',
+      'Project Coordinator',
+      scaffolded
+        ? `Saved evidence report to ${reportPath}. Generated project: ${scaffolded.relativeRoot} (${scaffolded.files.length} files).`
+        : `Saved evidence report to ${reportPath}. No project was generated.`,
+      'info',
+    );
     await persistRun();
     return res.status(201).json(teamRun);
   } catch (error) {

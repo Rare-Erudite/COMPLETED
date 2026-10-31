@@ -71,6 +71,30 @@ let cachedFfmpeg: boolean | undefined;
 let cachedBinaries: { ffmpeg: string; ffprobe: string } | null | undefined;
 
 /**
+ * Make a bundled binary executable.
+ *
+ * `@ffprobe-installer/linux-x64` ships its binary with mode 0644 in the npm
+ * tarball and relies on a `postinstall` script (`chmod u+x ffprobe`) to fix it.
+ * Vercel installs with `--ignore-scripts`, so that script never runs and the
+ * binary stays non-executable: `execFile` then fails with EACCES and the whole
+ * transcription path reports FFMPEG_UNAVAILABLE even though the file is present.
+ * `@ffmpeg-installer` happens to ship 0755, but both are normalised here so the
+ * fix does not depend on which package is well-behaved. Best-effort: a
+ * read-only filesystem simply leaves the mode as-is and the probe below decides.
+ */
+async function ensureExecutable(filePath: string): Promise<void> {
+  if (!filePath || !path.isAbsolute(filePath)) return;
+  try {
+    const stat = await fs.stat(filePath);
+    if ((stat.mode & 0o111) === 0) {
+      await fs.chmod(filePath, 0o755);
+    }
+  } catch {
+    /* missing or read-only; the probe below reports the real outcome */
+  }
+}
+
+/**
  * Resolve the ffmpeg/ffprobe executables.
  *
  * A serverless host (Vercel) has no system ffmpeg and no writable PATH, so
@@ -112,6 +136,11 @@ export async function resolveMediaBinaries(): Promise<{ ffmpeg: string; ffprobe:
 
   for (const candidate of candidates) {
     try {
+      // Repair the executable bit before probing: a `--ignore-scripts` install
+      // (Vercel) leaves the bundled ffprobe at 0644, which would otherwise make
+      // every candidate fail and surface a false FFMPEG_UNAVAILABLE.
+      await ensureExecutable(candidate.ffmpeg);
+      await ensureExecutable(candidate.ffprobe);
       await execFileAsync(candidate.ffmpeg, ['-version'], { timeout: 15_000 });
       await execFileAsync(candidate.ffprobe, ['-version'], { timeout: 15_000 });
       cachedBinaries = candidate;
