@@ -1,0 +1,9 @@
+# CPU-only inference stack. Pinned to major versions that are known to work
+# together; pyannote 4.x changed both the token kwarg and the return type, and
+# diarize_offline.py already handles both shapes.
+torch==2.5.1
+torchaudio==2.5.1
+pyannote.audio==4.0.0
+huggingface_hub>=0.26.0
+soundfile>=0.12.1
+numpy<2.0
