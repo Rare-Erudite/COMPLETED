@@ -124,13 +124,21 @@ export class GeminiCoprocessorProvider implements IModelProvider {
    * Deduplicated so a model is never requested twice in one call.
    */
   private candidateModelIds(): string[] {
-    const ordered = [
-      GEMINI_MODEL,
-      GEMINI_MODEL_LITE,
-      ...this.discoveredModels,
-      ...KNOWN_GEMINI_FALLBACKS,
-    ].filter((id): id is string => Boolean(id && id.trim()));
-    return [...new Set(ordered)];
+    // When the catalog probe has run, it is the only trustworthy source: the
+    // hardcoded ids go stale as Google retires models, and trying them first
+    // burned a request per retired id on every call (five 404s before reaching
+    // a live model). Discovered ids lead; the configured/known ids remain only
+    // as a last resort for a deployment where the probe could not run.
+    const ordered = this.discoveredModels.length > 0
+      ? [...this.discoveredModels, GEMINI_MODEL, GEMINI_MODEL_LITE, ...KNOWN_GEMINI_FALLBACKS]
+      : [GEMINI_MODEL, GEMINI_MODEL_LITE, ...KNOWN_GEMINI_FALLBACKS];
+    return [...new Set(ordered.filter((id): id is string => Boolean(id && id.trim())))];
+  }
+
+  /** True when an error is a transient capacity/rate problem worth retrying. */
+  private isTransient(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /"code":\s*(429|500|503)|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|overloaded/i.test(message);
   }
 
   public async generate(
@@ -311,37 +319,53 @@ export class GeminiCoprocessorProvider implements IModelProvider {
       throw new Error('Audio data is missing or exceeds the 10 MB limit.');
     }
     const ai = this.getClient();
+    // Refresh the model catalog first so the live ids lead the candidate list.
+    // Without this the hardcoded ids are tried first and every retired one
+    // costs a 404 round-trip before a working model is reached.
+    if (this.discoveredModels.length === 0) {
+      try {
+        await this.isAvailable();
+      } catch {
+        /* probe is best-effort; the candidate list still has fallbacks */
+      }
+    }
     // Model names are configurable: Google retires models on a schedule, and a
     // hardcoded id silently breaks transcription the day it is withdrawn
     // (gemini-2.5-flash now returns 404 "no longer available to new users").
     let lastError: unknown = null;
     for (const modelId of this.candidateModelIds()) {
-      try {
-        // Both parts must be Part objects. Mixing a Part with a bare string in
-        // `contents` is rejected by the API, which made every audio request
-        // fail while text generation (which uses a plain string) kept working.
-        const response = await ai.models.generateContent({
-          model: modelId,
-          contents: [
-            {
-              text: 'Transcribe the supplied audio verbatim. Preserve speaker changes when clear. Mark uncertain or inaudible speech as [inaudible]; do not infer words from context.',
-            },
-            { inlineData: { mimeType, data: audioBase64 } },
-          ],
-        });
-        const text = response.text;
-        if (typeof text !== 'string' || text.trim().length === 0) {
-          throw new Error('Gemini returned an empty audio transcription.');
+      // A transient 503 ("high demand") is not a reason to give up on the only
+      // live model, so retry it a couple of times with a short backoff.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          // Both parts must be Part objects. Mixing a Part with a bare string in
+          // `contents` is rejected by the API, which made every audio request
+          // fail while text generation (which uses a plain string) kept working.
+          const response = await ai.models.generateContent({
+            model: modelId,
+            contents: [
+              {
+                text: 'Transcribe the supplied audio verbatim. Preserve speaker changes when clear. Mark uncertain or inaudible speech as [inaudible]; do not infer words from context.',
+              },
+              { inlineData: { mimeType, data: audioBase64 } },
+            ],
+          });
+          const text = response.text;
+          if (typeof text !== 'string' || text.trim().length === 0) {
+            throw new Error('Gemini returned an empty audio transcription.');
+          }
+          return { text, model: modelId };
+        } catch (error) {
+          lastError = error;
+          // Log the real reason. Swallowing it turned a diagnosable API error
+          // into an opaque "every segment failed" for the user.
+          const detail = error instanceof Error ? error.message : String(error);
+          console.warn(
+            `[GeminiCoprocessorProvider] Transcription model ${modelId} failed (attempt ${attempt + 1}): ${detail.slice(0, 300)}`,
+          );
+          if (!this.isTransient(error) || attempt === 2) break;
+          await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
         }
-        return { text, model: modelId };
-      } catch (error) {
-        lastError = error;
-        // Log the real reason. Swallowing it turned a diagnosable API error
-        // into an opaque "every segment failed" for the user.
-        const detail = error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[GeminiCoprocessorProvider] Transcription model ${modelId} failed: ${detail.slice(0, 300)}`,
-        );
       }
     }
     throw lastError instanceof Error
