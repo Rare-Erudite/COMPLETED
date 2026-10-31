@@ -317,11 +317,16 @@ export class GeminiCoprocessorProvider implements IModelProvider {
     let lastError: unknown = null;
     for (const modelId of this.candidateModelIds()) {
       try {
+        // Both parts must be Part objects. Mixing a Part with a bare string in
+        // `contents` is rejected by the API, which made every audio request
+        // fail while text generation (which uses a plain string) kept working.
         const response = await ai.models.generateContent({
           model: modelId,
           contents: [
+            {
+              text: 'Transcribe the supplied audio verbatim. Preserve speaker changes when clear. Mark uncertain or inaudible speech as [inaudible]; do not infer words from context.',
+            },
             { inlineData: { mimeType, data: audioBase64 } },
-            'Transcribe the supplied audio verbatim. Preserve speaker changes when clear. Mark uncertain or inaudible speech as [inaudible]; do not infer words from context.',
           ],
         });
         const text = response.text;
@@ -331,7 +336,12 @@ export class GeminiCoprocessorProvider implements IModelProvider {
         return { text, model: modelId };
       } catch (error) {
         lastError = error;
-        console.warn(`[GeminiCoprocessorProvider] Transcription model ${modelId} failed.`);
+        // Log the real reason. Swallowing it turned a diagnosable API error
+        // into an opaque "every segment failed" for the user.
+        const detail = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[GeminiCoprocessorProvider] Transcription model ${modelId} failed: ${detail.slice(0, 300)}`,
+        );
       }
     }
     throw lastError instanceof Error
