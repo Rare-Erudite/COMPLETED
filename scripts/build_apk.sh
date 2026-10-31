@@ -595,9 +595,26 @@ aapt package -m -J "$BUILD_DIR/src" \
   -I "$ANDROID_JAR"
 
 echo "=== [6/8] Compiling Java Bytecode with ECJ ==="
-ecj -proc:none -cp "$ANDROID_JAR" -source 1.8 -target 1.8 -d "$BUILD_DIR/bin/classes" \
-  "$BUILD_DIR/src/com/rare/ai/intelligence/R.java" \
-  "$BUILD_DIR/src/com/rare/ai/intelligence/MainActivity.java"
+# ecj is not part of the Android SDK and is not installed by default on CI
+# runners, so resolve it explicitly and fall back to javac (which ships with the
+# JDK the build already requires). Both produce Java 8 bytecode that d8 accepts.
+ECJ="${ECJ:-$(command -v ecj || true)}"
+if [ -n "$ECJ" ] && [ -x "$ECJ" ]; then
+  "$ECJ" -proc:none -cp "$ANDROID_JAR" -source 1.8 -target 1.8 -d "$BUILD_DIR/bin/classes" \
+    "$BUILD_DIR/src/com/rare/ai/intelligence/R.java" \
+    "$BUILD_DIR/src/com/rare/ai/intelligence/MainActivity.java"
+else
+  JAVAC="${JAVAC:-$(command -v javac || true)}"
+  if [ -z "$JAVAC" ]; then
+    echo "ERROR: neither ecj nor javac is available; a JDK is required to compile the Android sources." >&2
+    exit 1
+  fi
+  echo "ecj not found; using javac at $JAVAC"
+  "$JAVAC" -source 8 -target 8 -bootclasspath "$ANDROID_JAR" -classpath "$ANDROID_JAR" \
+    -d "$BUILD_DIR/bin/classes" \
+    "$BUILD_DIR/src/com/rare/ai/intelligence/R.java" \
+    "$BUILD_DIR/src/com/rare/ai/intelligence/MainActivity.java"
+fi
 
 echo "=== [7/8] Converting Bytecode to Dalvik classes.dex ==="
 # d8 is the current Dalvik compiler; dalvik-exchange/dx are long removed from
