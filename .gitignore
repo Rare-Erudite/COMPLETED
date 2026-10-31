@@ -21,3 +21,8 @@ server-build/
 # Local verification harnesses and generated audio (not shipped)
 .verify/
 .env.rare-verify
+
+# Android release signing material — never commit
+.rare/android/
+*.keystore
+*.jks
