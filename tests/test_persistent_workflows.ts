@@ -5,7 +5,7 @@ import path from 'node:path';
 import { DurableStateStore } from '../src/server/storage/DurableStateStore.js';
 import { DocumentStore } from '../src/server/storage/DocumentStore.js';
 import { PersistentJsonStore } from '../src/server/storage/PersistentJsonStore.js';
-import { ResearchService } from '../src/server/services/ResearchService.js';
+import { listProviders, providersFor } from '../src/server/services/ResearchProviders.js';
 
 export async function runPersistentWorkflowTests() {
   console.log('--- Testing durable state, documents, and sourced research ---');
@@ -79,19 +79,26 @@ export async function runPersistentWorkflowTests() {
     await assert.rejects(documents.importUrl('https://127.0.0.1/private.txt'), /Private and local/i);
     await assert.rejects(documents.importUrl('https://[::ffff:192.168.1.10]/private.txt'), /Private and local/i);
 
-    const research = new ResearchService(async (input) => {
-      const url = String(input);
-      if (url.includes('wikipedia.org')) {
-        return new Response(JSON.stringify({ query: { search: [{ title: 'Example topic', pageid: 42, timestamp: '2026-01-01', snippet: 'Source &amp; excerpt' }] } }), { status: 200 });
-      }
-      return new Response(JSON.stringify({ message: { items: [{ title: ['Research paper'], URL: 'https://doi.org/10.1000/example', DOI: '10.1000/example', publisher: 'Example Press', created: { 'date-parts': [[2025, 1, 2]] } }] } }), { status: 200 });
-    });
-    const result = await research.search('example topic', 5);
-    assert.equal(result.totalHits, 2);
-    assert.equal(result.findings[0].source, 'Wikipedia');
-    assert.equal(result.findings[0].snippet, 'Source & excerpt');
-    assert.ok(result.findings.some((finding) => finding.source === 'Crossref'));
-    assert.deepEqual(result.sourceErrors, []);
+    // Research discovery is served by the provider registry, which the deep
+    // engine and the RESEARCH tool both use. The old ResearchService queried
+    // only Wikipedia and Crossref and has been removed; these assertions check
+    // the registry that replaced it, including that it reports availability
+    // honestly rather than listing sources it cannot reach.
+    const providers = listProviders();
+    assert.ok(providers.length >= 6, 'The registry exposes the full provider set');
+    assert.ok(providers.some((provider) => provider.id === 'wikipedia'), 'Wikipedia is registered');
+    assert.ok(providers.some((provider) => provider.id === 'crossref'), 'Crossref is registered');
+    assert.ok(providers.some((provider) => provider.id === 'arxiv'), 'arXiv is registered');
+    assert.ok(
+      providers.every((provider) => typeof provider.available === 'boolean'),
+      'Every provider reports availability as a real boolean, not a promise',
+    );
+    const academic = providersFor(['academic']);
+    assert.ok(academic.length > 0, 'Academic category resolves to at least one provider');
+    assert.ok(
+      academic.every((provider) => provider.categories.includes('academic')),
+      'Category filtering never returns a provider that cannot serve it',
+    );
 
     await firstStore.close();
     await secondStore.close();

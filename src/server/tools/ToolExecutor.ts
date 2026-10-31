@@ -5,7 +5,6 @@ import { promisify } from 'util';
 import { ToolName, ToolSpec, ToolExecutionResult, RiskLevel } from '../types.js';
 import { MemoryStore } from '../storage/MemoryStore.js';
 import { CheckpointStore } from '../storage/CheckpointStore.js';
-import { ResearchService } from '../services/ResearchService.js';
 import { DocumentsService } from '../services/DocumentsService.js';
 import { DeepResearchEngine } from '../services/DeepResearchEngine.js';
 import { OwnerSearchIndexRegistry } from '../content/SearchIndex.js';
@@ -281,7 +280,6 @@ export class ToolExecutor {
   constructor(
     private memoryStore: MemoryStore,
     private checkpointStore: CheckpointStore,
-    private researchService = new ResearchService(),
     /** Owner-scoped document service, injected once storage is ready. */
     private documentsService?: DocumentsService,
     private searchIndexes?: OwnerSearchIndexRegistry,
@@ -637,9 +635,33 @@ export class ToolExecutor {
         }
 
         case 'RESEARCH': {
-          const { query, maxResults = 5 } = inputs;
+          const { query, maxResults = 5, depth = 'standard' } = inputs;
           if (!query) throw new Error('query is required');
-          output = await this.researchService.search(String(query), Number(maxResults));
+          // Use the same engine the HTTP route uses. The old ResearchService only
+          // queried Wikipedia and Crossref and returned bare hits; this returns
+          // retrieved, cited evidence so a tool call and a UI run agree.
+          const report = await this.requireResearchEngine().research({
+            question: String(query),
+            depth: (['quick', 'standard', 'deep'].includes(String(depth)) ? String(depth) : 'standard') as any,
+            maxSources: Number(maxResults) || undefined,
+          });
+          output = {
+            question: report.question,
+            scope: report.scope,
+            sourcesRead: report.sources.length,
+            providersUsed: report.providersUsed,
+            providerErrors: report.providerErrors,
+            claims: report.claims,
+            limitations: report.limitations,
+            report: report.report,
+            sources: report.sources.map((source) => ({
+              title: source.title,
+              url: source.finalUrl || source.url,
+              provider: source.provider,
+              date: source.date,
+              chars: source.chars,
+            })),
+          };
           break;
         }
 

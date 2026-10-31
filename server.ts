@@ -13,7 +13,6 @@ import { UpdateStore, UpdateChannel, AppUpdate } from './src/server/storage/Upda
 import { DurableStateStore } from './src/server/storage/DurableStateStore.js';
 import { PersistentJsonStore } from './src/server/storage/PersistentJsonStore.js';
 import { DocumentStore } from './src/server/storage/DocumentStore.js';
-import { ResearchService } from './src/server/services/ResearchService.js';
 import { DocumentsService, DocumentPathError, normalizeDocumentPath } from './src/server/services/DocumentsService.js';
 import { DeepResearchEngine } from './src/server/services/DeepResearchEngine.js';
 import { listProviders as listResearchProviders } from './src/server/services/ResearchProviders.js';
@@ -37,6 +36,7 @@ import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
 import { extractMemories } from './src/server/chat/MemoryExtractor.js';
+import { routeChatIntent } from './src/server/chat/IntentRouter.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
 import { BenchmarkSuite } from './src/server/evaluation/BenchmarkSuite.js';
 import { engine } from './src/engine/engine.ts';
@@ -130,12 +130,11 @@ const checkpointStore = new CheckpointStore();
 const trajectoryStore = new TrajectoryStore();
 const updateStore = new UpdateStore();
 const documentStore = new DocumentStore(PROJECT_ROOT);
-const researchService = new ResearchService();
 const searchIndexes = new OwnerSearchIndexRegistry();
 const deepResearchEngine = new DeepResearchEngine();
 /** Documents service is constructed once storage is ready (see startServer). */
 let documentsService: DocumentsService | undefined;
-const toolExecutor = new ToolExecutor(memoryStore, checkpointStore, researchService);
+const toolExecutor = new ToolExecutor(memoryStore, checkpointStore);
 const providerRegistry = new ProviderRegistry(memoryStore, toolExecutor);
 const selfDevEngine = new SelfDevelopmentEngine(checkpointStore, trajectoryStore, toolExecutor);
 const benchmarkSuite = new BenchmarkSuite(toolExecutor, memoryStore, checkpointStore);
@@ -1236,6 +1235,79 @@ app.post('/api/conversations/:id', async (req, res) => {
     const timestamp = new Date().toISOString();
     const userMessage = { id: `msg_${crypto.randomUUID()}`, role: 'user', content: text, timestamp };
     const contextMessages = [...conversation.messages, userMessage].slice(-20);
+
+    // Same routing as the streaming route: a research request must not be
+    // answered from the model's memory just because the client used the
+    // non-streaming endpoint.
+    const decision = routeChatIntent(text);
+    if (decision.intent === 'research') {
+      const report = await deepResearchEngine.research({
+        question: decision.question,
+        depth: decision.depth,
+        seedUrls: decision.seedUrls,
+      });
+      const researchId = `res_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+      const record = {
+        id: researchId,
+        query: decision.question,
+        subquestions: [],
+        findings: report.claims.map((claim) => claim.text).join('\n\n'),
+        sources: report.sources.map((source) => ({
+          name: source.provider,
+          url: source.finalUrl || source.url,
+          credibility: source.credibility,
+          date: source.date || '',
+          quote: source.passages[0] || source.snippet,
+          title: source.title,
+        })),
+        synthesis: report.report,
+        confidence: report.sources.length > 0 ? Math.min(0.95, 0.4 + report.sources.length * 0.05) : 0,
+        timestamp: new Date().toISOString(),
+        depth: report.depth,
+        status: report.sources.length > 0 ? 'completed' : 'incomplete',
+        scope: report.scope,
+        queries: report.queries,
+        providersUsed: report.providersUsed,
+        providerErrors: report.providerErrors,
+        sourceErrors: report.providerErrors,
+        limitations: report.limitations,
+        unreadable: report.unreadable,
+        claims: report.claims,
+        stats: report.stats,
+        progress: report.progress,
+        origin: 'chat',
+        conversationId: conversation.id,
+      };
+      await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'research_items', [], (items) => [record, ...items].slice(0, 100));
+
+      const researchMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: report.report, timestamp: new Date().toISOString() };
+      let researchUpdated: any = null;
+      await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'conversations', [], (current) => current.map((item) => {
+        if (item.id !== conversation.id) return item;
+        const title = !item.customTitle && (!item.title || item.title === 'New Chat') ? text.replace(/[^\w\s]/g, '').trim().slice(0, 34) || 'Chat' : item.title;
+        researchUpdated = { ...item, title, messages: [...item.messages, userMessage, researchMessage], messageCount: item.messages.length + 2 };
+        return researchUpdated;
+      }));
+
+      return res.json({
+        user_message: userMessage,
+        assistant_message: researchMessage,
+        reply: researchMessage,
+        conversationTitle: researchUpdated?.title,
+        conversation: researchUpdated,
+        memoriesStored: 0,
+        intent: { intent: decision.intent, reason: decision.reason, depth: decision.depth },
+        research: {
+          id: researchId,
+          sourcesRead: report.sources.length,
+          providersUsed: report.providersUsed,
+          providerErrors: report.providerErrors,
+          limitations: report.limitations,
+          stats: report.stats,
+        },
+      });
+    }
+
     const generated = await generateAssistantReply(text, Boolean(req.body?.think_harder), conversation.id, typeof req.body?.persona === 'string' ? req.body.persona.slice(0, 40) : undefined, contextMessages as any, false, res.locals.rareUserId);
     if (typeof generated.reply !== 'string' || !generated.reply.trim()) return res.status(502).json({ error: { message: 'The AI provider returned an empty response.' } });
     const assistantMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: generated.reply.trim(), timestamp: new Date().toISOString(), ...(generated.thought ? { thought: generated.thought } : {}) };
@@ -1328,6 +1400,88 @@ app.post('/api/conversations/:id/stream', async (req, res) => {
       systemPrompt: buildRareSystemPrompt(appSettings.assistantName || 'RARE', false),
       conversationHistory: prepared.history,
     };
+
+    // Chat is the front door to the whole app. A message that asks RARE to
+    // investigate must reach the research engine, not be answered from the
+    // model's memory. The decision is deterministic and reported to the client
+    // so the UI can show what actually happened.
+    const decision = routeChatIntent(text);
+    if (decision.intent === 'research') {
+      send('intent', { intent: decision.intent, reason: decision.reason, depth: decision.depth });
+      const report = await deepResearchEngine.research(
+        { question: decision.question, depth: decision.depth, seedUrls: decision.seedUrls },
+        (progress) => send('progress', progress),
+      );
+
+      const researchId = `res_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+      const record = {
+        id: researchId,
+        query: decision.question,
+        subquestions: [],
+        findings: report.claims.map((claim) => claim.text).join('\n\n'),
+        sources: report.sources.map((source) => ({
+          name: source.provider,
+          url: source.finalUrl || source.url,
+          credibility: source.credibility,
+          date: source.date || '',
+          quote: source.passages[0] || source.snippet,
+          title: source.title,
+        })),
+        synthesis: report.report,
+        confidence: report.sources.length > 0 ? Math.min(0.95, 0.4 + report.sources.length * 0.05) : 0,
+        timestamp: new Date().toISOString(),
+        depth: report.depth,
+        status: report.sources.length > 0 ? 'completed' : 'incomplete',
+        scope: report.scope,
+        queries: report.queries,
+        providersUsed: report.providersUsed,
+        providerErrors: report.providerErrors,
+        sourceErrors: report.providerErrors,
+        limitations: report.limitations,
+        unreadable: report.unreadable,
+        claims: report.claims,
+        stats: report.stats,
+        progress: report.progress,
+        origin: 'chat',
+        conversationId: conversation.id,
+      };
+      await persistentStorage!.updateOwnedState<any[]>(ownerId, 'research_items', [], (items) => [record, ...items].slice(0, 100));
+
+      // The report is the reply. It is streamed in chunks so the client renders
+      // it progressively, and it is the same text that was saved — no second,
+      // friendlier summary is invented on top of the evidence.
+      const researchReply = report.report;
+      for (let offset = 0; offset < researchReply.length; offset += 400) {
+        send('delta', { text: researchReply.slice(offset, offset + 400) });
+      }
+
+      const researchMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: researchReply, timestamp: new Date().toISOString() };
+      let researchUpdated: any = null;
+      await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
+        if (item.id !== conversation.id) return item;
+        const title = !item.customTitle && (!item.title || item.title === 'New Chat') ? text.replace(/[^\w\s]/g, '').trim().slice(0, 34) || 'Chat' : item.title;
+        researchUpdated = { ...item, title, messages: [...item.messages, userMessage, researchMessage], messageCount: item.messages.length + 2 };
+        return researchUpdated;
+      }));
+
+      send('done', {
+        user_message: userMessage,
+        assistant_message: researchMessage,
+        reply: researchMessage,
+        conversationTitle: researchUpdated?.title,
+        memoriesStored: 0,
+        research: {
+          id: researchId,
+          sourcesRead: report.sources.length,
+          providersUsed: report.providersUsed,
+          providerErrors: report.providerErrors,
+          limitations: report.limitations,
+          stats: report.stats,
+        },
+      });
+      res.end();
+      return;
+    }
 
     let fullReply = '';
     const gemini = providerRegistry.getGeminiProvider();

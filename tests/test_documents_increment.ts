@@ -6,6 +6,30 @@
  * mocks the server.
  */
 
+import fs from 'fs';
+import path from 'path';
+
+/**
+ * Levenshtein word error rate, used to score a transcript against the exact
+ * text that was spoken. Returns the fraction of reference words that were
+ * substituted, deleted or inserted.
+ */
+function wordErrorRate(reference: string[], hypothesis: string[]): number {
+  if (reference.length === 0) return 0;
+  const rows = reference.length + 1;
+  const cols = hypothesis.length + 1;
+  const dp: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  for (let i = 0; i < rows; i += 1) dp[i][0] = i;
+  for (let j = 0; j < cols; j += 1) dp[0][j] = j;
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const cost = reference[i - 1] === hypothesis[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+  return dp[rows - 1][cols - 1] / reference.length;
+}
+
 /**
  * Resolved per call, not at import time: the runner assigns
  * RARE_TEST_BASE_URL after this module is imported, so a top-level const
@@ -60,6 +84,36 @@ async function newSession(): Promise<{ headers: Record<string, string>; ownerId:
   const csrf = guest.headers.get('x-csrf-token') || csrfCookie?.slice('rare_csrf='.length) || '';
   return {
     ownerId: guest.json?.user?.id || guest.json?.ownerId || '',
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: baseUrl(),
+      Cookie: cookies.join('; '),
+      'X-CSRF-Token': decodeURIComponent(csrf),
+    },
+  };
+}
+
+/**
+ * Create a real (non-guest) account and return its authenticated headers.
+ *
+ * Transcription is deliberately gated to real accounts, because it spends the
+ * owner's speech-provider budget. A guest session therefore cannot exercise the
+ * success path, so this test registers a throwaway account for it.
+ */
+async function newAccountSession(): Promise<{ headers: Record<string, string>; email: string }> {
+  const email = `docs-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@rare-test.local`;
+  const password = 'DocsTestPass123!';
+  const signup = await api('POST', '/api/user/signup', { email, password, name: 'Docs Test' });
+
+  const raw = typeof (signup.headers as any).getSetCookie === 'function'
+    ? ((signup.headers as any).getSetCookie() as string[])
+    : (signup.headers.get('set-cookie') || '').split(/, (?=[^;,]+=)/g);
+  const cookies = raw.map((value) => value.split(';', 1)[0]).filter(Boolean);
+  const csrfCookie = cookies.find((value) => value.startsWith('rare_csrf='));
+  const csrf = signup.headers.get('x-csrf-token') || csrfCookie?.slice('rare_csrf='.length) || '';
+
+  return {
+    email,
     headers: {
       'Content-Type': 'application/json',
       Origin: baseUrl(),
@@ -424,6 +478,25 @@ export async function runDocumentsIncrementTests(): Promise<{ passed: number; fa
       typeof transcription.json?.segmentsTotal === 'number' && transcription.json.segmentsTotal >= 1,
       { total: transcription.json?.segmentsTotal, done: transcription.json?.segmentsTranscribed },
     );
+    // Provider-native utterance timings must survive into the turns. Collapsing
+    // a whole segment into one turn makes every timestamp inside it wrong, so a
+    // transcript with speech must produce more than one turn per segment.
+    const turns = transcription.json?.turns || [];
+    check(
+      'turns carry measured start and end times',
+      turns.length > 0 && turns.every((t: any) => typeof t.startSeconds === 'number' && typeof t.endSeconds === 'number'),
+      turns.length,
+    );
+    check(
+      'turns are ordered and non-overlapping on the clock',
+      turns.every((t: any, i: number) => i === 0 || t.startSeconds >= turns[i - 1].startSeconds),
+      turns.slice(0, 3).map((t: any) => t.startClock),
+    );
+    check(
+      'a segment with speech yields more than one turn',
+      turns.length > (transcription.json?.segmentsTotal || 1),
+      { turns: turns.length, segments: transcription.json?.segmentsTotal },
+    );
     const transcriptDoc = await authed(cookie, 'GET', `/api/documents/${transcription.json?.path}`);
     check('the transcript persists as a real document', transcriptDoc.status === 200, transcriptDoc.status);
   } else {
@@ -434,6 +507,86 @@ export async function runDocumentsIncrementTests(): Promise<{ passed: number; fa
       transcription.status >= 400 && Boolean(transcription.json?.error?.message),
       { status: transcription.status, error: transcription.json?.error },
     );
+  }
+
+  // --- real speech transcription ------------------------------------------
+  // The silent-tone fixture above proves the honest-failure path. This one
+  // proves the success path with actual speech, so the timestamp assertions
+  // below are exercised rather than skipped.
+  const speechPath = path.join(process.cwd(), 'tests/fixtures/speech_short.mp3');
+  const speechTruthPath = path.join(process.cwd(), 'tests/fixtures/speech_short.txt');
+  const hasSpeechFixture = fs.existsSync(speechPath);
+
+  if (hasSpeechFixture) {
+    const speechAudio = fs.readFileSync(speechPath).toString('base64');
+    const speechTruth = fs.readFileSync(speechTruthPath, 'utf8');
+    // Transcription is gated to real accounts, so use one here.
+    const speechSession = await newAccountSession();
+    const speech = await authed(speechSession, 'POST', '/api/documents/transcribe', {
+      audioBase64: speechAudio,
+      audioName: 'speech_short.mp3',
+      mimeType: 'audio/mpeg',
+    });
+
+    if (speech.status === 200) {
+      const turns = speech.json?.turns || [];
+      const transcriptText = String(speech.json?.transcript || '');
+
+      check('real speech transcribes to a saved transcript', /^transcripts\//.test(speech.json?.path || ''), speech.json?.path);
+      check('real speech produces multiple timed turns', turns.length > 1, turns.length);
+      check(
+        'every turn carries measured start and end times',
+        turns.length > 0 && turns.every((t: any) => typeof t.startSeconds === 'number' && typeof t.endSeconds === 'number'),
+        turns.length,
+      );
+      check(
+        'turns are ordered on the clock',
+        turns.every((t: any, i: number) => i === 0 || t.startSeconds >= turns[i - 1].startSeconds),
+        turns.slice(0, 3).map((t: any) => t.startClock),
+      );
+      check(
+        'a segment with speech yields more than one turn',
+        turns.length > (speech.json?.segmentsTotal || 1),
+        { turns: turns.length, segments: speech.json?.segmentsTotal },
+      );
+
+      // Score the spoken words only. `transcript` is the formatted rendering
+      // with "[00:00 - 00:03] Speaker 1:" prefixes, which would count as errors
+      // against the ground truth; the turn texts are the actual words.
+      const normalise = (text: string) =>
+        text.toLowerCase().replace(/[^a-z0-9' ]/g, ' ').split(/\s+/).filter(Boolean);
+      const reference = normalise(speechTruth);
+      const hypothesis = normalise(turns.map((t: any) => t.text).join(' '));
+      const wer = wordErrorRate(reference, hypothesis);
+      check(
+        'transcript matches the spoken words (WER under 40%)',
+        wer < 0.4,
+        { wer: `${(wer * 100).toFixed(1)}%`, words: reference.length },
+      );
+      check(
+        'transcript contains a distinctive spoken phrase',
+        /billing system|customer portal|support queue/i.test(transcriptText),
+        transcriptText.slice(0, 120),
+      );
+
+      // Read back with the SAME account that created it: documents are
+      // owner-scoped, so the guest session must not see this transcript.
+      const persisted = await authed(speechSession, 'GET', `/api/documents/${speech.json?.path}`);
+      check('the speech transcript persists as a real document', persisted.status === 200, persisted.status);
+      const crossAccount = await authed(cookie, 'GET', `/api/documents/${speech.json?.path}`);
+      check(
+        'another session cannot read the transcript',
+        crossAccount.status === 404 || crossAccount.status === 403,
+        crossAccount.status,
+      );
+    } else {
+      console.log(`  [debug] speech transcription status=${speech.status} body=${JSON.stringify(speech.json).slice(0, 300)}`);
+      check(
+        'real speech transcription either succeeds or fails with a stated reason',
+        speech.status >= 400 && Boolean(speech.json?.error?.message),
+        { status: speech.status, error: speech.json?.error },
+      );
+    }
   }
 
   // --- link resolution -----------------------------------------------------

@@ -13,6 +13,7 @@
  */
 
 import { ContentResult, processUrl } from '../content/ContentEngine.js';
+import { sanitizeUntrustedText } from '../content/UntrustedContent.js';
 import { ResearchHit, SourceCategory, getProvider, providersFor } from './ResearchProviders.js';
 
 export type ResearchDepth = 'quick' | 'standard' | 'deep';
@@ -414,17 +415,20 @@ export class DeepResearchEngine {
       return { ...base, error: result.error?.message || 'No readable text.', warnings: result.warnings };
     }
 
+    const sanitized = sanitizeUntrustedText(result.text);
     return {
       ...base,
       title: result.title || hit.title,
       finalUrl: result.finalUrl,
       fullText: true,
       chars: result.text.length,
-      passages: relevantPassages(result.text, terms),
+      passages: relevantPassages(sanitized.text, terms),
       references: extractReferences(result.text, result.finalUrl || hit.url),
       method: result.method,
       ocr: result.ocr,
-      warnings: result.warnings,
+      warnings: sanitized.flagged > 0
+        ? [...result.warnings, `${sanitized.flagged} instruction-like passage(s) neutralised (${sanitized.findings.join(', ')}).`]
+        : result.warnings,
     };
   }
 
@@ -493,6 +497,12 @@ export class DeepResearchEngine {
     const metadataOnly = sources.filter((source) => source.chars < 500).length;
     if (metadataOnly > 0) limitations.push(`${metadataOnly} source(s) yielded only a short excerpt, not full text.`);
     if (depth === 'quick') limitations.push('Quick depth: discovery was limited to one round and references were not followed.');
+    const injected = sources.filter((source) => source.warnings.some((warning) => warning.includes('instruction-like')));
+    if (injected.length > 0) {
+      limitations.push(
+        `${injected.length} source(s) contained text that tried to act as instructions; it was treated as evidence and neutralised, never followed.`,
+      );
+    }
     limitations.push('Only public web sources reachable from this server were searched; private databases, paywalled archives and print-only material were not.');
     return limitations;
   }

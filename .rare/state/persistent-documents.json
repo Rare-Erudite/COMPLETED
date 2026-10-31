@@ -7146,6 +7146,42 @@
         "role": "user",
         "createdAt": "2026-10-31T04:10:54.346Z"
       }
+    ],
+    [
+      "test_regular_1793420138464@example.com",
+      {
+        "id": "usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0",
+        "name": "Regular Test User",
+        "email": "test_regular_1793420138464@example.com",
+        "passwordHash": "scrypt:4abb4491e93c94a2a42949992277ff84:65239093a2fedb479ab25083556ad58d04d10c5bcdb283a528200aeb3aee6f5454d7bf50cc5d89393a2f722057b175a4ed296fc987eb3dbb677726c6b4b23c24",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:15:38.600Z"
+      }
+    ],
+    [
+      "test_other_1793420138646@example.com",
+      {
+        "id": "usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e",
+        "name": "Other Test User",
+        "email": "test_other_1793420138646@example.com",
+        "passwordHash": "scrypt:7c1582870b7f69db4e4f82feae0e4821:e1dee66c2d45a2cbf8c4e0683da4553a2ce642eedbcbd6a736edeab7aaa21ee941bd3d09004e9e512e8ea96f5e8ffeeec658be115de825282d53eef51c570287",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:15:38.706Z"
+      }
+    ],
+    [
+      "local1793420293@rare-verify.test",
+      {
+        "id": "usr_0db00a53-780d-4c89-b414-be8603d123f1",
+        "name": "Local",
+        "email": "local1793420293@rare-verify.test",
+        "passwordHash": "scrypt:ddd998519784e6b173c0a58ed138e2d0:160fba4016cf15a8e977c7e3dae04a2c1792aaf58d80681b62c7fd0459557338bd35cafb51a311151e82c1237c8130e6e033a5f3494c8fd9f6a22820da06c3ae",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:18:13.829Z"
+      }
     ]
   ],
   "audit_log": [
@@ -7677,6 +7713,132 @@
       {
         "userId": "guest_9da8a1d6-caf6-4550-8835-2ee1f77ec986",
         "expiresAt": 1796011897096
+      }
+    ],
+    [
+      "fc99affc853da3192b00ab24926f469b6951fc36eab7c0096e9e54bfc8333a07",
+      {
+        "userId": "usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0",
+        "expiresAt": 1796012138611
+      }
+    ],
+    [
+      "11e20a93945d323f4343ce271cb515a53704079279a6dfe47f92d94e31735b7d",
+      {
+        "userId": "usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e",
+        "expiresAt": 1796012138711
+      }
+    ],
+    [
+      "df1f716fbcdcd09d758b4be36e5ec280adeaacde15e3112ecf817c8af92bdf36",
+      {
+        "userId": "guest_165213c4-dad4-40b1-b78c-f1b3b7d8e90e",
+        "expiresAt": 1796012144508
+      }
+    ],
+    [
+      "e9e84db1a35ac8a43b40555be4d427ae9e4abe2b9623f883e4c372d6bfc84e79",
+      {
+        "userId": "guest_e73c2758-3d71-440b-96ac-65a9052b91a9",
+        "expiresAt": 1796012144563
+      }
+    ],
+    [
+      "a9183fbd92fdeed5d3b8ebaf54e966425152bf823d61318ce861f2ce1ea42617",
+      {
+        "userId": "guest_156a7ff6-d60a-49b2-b33d-2962c1a80cf2",
+        "expiresAt": 1796012152785
+      }
+    ],
+    [
+      "4e07551d1c9105f37f2b78649d63870a9f13823e5833882b850f145e3d6cc82d",
+      {
+        "userId": "usr_0db00a53-780d-4c89-b414-be8603d123f1",
+        "expiresAt": 1796012293835
+      }
+    ],
+    [
+      "730b4995cbab9ee260698ba8ca64285a3406c8cb964a9e83c4806d8149ef52f9",
+      {
+        "userId": "usr_0db00a53-780d-4c89-b414-be8603d123f1",
+        "expiresAt": 1796012403472
+      }
+    ],
+    [
+      "b6710e66a9d314698819f581813eedf5d3927b6cd4bcc805ac0592285e645009",
+      {
+        "userId": "guest_93aaad3a-f882-46a6-9acd-0904eebbde67",
+        "expiresAt": 1796012430670
+      }
+    ],
+    [
+      "701ee77dda86f62714e102cbbce33f2baf7733be2d45987d429331511bbe5c69",
+      {
+        "userId": "guest_debf8bdf-9070-439d-977f-aba69f8f91e5",
+        "expiresAt": 1796012437479
+      }
+    ],
+    [
+      "45a30f4ff88334e2ec9bdd23e3cb0669af284273da02bb21452fd1aefebd2062",
+      {
+        "userId": "guest_a1859209-2146-4fbc-a457-20bdb8377f73",
+        "expiresAt": 1796012464160
+      }
+    ],
+    [
+      "0f453c3f87aa2482459de34c0df111776826087d6e5e004e05d31ef7bfc470f8",
+      {
+        "userId": "guest_a7a2409e-f012-486d-8f34-5ab47ae8599f",
+        "expiresAt": 1796012469922
+      }
+    ],
+    [
+      "a4408b9f94997fbd9a42b790c7e4441ee7811278c0095139f289be8ca2558319",
+      {
+        "userId": "guest_20879d22-5672-4d4e-8547-ebe9e9fdada7",
+        "expiresAt": 1796012473999
+      }
+    ],
+    [
+      "d8e5828eb0ce6c7b3210fdea86f52b97b843e3ffada1ebc86873cec0f91fd1b8",
+      {
+        "userId": "guest_6a165bb0-cd24-4528-b456-782f23522a6d",
+        "expiresAt": 1796012479210
+      }
+    ],
+    [
+      "d5e5c25415afe10e96e964e77285e50f39730009db6793451f070b073a236bf9",
+      {
+        "userId": "guest_329a3c04-fff2-4692-a78c-4efac39d2710",
+        "expiresAt": 1796012504148
+      }
+    ],
+    [
+      "381923d219bd13e06f87e2ae15922fabf1371f9ddd88333b2e957edf313e2f64",
+      {
+        "userId": "guest_194c3cbd-8e0d-4928-9fe1-15f3f68ce1ae",
+        "expiresAt": 1796012511066
+      }
+    ],
+    [
+      "59a3c620b15a0d8a827e941d69af11216ab24c18cf7689e8e040b8c587d78a32",
+      {
+        "userId": "guest_6d534767-3940-4c17-b90e-306a718a23fe",
+        "expiresAt": 1796012533587
+      }
+    ],
+    [
+      "c324e2e68262896d5d3a64d83934c44761be5843be5692dc66f536b9864a0f17",
+      {
+        "userId": "guest_b6b88b0a-23be-4e3a-a936-66dca9b35d1e",
+        "expiresAt": 1796012572250
+      }
+    ],
+    [
+      "b0bba7ca18daa9a0ceb1ab6e5a900acbb8ef0a25effbfb6fe99737547dd06cbf",
+      {
+        "userId": "guest_bbc381ae-9865-49f3-b537-4e71e92e8097",
+        "expiresAt": 1796012576043
       }
     ]
   ],
@@ -10750,6 +10912,36 @@
       "provider": "email",
       "role": "user",
       "createdAt": "2026-10-31T04:10:54.346Z"
+    },
+    {
+      "id": "usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0",
+      "name": "Regular Test User",
+      "email": "test_regular_1793420138464@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:4abb4491e93c94a2a42949992277ff84:65239093a2fedb479ab25083556ad58d04d10c5bcdb283a528200aeb3aee6f5454d7bf50cc5d89393a2f722057b175a4ed296fc987eb3dbb677726c6b4b23c24",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:15:38.600Z"
+    },
+    {
+      "id": "usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e",
+      "name": "Other Test User",
+      "email": "test_other_1793420138646@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:7c1582870b7f69db4e4f82feae0e4821:e1dee66c2d45a2cbf8c4e0683da4553a2ce642eedbcbd6a736edeab7aaa21ee941bd3d09004e9e512e8ea96f5e8ffeeec658be115de825282d53eef51c570287",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:15:38.706Z"
+    },
+    {
+      "id": "usr_0db00a53-780d-4c89-b414-be8603d123f1",
+      "name": "Local",
+      "email": "local1793420293@rare-verify.test",
+      "phone": null,
+      "passwordHash": "scrypt:ddd998519784e6b173c0a58ed138e2d0:160fba4016cf15a8e977c7e3dae04a2c1792aaf58d80681b62c7fd0459557338bd35cafb51a311151e82c1237c8130e6e033a5f3494c8fd9f6a22820da06c3ae",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:18:13.829Z"
     }
   ],
   "rare_auth_sessions": [
@@ -11255,6 +11447,150 @@
         "ownerId": "guest_9da8a1d6-caf6-4550-8835-2ee1f77ec986",
         "accountId": null,
         "expiresAt": 1796011897096
+      }
+    ],
+    [
+      "fc99affc853da3192b00ab24926f469b6951fc36eab7c0096e9e54bfc8333a07",
+      {
+        "ownerId": "usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0",
+        "accountId": "usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0",
+        "expiresAt": 1796012138611
+      }
+    ],
+    [
+      "11e20a93945d323f4343ce271cb515a53704079279a6dfe47f92d94e31735b7d",
+      {
+        "ownerId": "usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e",
+        "accountId": "usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e",
+        "expiresAt": 1796012138711
+      }
+    ],
+    [
+      "df1f716fbcdcd09d758b4be36e5ec280adeaacde15e3112ecf817c8af92bdf36",
+      {
+        "ownerId": "guest_165213c4-dad4-40b1-b78c-f1b3b7d8e90e",
+        "accountId": null,
+        "expiresAt": 1796012144508
+      }
+    ],
+    [
+      "e9e84db1a35ac8a43b40555be4d427ae9e4abe2b9623f883e4c372d6bfc84e79",
+      {
+        "ownerId": "guest_e73c2758-3d71-440b-96ac-65a9052b91a9",
+        "accountId": null,
+        "expiresAt": 1796012144563
+      }
+    ],
+    [
+      "a9183fbd92fdeed5d3b8ebaf54e966425152bf823d61318ce861f2ce1ea42617",
+      {
+        "ownerId": "guest_156a7ff6-d60a-49b2-b33d-2962c1a80cf2",
+        "accountId": null,
+        "expiresAt": 1796012152785
+      }
+    ],
+    [
+      "4e07551d1c9105f37f2b78649d63870a9f13823e5833882b850f145e3d6cc82d",
+      {
+        "ownerId": "usr_0db00a53-780d-4c89-b414-be8603d123f1",
+        "accountId": "usr_0db00a53-780d-4c89-b414-be8603d123f1",
+        "expiresAt": 1796012293835
+      }
+    ],
+    [
+      "730b4995cbab9ee260698ba8ca64285a3406c8cb964a9e83c4806d8149ef52f9",
+      {
+        "ownerId": "usr_0db00a53-780d-4c89-b414-be8603d123f1",
+        "accountId": "usr_0db00a53-780d-4c89-b414-be8603d123f1",
+        "expiresAt": 1796012403472
+      }
+    ],
+    [
+      "b6710e66a9d314698819f581813eedf5d3927b6cd4bcc805ac0592285e645009",
+      {
+        "ownerId": "guest_93aaad3a-f882-46a6-9acd-0904eebbde67",
+        "accountId": null,
+        "expiresAt": 1796012430670
+      }
+    ],
+    [
+      "701ee77dda86f62714e102cbbce33f2baf7733be2d45987d429331511bbe5c69",
+      {
+        "ownerId": "guest_debf8bdf-9070-439d-977f-aba69f8f91e5",
+        "accountId": null,
+        "expiresAt": 1796012437479
+      }
+    ],
+    [
+      "45a30f4ff88334e2ec9bdd23e3cb0669af284273da02bb21452fd1aefebd2062",
+      {
+        "ownerId": "guest_a1859209-2146-4fbc-a457-20bdb8377f73",
+        "accountId": null,
+        "expiresAt": 1796012464160
+      }
+    ],
+    [
+      "0f453c3f87aa2482459de34c0df111776826087d6e5e004e05d31ef7bfc470f8",
+      {
+        "ownerId": "guest_a7a2409e-f012-486d-8f34-5ab47ae8599f",
+        "accountId": null,
+        "expiresAt": 1796012469922
+      }
+    ],
+    [
+      "a4408b9f94997fbd9a42b790c7e4441ee7811278c0095139f289be8ca2558319",
+      {
+        "ownerId": "guest_20879d22-5672-4d4e-8547-ebe9e9fdada7",
+        "accountId": null,
+        "expiresAt": 1796012473999
+      }
+    ],
+    [
+      "d8e5828eb0ce6c7b3210fdea86f52b97b843e3ffada1ebc86873cec0f91fd1b8",
+      {
+        "ownerId": "guest_6a165bb0-cd24-4528-b456-782f23522a6d",
+        "accountId": null,
+        "expiresAt": 1796012479210
+      }
+    ],
+    [
+      "d5e5c25415afe10e96e964e77285e50f39730009db6793451f070b073a236bf9",
+      {
+        "ownerId": "guest_329a3c04-fff2-4692-a78c-4efac39d2710",
+        "accountId": null,
+        "expiresAt": 1796012504148
+      }
+    ],
+    [
+      "381923d219bd13e06f87e2ae15922fabf1371f9ddd88333b2e957edf313e2f64",
+      {
+        "ownerId": "guest_194c3cbd-8e0d-4928-9fe1-15f3f68ce1ae",
+        "accountId": null,
+        "expiresAt": 1796012511066
+      }
+    ],
+    [
+      "59a3c620b15a0d8a827e941d69af11216ab24c18cf7689e8e040b8c587d78a32",
+      {
+        "ownerId": "guest_6d534767-3940-4c17-b90e-306a718a23fe",
+        "accountId": null,
+        "expiresAt": 1796012533587
+      }
+    ],
+    [
+      "c324e2e68262896d5d3a64d83934c44761be5843be5692dc66f536b9864a0f17",
+      {
+        "ownerId": "guest_b6b88b0a-23be-4e3a-a936-66dca9b35d1e",
+        "accountId": null,
+        "expiresAt": 1796012572250
+      }
+    ],
+    [
+      "b0bba7ca18daa9a0ceb1ab6e5a900acbb8ef0a25effbfb6fe99737547dd06cbf",
+      {
+        "ownerId": "guest_bbc381ae-9865-49f3-b537-4e71e92e8097",
+        "accountId": null,
+        "expiresAt": 1796012576043
       }
     ]
   ],
@@ -12952,5 +13288,1031 @@
       "warnings": []
     }
   ],
-  "rare_user_state:guest_9da8a1d6-caf6-4550-8835-2ee1f77ec986:documents": []
+  "rare_user_state:guest_9da8a1d6-caf6-4550-8835-2ee1f77ec986:documents": [],
+  "rare_user_state:usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0:memories": [
+    {
+      "id": "mem_bbef802f-f222-495d-b522-24c6c431c667",
+      "timestamp": "2026-10-31T04:15:38.720Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e:memories": [],
+  "rare_user_state:usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:15:38.745Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e:documents": [],
+  "rare_user_state:usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0:conversations": [
+    {
+      "id": "conv_f0812544-757d-467d-9184-9113e8611bea",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:15:38.755Z",
+      "userId": "usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e:conversations": [],
+  "rare_user_state:usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e:settings": {},
+  "rare_user_state:usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0:schedules": [
+    {
+      "id": "sch_c6df8596-14a4-47dd-80fe-55e7deab2903",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:15:38.795Z"
+    }
+  ],
+  "rare_user_state:usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e:schedules": [],
+  "rare_user_state:usr_2bafbf10-5b7e-4929-b923-c7b6b2ef6db0:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e:plugin_settings": {},
+  "rare_user_state:usr_6c70a2c9-3e60-4aa2-b4da-48bbeb2aac3e:projects": [],
+  "rare_user_state:guest_165213c4-dad4-40b1-b78c-f1b3b7d8e90e:conversations": [
+    {
+      "id": "conv_94371d45-259b-4e04-8a92-29506b13bdfc",
+      "title": "Pipeline Test",
+      "created_at": "2026-10-31T04:15:44.524Z",
+      "userId": "guest_165213c4-dad4-40b1-b78c-f1b3b7d8e90e",
+      "messages": [
+        {
+          "id": "msg_7acd2a32-7a6a-4940-82db-4b13601c73f9",
+          "role": "assistant",
+          "content": "Hello! I am RARE — your personal AI companion and software builder. What would you like to work on today?",
+          "timestamp": "2026-10-31T04:15:44.524Z"
+        }
+      ]
+    }
+  ],
+  "rare_user_state:guest_165213c4-dad4-40b1-b78c-f1b3b7d8e90e:guest_usage": {
+    "online_chat_messages": 2
+  },
+  "rare_user_state:guest_165213c4-dad4-40b1-b78c-f1b3b7d8e90e:memories": [],
+  "rare_user_state:guest_e73c2758-3d71-440b-96ac-65a9052b91a9:documents": [
+    {
+      "path": "uploads/versioned-1793420144571.md",
+      "content": "version one",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:15:52.777Z",
+      "version": 4,
+      "history": [
+        {
+          "content": "version three",
+          "updatedAt": "2026-10-31T04:15:52.769Z",
+          "version": 3
+        },
+        {
+          "content": "version two",
+          "updatedAt": "2026-10-31T04:15:52.762Z",
+          "version": 2
+        },
+        {
+          "content": "version one",
+          "updatedAt": "2026-10-31T04:15:52.750Z",
+          "version": 1
+        }
+      ],
+      "origin": "manual"
+    },
+    {
+      "path": "uploads/sales-1793420144571-1793420148079.md",
+      "content": "## Sales\n\n| Region | Revenue | Units |\n| --- | --- | --- |\n| Lagos | 2100000 | 412 |\n| Abuja | 800000 | 190 |",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:15:48.079Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "xlsx",
+      "label": "Excel workbook (XLSX)",
+      "method": "spreadsheet-sheetjs",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/contract-1793420144571-1793420148056.md",
+      "content": "Contract between RARE and Nova Systems.\n\nPayment of 45000 pounds is due on 2027-01-15.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:15:48.056Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "docx",
+      "label": "Word document (DOCX)",
+      "method": "docx-mammoth",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/report-1793420144571-1793420147958.md",
+      "content": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:15:47.958Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "pdf",
+      "label": "PDF document",
+      "method": "pdfjs-text",
+      "ocr": false,
+      "pages": [
+        {
+          "page": 1,
+          "text": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan."
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "rare_user_state:guest_156a7ff6-d60a-49b2-b33d-2962c1a80cf2:documents": [],
+  "rare_user_state:usr_0db00a53-780d-4c89-b414-be8603d123f1:documents": [
+    {
+      "path": "transcripts/speech_short_1793420495780.md",
+      "content": "# Transcript — speech_short.mp3\n\n- Duration: 00:21\n- Speakers detected: 1 (provider did not distinguish them)\n- Segments transcribed: 1/1\n- Coverage: 100%\n- Model: faster-whisper/base\n\n## Extraction notes\n\n- The provider did not distinguish individual speakers; every turn is attributed to one speaker.\n\n[00:00 – 00:03] Speaker 1: The quarterly planning meeting opened at either clock.\n[00:04 – 00:08] Speaker 1: Atheroconcwo confirmed that the migration to the new billing system is complete.\n[00:09 – 00:13] Speaker 1: We decided to launch the customer portal on the 14th of November.\n[00:13 – 00:16] Speaker 1: Tund will prepare the release notice by Friday.\n[00:16 – 00:20] Speaker 1: The team agreed that the support queue must be renewed and remain morning.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:35.780Z",
+      "version": 1,
+      "history": [],
+      "origin": "transcript"
+    },
+    {
+      "path": "transcripts/product_review_1793420403175.md",
+      "content": "# Transcript — product review\n\n- Duration: 06:04\n- Speakers detected: 1 (provider did not distinguish them)\n- Segments transcribed: 4/4\n- Coverage: 100%\n- Model: faster-whisper/base\n\n## Extraction notes\n\n- The provider did not distinguish individual speakers; every turn is attributed to one speaker.\n\n[00:00 – 00:03] Speaker 1: This is the recording of the product review for the rare project.\n[00:04 – 00:07] Speaker 1: The meeting began with a summary of the previous print.\n[00:07 – 00:12] Speaker 1: Ada Rock Encore reported that the document pipeline now handles canned files correctly.\n[00:13 – 00:20] Speaker 1: She explained that the extraction stage was written and that the new version reads table as well as plain text.\n[00:20 – 00:25] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[00:26 – 00:32] Speaker 1: Ada said it had been tested with a two-hour interview and at the time stamps were accurate to within one second.\n[00:33 – 00:39] Speaker 1: We decided to unopt the local speed engine as the default because it keeps audio on the device.\n[00:39 – 00:46] Speaker 1: The team agreed that the cloud provider should remain available as an option for users who prefer higher accuracy.\n[00:46 – 00:51] Speaker 1: Kiddy will prepare a comparison of the two engines by the 21st of November.\n[00:51 – 00:56] Speaker 1: Ada needs to update the security documentation before the next review.\n[00:56 – 01:00] Speaker 1: The group discussed the remaining work on the research module.\n[01:00 – 01:07] Speaker 1: Tundra said the fetching layer already blocks private network addresses and three directs are evaluated at every hop.\n[01:08 – 01:11] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[01:12 – 01:19] Speaker 1: One open question was whether the mobile application should ship with the model bundled or download it on first run.\n[01:19 – 01:24] Speaker 1: Ada will investigate the download size and report back next week.\n[01:24 – 01:30] Speaker 1: The meeting closed with a review of the action items and a reminder that the next review is on the fifth of December.\n[01:31 – 01:34] Speaker 1: This is the recording of the product review for the rare project.\n[01:35 – 01:38] Speaker 1: The meeting began with a summary of the previous print.\n[01:38 – 01:43] Speaker 1: Ada rock-on-quo reported that the document pipeline now handles and files correctly.\n[01:43 – 01:51] Speaker 1: She explained that the extraction stage was written and that the new version reads table as well as plain text.\n[01:51 – 01:56] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[01:57 – 02:00] Speaker 1: Ada said it had been tested with a two-hour interview.\n[02:00 – 02:03] Speaker 1: and at the time stamps were accurate within one second.\n[02:04 – 02:10] Speaker 1: We decided to unopt the local speed engine as the default because it keeps audio on the device.\n[02:10 – 02:15] Speaker 1: The team agreed that the cloud provider should remain available as an option for users\n[02:15 – 02:17] Speaker 1: who prefer higher accuracy.\n[02:17 – 02:22] Speaker 1: Kid will prepare a comparison of the two engines by the 21st of November.\n[02:23 – 02:27] Speaker 1: Aiden needs to update the security documentation before the next review.\n[02:27 – 02:31] Speaker 1: The group discussed the remaining work on the research module.\n[02:31 – 02:35] Speaker 1: Tonset the fetching layer already blocks private network addresses\n[02:35 – 02:38] Speaker 1: and the three directs are evaluated at every hop.\n[02:39 – 02:42] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[02:43 – 02:50] Speaker 1: One open question was whether the mobile application should ship with the model bundled or download it on first run.\n[02:50 – 02:55] Speaker 1: Aiden will investigate the download size and report back next week.\n[02:55 – 03:01] Speaker 1: The meeting closed with a review of the action items and a reminder that the next review is on the 5th of December.\n[03:02 – 03:05] Speaker 1: This is the recording of the product review for the rare project.\n[03:06 – 03:09] Speaker 1: The meeting began with a summary of the previous print.\n[03:09 – 03:15] Speaker 1: Aiden Oconquo reported that the document pipeline now handles and files correctly.\n[03:15 – 03:22] Speaker 1: She explained that the extraction stage was written and that the new version reads table as well as plain text.\n[03:22 – 03:27] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[03:28 – 03:34] Speaker 1: Aiden said it had been tested with a two-hour interview and at the time stamps were accurate or within one second.\n[03:35 – 03:41] Speaker 1: We decided to adopt the local speed engine as the default because it keeps audio on the device.\n[03:41 – 03:48] Speaker 1: The team agreed that the cloud provider should remain available as an option for users who prefer higher accuracy.\n[03:48 – 03:53] Speaker 1: The team will prepare a comparison on the two engines by the 21st of November.\n[03:54 – 03:58] Speaker 1: Aiden needs to update the security documentation before the next review.\n[03:59 – 04:00] Speaker 1: The group discussed the review.\n[04:00 – 04:02] Speaker 1: in work on the research module.\n[04:02 – 04:08] Speaker 1: Tonset the fetching layer already blocks private network addresses, and 3 directs are\n[04:08 – 04:09] Speaker 1: validated at every hop.\n[04:10 – 04:13] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[04:14 – 04:20] Speaker 1: One open question was whether the mobile application should ship with the model bundled, or download\n[04:20 – 04:21] Speaker 1: it on first run.\n[04:21 – 04:26] Speaker 1: Ada will investigate the download size, and report back next week.\n[04:26 – 04:31] Speaker 1: The meeting closed with a review of the action items, and a reminder that the next review\n[04:31 – 04:32] Speaker 1: is on the 5th of December.\n[04:33 – 04:36] Speaker 1: This is the recording of the product review for the rare project.\n[04:37 – 04:40] Speaker 1: The meeting began with a summary of the previous print.\n[04:40 – 04:46] Speaker 1: Ada Rock Enquo reported that the document pipeline now handles canned files correctly.\n[04:46 – 04:51] Speaker 1: She explained that the extraction stage was written, and that the new version reads table\n[04:51 – 04:53] Speaker 1: as well as plain text.\n[04:53 – 04:58] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[04:59 – 05:04] Speaker 1: Ada said it had been tested with a two-hour interview, and at the time-tempts were accurate\n[05:04 – 05:05] Speaker 1: to within one second.\n[05:06 – 05:12] Speaker 1: We decided to adopt the local speak engine as the default, because it keeps audio on the device.\n[05:12 – 05:17] Speaker 1: The team agreed that the cloud provider should remain available as an option for users,\n[05:17 – 05:19] Speaker 1: who prefer higher accuracy.\n[05:19 – 05:24] Speaker 1: The team will prepare a comparison of the two engines by the 21st of November.\n[05:25 – 05:29] Speaker 1: Ada needs to update the security documentation before the next review.\n[05:30 – 05:33] Speaker 1: The group discussed the remaining work on the research module.\n[05:33 – 05:37] Speaker 1: Tundra said the fetching layer already blocks private network addresses,\n[05:37 – 05:40] Speaker 1: and three directs are evaluated at every hop.\n[05:41 – 05:44] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[05:44 – 05:50] Speaker 1: One open question was whether the mobile application should ship with the model bundled,\n[05:50 – 05:52] Speaker 1: or download it on 1st run.\n[05:52 – 05:57] Speaker 1: Ada will investigate the download size, and report back next week.\n[05:57 – 06:00] Speaker 1: The meeting closed with a review of the action items.\n[06:00 – 06:03] Speaker 1: the reminder that the next review is on the 5th of December.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:20:03.176Z",
+      "version": 1,
+      "history": [],
+      "origin": "transcript"
+    },
+    {
+      "path": "transcripts/short_1793420303115.md",
+      "content": "# Transcript — short\n\n- Duration: 00:21\n- Speakers detected: 1 (provider did not distinguish them)\n- Segments transcribed: 1/1\n- Coverage: 100%\n- Model: faster-whisper/base\n\n## Extraction notes\n\n- The provider did not distinguish individual speakers; every turn is attributed to one speaker.\n\n[00:00 – 00:03] Speaker 1: The quarterly planning meeting opened at either clock.\n[00:04 – 00:08] Speaker 1: Atheroconcwo confirmed that the migration to the new billing system is complete.\n[00:09 – 00:13] Speaker 1: We decided to launch the customer portal on the 14th of November.\n[00:13 – 00:16] Speaker 1: Tund will prepare the release notice by Friday.\n[00:16 – 00:20] Speaker 1: The team agreed that the support queue must be renewed and remain morning.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:18:23.116Z",
+      "version": 1,
+      "history": [],
+      "origin": "transcript"
+    }
+  ],
+  "rare_user_state:guest_93aaad3a-f882-46a6-9acd-0904eebbde67:documents": [
+    {
+      "path": "uploads/versioned-1793420430695.md",
+      "content": "version one",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:20:37.475Z",
+      "version": 4,
+      "history": [
+        {
+          "content": "version three",
+          "updatedAt": "2026-10-31T04:20:37.472Z",
+          "version": 3
+        },
+        {
+          "content": "version two",
+          "updatedAt": "2026-10-31T04:20:37.467Z",
+          "version": 2
+        },
+        {
+          "content": "version one",
+          "updatedAt": "2026-10-31T04:20:37.463Z",
+          "version": 1
+        }
+      ],
+      "origin": "manual"
+    },
+    {
+      "path": "uploads/sales-1793420430695-1793420433347.md",
+      "content": "## Sales\n\n| Region | Revenue | Units |\n| --- | --- | --- |\n| Lagos | 2100000 | 412 |\n| Abuja | 800000 | 190 |",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:20:33.347Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "xlsx",
+      "label": "Excel workbook (XLSX)",
+      "method": "spreadsheet-sheetjs",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/contract-1793420430695-1793420432972.md",
+      "content": "Contract between RARE and Nova Systems.\n\nPayment of 45000 pounds is due on 2027-01-15.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:20:32.972Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "docx",
+      "label": "Word document (DOCX)",
+      "method": "docx-mammoth",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/report-1793420430695-1793420432852.md",
+      "content": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:20:32.852Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "pdf",
+      "label": "PDF document",
+      "method": "pdfjs-text",
+      "ocr": false,
+      "pages": [
+        {
+          "page": 1,
+          "text": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan."
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "rare_user_state:guest_debf8bdf-9070-439d-977f-aba69f8f91e5:documents": [],
+  "rare_user_state:guest_a1859209-2146-4fbc-a457-20bdb8377f73:documents": [
+    {
+      "path": "uploads/versioned-1793420464182.md",
+      "content": "version one",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:09.912Z",
+      "version": 4,
+      "history": [
+        {
+          "content": "version three",
+          "updatedAt": "2026-10-31T04:21:09.904Z",
+          "version": 3
+        },
+        {
+          "content": "version two",
+          "updatedAt": "2026-10-31T04:21:09.897Z",
+          "version": 2
+        },
+        {
+          "content": "version one",
+          "updatedAt": "2026-10-31T04:21:09.887Z",
+          "version": 1
+        }
+      ],
+      "origin": "manual"
+    },
+    {
+      "path": "uploads/sales-1793420464182-1793420465581.md",
+      "content": "## Sales\n\n| Region | Revenue | Units |\n| --- | --- | --- |\n| Lagos | 2100000 | 412 |\n| Abuja | 800000 | 190 |",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:05.581Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "xlsx",
+      "label": "Excel workbook (XLSX)",
+      "method": "spreadsheet-sheetjs",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/contract-1793420464182-1793420465063.md",
+      "content": "Contract between RARE and Nova Systems.\n\nPayment of 45000 pounds is due on 2027-01-15.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:05.063Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "docx",
+      "label": "Word document (DOCX)",
+      "method": "docx-mammoth",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/report-1793420464182-1793420464957.md",
+      "content": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:04.957Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "pdf",
+      "label": "PDF document",
+      "method": "pdfjs-text",
+      "ocr": false,
+      "pages": [
+        {
+          "page": 1,
+          "text": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan."
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "rare_user_state:guest_a7a2409e-f012-486d-8f34-5ab47ae8599f:documents": [],
+  "rare_user_state:guest_20879d22-5672-4d4e-8547-ebe9e9fdada7:documents": [
+    {
+      "path": "uploads/versioned-1793420474010.md",
+      "content": "version one",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:19.205Z",
+      "version": 4,
+      "history": [
+        {
+          "content": "version three",
+          "updatedAt": "2026-10-31T04:21:19.200Z",
+          "version": 3
+        },
+        {
+          "content": "version two",
+          "updatedAt": "2026-10-31T04:21:19.196Z",
+          "version": 2
+        },
+        {
+          "content": "version one",
+          "updatedAt": "2026-10-31T04:21:19.188Z",
+          "version": 1
+        }
+      ],
+      "origin": "manual"
+    },
+    {
+      "path": "uploads/sales-1793420474010-1793420475094.md",
+      "content": "## Sales\n\n| Region | Revenue | Units |\n| --- | --- | --- |\n| Lagos | 2100000 | 412 |\n| Abuja | 800000 | 190 |",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:15.095Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "xlsx",
+      "label": "Excel workbook (XLSX)",
+      "method": "spreadsheet-sheetjs",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/contract-1793420474010-1793420474792.md",
+      "content": "Contract between RARE and Nova Systems.\n\nPayment of 45000 pounds is due on 2027-01-15.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:14.792Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "docx",
+      "label": "Word document (DOCX)",
+      "method": "docx-mammoth",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/report-1793420474010-1793420474742.md",
+      "content": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:14.743Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "pdf",
+      "label": "PDF document",
+      "method": "pdfjs-text",
+      "ocr": false,
+      "pages": [
+        {
+          "page": 1,
+          "text": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan."
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "rare_user_state:guest_6a165bb0-cd24-4528-b456-782f23522a6d:documents": [],
+  "rare_user_state:guest_329a3c04-fff2-4692-a78c-4efac39d2710:documents": [
+    {
+      "path": "uploads/versioned-1793420504158.md",
+      "content": "version one",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:51.059Z",
+      "version": 4,
+      "history": [
+        {
+          "content": "version three",
+          "updatedAt": "2026-10-31T04:21:51.055Z",
+          "version": 3
+        },
+        {
+          "content": "version two",
+          "updatedAt": "2026-10-31T04:21:51.051Z",
+          "version": 2
+        },
+        {
+          "content": "version one",
+          "updatedAt": "2026-10-31T04:21:51.046Z",
+          "version": 1
+        }
+      ],
+      "origin": "manual"
+    },
+    {
+      "path": "uploads/sales-1793420504158-1793420506151.md",
+      "content": "## Sales\n\n| Region | Revenue | Units |\n| --- | --- | --- |\n| Lagos | 2100000 | 412 |\n| Abuja | 800000 | 190 |",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:46.151Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "xlsx",
+      "label": "Excel workbook (XLSX)",
+      "method": "spreadsheet-sheetjs",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/contract-1793420504158-1793420505565.md",
+      "content": "Contract between RARE and Nova Systems.\n\nPayment of 45000 pounds is due on 2027-01-15.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:45.565Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "docx",
+      "label": "Word document (DOCX)",
+      "method": "docx-mammoth",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/report-1793420504158-1793420505448.md",
+      "content": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:21:45.448Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "pdf",
+      "label": "PDF document",
+      "method": "pdfjs-text",
+      "ocr": false,
+      "pages": [
+        {
+          "page": 1,
+          "text": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan."
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "rare_user_state:guest_194c3cbd-8e0d-4928-9fe1-15f3f68ce1ae:documents": [],
+  "rare_user_state:guest_6d534767-3940-4c17-b90e-306a718a23fe:documents": [
+    {
+      "path": "uploads/sales-1793420533653-1793420534844.md",
+      "content": "## Sales\n\n| Region | Revenue | Units |\n| --- | --- | --- |\n| Lagos | 2100000 | 412 |\n| Abuja | 800000 | 190 |",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:22:14.844Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "xlsx",
+      "label": "Excel workbook (XLSX)",
+      "method": "spreadsheet-sheetjs",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/contract-1793420533653-1793420534377.md",
+      "content": "Contract between RARE and Nova Systems.\n\nPayment of 45000 pounds is due on 2027-01-15.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:22:14.377Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "docx",
+      "label": "Word document (DOCX)",
+      "method": "docx-mammoth",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/report-1793420533653-1793420534251.md",
+      "content": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:22:14.251Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "pdf",
+      "label": "PDF document",
+      "method": "pdfjs-text",
+      "ocr": false,
+      "pages": [
+        {
+          "page": 1,
+          "text": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan."
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "rare_user_state:guest_bbc381ae-9865-49f3-b537-4e71e92e8097:conversations": [
+    {
+      "id": "conv_bf26896e-e9d6-4d24-bef2-c88411da6cc8",
+      "title": "Research test",
+      "created_at": "2026-10-31T04:22:59.800Z",
+      "userId": "guest_bbc381ae-9865-49f3-b537-4e71e92e8097",
+      "messages": [
+        {
+          "id": "msg_29b5f8d3-319c-474b-99ae-045ba8bfb5ee",
+          "role": "assistant",
+          "content": "Hello! I am RARE — your personal AI companion and software builder. What would you like to work on today?",
+          "timestamp": "2026-10-31T04:22:59.800Z"
+        },
+        {
+          "id": "msg_304da01d-b8cc-4ed0-9e43-fd4f0a588bab",
+          "role": "user",
+          "content": "Research the history of the Transformer architecture and cite sources",
+          "timestamp": "2026-10-31T04:23:03.714Z"
+        },
+        {
+          "id": "msg_4b770d91-41fa-48b6-b236-cc52dcbcd208",
+          "role": "assistant",
+          "content": "# Research report: the history of the Transformer architecture and cite sources\n\n_Depth: standard · 12 source(s) read · generated 2026-10-31T04:23:38.328Z_\n\n## Scope and method\n\nDiscovery providers used: wikipedia, crossref, openalex, github, openlibrary, duckduckgo.\nQueries issued: \"the history of the Transformer architecture and cite sources\".\n\n## Findings\n\n- Wallis and Futuna Western Sahara Yemen Zambia Zimbabwe Email Address * Invalid Email address Confirm Email Address * Entered Email address does not match I would like to receive information on Cite Them Right and related Bloomsbury products I agree with Terms & Conditions and Privacy & Cookies Policy * Alert Are you sure you want to reset the form? [4] [5] [6] [7] _(corroborated by multiple sources)_\n- Log in to Cite Them Right Incorrect username or password. [4] [5] [6] [7] _(corroborated by multiple sources)_\n- Cite Them Right - Why do I need to cite my sources? [4] [5] _(corroborated by multiple sources)_\n- Second, CNN-only or Transformer-only architectures provide incomplete feature modeling. [1]\n- Recent hybrid CNN-Transformer architectures demonstrate that combining convolutional inductive bias with global attention modeling can yield more balanced representations. [1]\n- More generally, Long ( 2024 ) survey the design space of CNN-Transformer hybrids and observe that these architectures can capture multi-scale features, “combining the local features extracted by CNNs with the global features learned by ViTs” to yield strong performance. [1]\n- 3.1 CNN-Transformer Hybrid Backbone In this section, we present the architecture of the proposed Convolution-Transformer Hybrid Attention model (CTHArt) for joint artist, style, and genre classification in fine art paintings. [1]\n- The CNN branch is based on the ResNet-50 architecture, while the Transformer branch adopts the Swin Transformer framework. [1]\n- The architecture of convolutional neural network (CNN)-Transformer hybrid backbone . [1]\n- Our method, called OAST-MAGC (Optimal Architecture for a Sentiment Analysis Transformer with Multihead Attention and Genetic Crossover), is distinguished by incorporating a multihead attention mechanism optimized using a genetic crossover technique. [2]\n- These limitations have gradually paved the way for more sophisticated approaches, based on deep learning techniques and, more recently, Transformer architectures. [2]\n- In 2017, a major breakthrough was made with the introduction of Transformers by Vaswani et al. in the article \"Attention is All You Need.\" This new architecture, based on the Multi-Head Attention mechanism, revolutionized natural language processing. [2]\n- Using BERT not only accelerates the training process (through transfer learning), but also reduces the need for task-specific annotated data, while ensuring better capture of contextual dependencies in texts. - Multihead attention: The multihead attention mechanism at the heart of the Transformer architecture allows for the simultaneous processing of different sub-representations of the text. [2]\n- To clearly explain the goal of our approach, in particular the architecture of a Sentiment Analysis Transformer using Multihead Attention (MHA), Dynamic pruning, and Genetic Crossover (GC), we proposed the following simplified scheme, as illustrated in Fig. [2]\n- Deep learning methods With the rise of deep neural architectures, models such as CNN, RNN and more recently Transformers (BERT, RoBERTa) have significantly improved the quality of sentiment analysis by capturing complex relationships between words. [2]\n- Exploring Transformers: Journey Through Language Processing Architectures and Tasks | OpenAlex Log in Get started Work Add to collection Exploring Transformers: Journey Through Language Processing Architectures and Tasks HTML PDF Details Locations Type: dissertation Abstract: This dissertation illustrates the research activities I carried out during my PhD years. [3]\n- It has as common thread the use of language models and Transformer architectures, that have emerged as the state-of-the-art technology in the Natural Language Processing field. [3]\n- Their evolution is traced, by starting from the basic Transformer architecture to advancements such as BERT and GPT-2, up to multimodal models such as OpenAI’s GPT-4 and Google’s Gemini, and their features are illustrated and discussed. [3]\n- Finally, it is shown how to employ the whole transformers architecture to cope with a foundational NLP task, such as word sense disambiguation. [3]\n- Information Extraction from clinical reports and argument mining for detecting grammatical errors are addressed first, as examples of applications relying on transformers encoders. [3]\n- The obtained results are discussed and interpreted in the light of the main technological and cultural trends in the NLP field. more Source: Institutional Research Information System University of Turin (University of Turin) Author: DELSANTO, MATTEO Language: English Topic: Topic Modeling Subfield: Artificial Intelligence Field: Computer Science Domain: Physical Sciences Open Access status: green OpenAlex ID: W7216848869 Cites: Cited by: Related to: 10 [3]\n- They are pre-trained on large datasets of unlabeled content, and are able to generate novel content. [ 2 ] [ 3 ] OpenAI was the first to apply generative pre-training to the transformer architecture, introducing the GPT-1 model in 2018. [ 6 ] The chatbot ChatGPT , released in late 2022 (using GPT-3.5 ), was followed by many competitor chatbots using their own generative pre-trained transformers to generate text, such as Gemini , DeepSeek and Claude . [8]\n- This pre-trained model is then adapted to a specific task using a labeled dataset (the \" fine-tuning \" step). [ 8 ] The transformer architecture for deep learning is the core technology of a GPT. [8]\n- The transformer architecture solved many of the performance issues that were associated with older recurrent neural network (RNN) designs for natural language processing (NLP). [8]\n- GPT models use only the decoder part of the transformer architecture, pre-trained to predict the next token in a sequence. [ 16 ] [ 17 ] Previously, the best-performing neural models in natural language processing (NLP) had commonly employed supervised learning from large amounts of manually labeled data – training a large language model with this approach would have been prohibitively expensive and time-consuming. [ 13 ] On February 14, 2019, OpenAI introduced GPT-2 , a larger model that could generate coherent text. [8]\n\n## Sources\n\n1. **Knowledge Organization | Multitask Art Painting Categorization by Convolution and Transformer Hybrid Architecture** — https://www.imrpress.com/journal/KO/53/2/10.31083/KO48360\n   Liangyu Wei, Qianheng Li, Dandan Wang · 2026-04-23 · https://doi.org/10.31083/ko48360\n   _openalex · academic · 68,397 chars read_\n2. **Optimal architecture for a sentiment analysis transformer with multihead attention and genetic crossover | Scientific Reports** — https://www.nature.com/articles/s41598-025-22064-5?error=cookies_not_supported&code=951019ed-385e-4323-a2e1-e7c388236d1f\n   Wiam Saidi, Boutaina Satouri, Abdellatif El Abderrahmani, Khalid Satori · 2025-10-28 · https://doi.org/10.1038/s41598-025-22064-5\n   _openalex · academic · 80,778 chars read_\n3. **Exploring Transformers: Journey Through Language Processing Architectures and Tasks | OpenAlex** — https://openalex.org/works/W7216848869\n   Matteo Delsanto\n   _openalex · academic · 2,164 chars read_\n4. **ctrcol-99** — https://www.citethemrightonline.com/video?docid=CTR_6341487995112&tocid=CTR_file_6341487995112\n   2023 · doi:10.5040/9781350885189\n   _crossref · academic · 7,076 chars read_\n5. **ctrcol-99** — https://www.citethemrightonline.com/article?docid=b-9781350928060&tocid=b-9781350928060-why-do-i-need-to-cite-my-sources\n   2021 · doi:10.5040/9781350928060.82\n   _crossref · academic · 7,088 chars read_\n6. **ctrcol-99** — https://www.citethemrightonline.com/article?docid=b-9781350928022&tocid=b-9781350928022-23\n   2021 · doi:10.5040/9781350928022.23\n   _crossref · academic · 7,082 chars read_\n7. **ctrcol-99** — https://www.citethemrightonline.com/article?docid=b-9781350927964&tocid=b-9781350927964-171\n   2021 · doi:10.5040/9781350927964.171\n   _crossref · academic · 7,082 chars read_\n8. **Generative pre-trained transformer - Wikipedia** — https://en.wikipedia.org/?curid=72970020\n   2026-10-31T03:19:38Z\n   _wikipedia · encyclopedia · 46,543 chars read_\n9. **In the Chinese city (2008) by Cité de l'architecture et du patrimoine (Paris, France) | Open Library** — https://openlibrary.org/works/OL19933626W/In_the_Chinese_city\n   Cité de l'architecture et du patrimoine (Paris, France) · 2008\n   _openlibrary · books · 6,956 chars read_\n10. **The Human Planet (2009) | Open Library** — https://openlibrary.org/works/OL17198654W/The_Human_Planet\n   2009\n   _openlibrary · books · 258,237 chars read_\n11. **A TOUR OF THE WORLD (2025) by Malik Mansab Khan | Open Library** — https://openlibrary.org/works/OL42823332W/A_TOUR_OF_THE_WORLD\n   Malik Mansab Khan, Muhammad Rafique Abdul Aziz · 2025\n   _openlibrary · books · 400,000 chars read_\n12. **Art since 1900 (2004) by Hal Foster | Open Library** — https://openlibrary.org/works/OL17943503W/Art_since_1900\n   Hal Foster, Rosalind E. Krauss, Yve Alain Bois, Benjamin Buchloh · 2004\n   _openlibrary · books · 8,543 chars read_\n\n## Sources that could not be read\n\n- https://doi.org/10.3390/biology12071033 — The source returned HTTP 403.\n- https://doi.org/10.1021/acs.jcim.3c02070 — The source returned HTTP 403.\n- https://doi.org/10.1109/mie.2016.2551418 — Only public HTTPS URLs can be retrieved.\n- https://doi.org/10.3366/edinburgh/9781474460729.003.0002 — The source returned HTTP 403.\n- https://doi.org/10.4324/9780203238233_chapter_10 — The source returned HTTP 403.\n\n## Limitations\n\n- 5 discovered source(s) could not be read (paywall, JavaScript-only page, or retrieval error).\n- 1 discovery provider(s) failed; coverage is narrower than requested.\n- Only public web sources reachable from this server were searched; private databases, paywalled archives and print-only material were not.\n",
+          "timestamp": "2026-10-31T04:23:38.360Z"
+        }
+      ],
+      "messageCount": 3
+    }
+  ],
+  "rare_user_state:guest_bbc381ae-9865-49f3-b537-4e71e92e8097:guest_usage": {
+    "online_chat_messages": 1
+  },
+  "rare_user_state:guest_bbc381ae-9865-49f3-b537-4e71e92e8097:research_items": [
+    {
+      "id": "res_1793420618352_933025",
+      "query": "the history of the Transformer architecture and cite sources",
+      "subquestions": [],
+      "findings": "Wallis and Futuna Western Sahara Yemen Zambia Zimbabwe Email Address * Invalid Email address Confirm Email Address * Entered Email address does not match I would like to receive information on Cite Them Right and related Bloomsbury products I agree with Terms & Conditions and Privacy & Cookies Policy * Alert Are you sure you want to reset the form?\n\nLog in to Cite Them Right Incorrect username or password.\n\nCite Them Right - Why do I need to cite my sources?\n\nSecond, CNN-only or Transformer-only architectures provide incomplete feature modeling.\n\nRecent hybrid CNN-Transformer architectures demonstrate that combining convolutional inductive bias with global attention modeling can yield more balanced representations.\n\nMore generally, Long ( 2024 ) survey the design space of CNN-Transformer hybrids and observe that these architectures can capture multi-scale features, “combining the local features extracted by CNNs with the global features learned by ViTs” to yield strong performance.\n\n3.1 CNN-Transformer Hybrid Backbone In this section, we present the architecture of the proposed Convolution-Transformer Hybrid Attention model (CTHArt) for joint artist, style, and genre classification in fine art paintings.\n\nThe CNN branch is based on the ResNet-50 architecture, while the Transformer branch adopts the Swin Transformer framework.\n\nThe architecture of convolutional neural network (CNN)-Transformer hybrid backbone .\n\nOur method, called OAST-MAGC (Optimal Architecture for a Sentiment Analysis Transformer with Multihead Attention and Genetic Crossover), is distinguished by incorporating a multihead attention mechanism optimized using a genetic crossover technique.\n\nThese limitations have gradually paved the way for more sophisticated approaches, based on deep learning techniques and, more recently, Transformer architectures.\n\nIn 2017, a major breakthrough was made with the introduction of Transformers by Vaswani et al. in the article \"Attention is All You Need.\" This new architecture, based on the Multi-Head Attention mechanism, revolutionized natural language processing.\n\nUsing BERT not only accelerates the training process (through transfer learning), but also reduces the need for task-specific annotated data, while ensuring better capture of contextual dependencies in texts. - Multihead attention: The multihead attention mechanism at the heart of the Transformer architecture allows for the simultaneous processing of different sub-representations of the text.\n\nTo clearly explain the goal of our approach, in particular the architecture of a Sentiment Analysis Transformer using Multihead Attention (MHA), Dynamic pruning, and Genetic Crossover (GC), we proposed the following simplified scheme, as illustrated in Fig.\n\nDeep learning methods With the rise of deep neural architectures, models such as CNN, RNN and more recently Transformers (BERT, RoBERTa) have significantly improved the quality of sentiment analysis by capturing complex relationships between words.\n\nExploring Transformers: Journey Through Language Processing Architectures and Tasks | OpenAlex Log in Get started Work Add to collection Exploring Transformers: Journey Through Language Processing Architectures and Tasks HTML PDF Details Locations Type: dissertation Abstract: This dissertation illustrates the research activities I carried out during my PhD years.\n\nIt has as common thread the use of language models and Transformer architectures, that have emerged as the state-of-the-art technology in the Natural Language Processing field.\n\nTheir evolution is traced, by starting from the basic Transformer architecture to advancements such as BERT and GPT-2, up to multimodal models such as OpenAI’s GPT-4 and Google’s Gemini, and their features are illustrated and discussed.\n\nFinally, it is shown how to employ the whole transformers architecture to cope with a foundational NLP task, such as word sense disambiguation.\n\nInformation Extraction from clinical reports and argument mining for detecting grammatical errors are addressed first, as examples of applications relying on transformers encoders.\n\nThe obtained results are discussed and interpreted in the light of the main technological and cultural trends in the NLP field. more Source: Institutional Research Information System University of Turin (University of Turin) Author: DELSANTO, MATTEO Language: English Topic: Topic Modeling Subfield: Artificial Intelligence Field: Computer Science Domain: Physical Sciences Open Access status: green OpenAlex ID: W7216848869 Cites: Cited by: Related to: 10\n\nThey are pre-trained on large datasets of unlabeled content, and are able to generate novel content. [ 2 ] [ 3 ] OpenAI was the first to apply generative pre-training to the transformer architecture, introducing the GPT-1 model in 2018. [ 6 ] The chatbot ChatGPT , released in late 2022 (using GPT-3.5 ), was followed by many competitor chatbots using their own generative pre-trained transformers to generate text, such as Gemini , DeepSeek and Claude .\n\nThis pre-trained model is then adapted to a specific task using a labeled dataset (the \" fine-tuning \" step). [ 8 ] The transformer architecture for deep learning is the core technology of a GPT.\n\nThe transformer architecture solved many of the performance issues that were associated with older recurrent neural network (RNN) designs for natural language processing (NLP).\n\nGPT models use only the decoder part of the transformer architecture, pre-trained to predict the next token in a sequence. [ 16 ] [ 17 ] Previously, the best-performing neural models in natural language processing (NLP) had commonly employed supervised learning from large amounts of manually labeled data – training a large language model with this approach would have been prohibitively expensive and time-consuming. [ 13 ] On February 14, 2019, OpenAI introduced GPT-2 , a larger model that could generate coherent text.",
+      "sources": [
+        {
+          "name": "openalex",
+          "url": "https://www.imrpress.com/journal/KO/53/2/10.31083/KO48360",
+          "credibility": 0.78,
+          "date": "2026-04-23",
+          "quote": "Second, CNN-only or Transformer-only architectures provide incomplete feature modeling.",
+          "title": "Knowledge Organization | Multitask Art Painting Categorization by Convolution and Transformer Hybrid Architecture"
+        },
+        {
+          "name": "openalex",
+          "url": "https://www.nature.com/articles/s41598-025-22064-5?error=cookies_not_supported&code=951019ed-385e-4323-a2e1-e7c388236d1f",
+          "credibility": 0.78,
+          "date": "2025-10-28",
+          "quote": "Our method, called OAST-MAGC (Optimal Architecture for a Sentiment Analysis Transformer with Multihead Attention and Genetic Crossover), is distinguished by incorporating a multihead attention mechanism optimized using a genetic crossover technique.",
+          "title": "Optimal architecture for a sentiment analysis transformer with multihead attention and genetic crossover | Scientific Reports"
+        },
+        {
+          "name": "openalex",
+          "url": "https://openalex.org/works/W7216848869",
+          "credibility": 0.78,
+          "date": "",
+          "quote": "Exploring Transformers: Journey Through Language Processing Architectures and Tasks | OpenAlex Log in Get started Work Add to collection Exploring Transformers: Journey Through Language Processing Architectures and Tasks HTML PDF Details Locations Type: dissertation Abstract: This dissertation illustrates the research activities I carried out during my PhD years.",
+          "title": "Exploring Transformers: Journey Through Language Processing Architectures and Tasks | OpenAlex"
+        },
+        {
+          "name": "crossref",
+          "url": "https://www.citethemrightonline.com/video?docid=CTR_6341487995112&tocid=CTR_file_6341487995112",
+          "credibility": 0.75,
+          "date": "2023",
+          "quote": "Cite Them Right - Why do I need to cite my sources?",
+          "title": "ctrcol-99"
+        },
+        {
+          "name": "crossref",
+          "url": "https://www.citethemrightonline.com/article?docid=b-9781350928060&tocid=b-9781350928060-why-do-i-need-to-cite-my-sources",
+          "credibility": 0.75,
+          "date": "2021",
+          "quote": "Cite Them Right - Why do I need to cite my sources?",
+          "title": "ctrcol-99"
+        },
+        {
+          "name": "crossref",
+          "url": "https://www.citethemrightonline.com/article?docid=b-9781350928022&tocid=b-9781350928022-23",
+          "credibility": 0.75,
+          "date": "2021",
+          "quote": "Wallis and Futuna Western Sahara Yemen Zambia Zimbabwe Email Address * Invalid Email address Confirm Email Address * Entered Email address does not match I would like to receive information on Cite Them Right and related Bloomsbury products I agree with Terms & Conditions and Privacy & Cookies Policy * Alert Are you sure you want to reset the form?",
+          "title": "ctrcol-99"
+        },
+        {
+          "name": "crossref",
+          "url": "https://www.citethemrightonline.com/article?docid=b-9781350927964&tocid=b-9781350927964-171",
+          "credibility": 0.75,
+          "date": "2021",
+          "quote": "Wallis and Futuna Western Sahara Yemen Zambia Zimbabwe Email Address * Invalid Email address Confirm Email Address * Entered Email address does not match I would like to receive information on Cite Them Right and related Bloomsbury products I agree with Terms & Conditions and Privacy & Cookies Policy * Alert Are you sure you want to reset the form?",
+          "title": "ctrcol-99"
+        },
+        {
+          "name": "wikipedia",
+          "url": "https://en.wikipedia.org/?curid=72970020",
+          "credibility": 0.55,
+          "date": "2026-10-31T03:19:38Z",
+          "quote": "They are pre-trained on large datasets of unlabeled content, and are able to generate novel content. [ 2 ] [ 3 ] OpenAI was the first to apply generative pre-training to the transformer architecture, introducing the GPT-1 model in 2018. [ 6 ] The chatbot ChatGPT , released in late 2022 (using GPT-3.5 ), was followed by many competitor chatbots using their own generative pre-trained transformers to generate text, such as Gemini , DeepSeek and Claude .",
+          "title": "Generative pre-trained transformer - Wikipedia"
+        },
+        {
+          "name": "openlibrary",
+          "url": "https://openlibrary.org/works/OL19933626W/In_the_Chinese_city",
+          "credibility": 0.65,
+          "date": "2008",
+          "quote": "Edition Notes \"An exhibition designed and produced by the Cité de l'architecture & du patrimoine jointly with the Barcelona Centre for Contemporary Culture, under the high patronage of the Ministry of Culture and Communication and the Ministry of Foreign Affairs and with the support of the cultural service of the French Embassy in China and the Chinese Embassy in France, in collaboration with Tongji University in Shanghai, the Beijing Municipal Institute of City Planning and Design (BICP), with the support of the Hauts de Seine Department/Musée Albert Kahn\"--Colophon.",
+          "title": "In the Chinese city (2008) by Cité de l'architecture et du patrimoine (Paris, France) | Open Library"
+        },
+        {
+          "name": "openlibrary",
+          "url": "https://openlibrary.org/works/OL17198654W/The_Human_Planet",
+          "credibility": 0.65,
+          "date": "2009",
+          "quote": "So what we see in history as Rome, developed his trade, its industry, its engineering, architecture, biologic, medicine... and all these sciences and arts came together in the creation of a large army, who dominated many areas, creating more wealth.",
+          "title": "The Human Planet (2009) | Open Library"
+        },
+        {
+          "name": "openlibrary",
+          "url": "https://openlibrary.org/works/OL42823332W/A_TOUR_OF_THE_WORLD",
+          "credibility": 0.65,
+          "date": "2025",
+          "quote": "Next comes the brief geography of each nation followed by its history.",
+          "title": "A TOUR OF THE WORLD (2025) by Malik Mansab Khan | Open Library"
+        },
+        {
+          "name": "openlibrary",
+          "url": "https://openlibrary.org/works/OL17943503W/Art_since_1900",
+          "credibility": 0.65,
+          "date": "2004",
+          "quote": "Now, in this extraordinary book, they have come together to provide the most comprehensive critical history of art in the twentieth and early twenty-first centuries ever published.\" \"With a clear and factual year-by-year structure, the authors present more than one hundred easy-to-follow articles, each focusing on a crucial event--such as the creation of a seminal work, the publication of an important text, or the opening of a major exhibition--to tell the myriad stories of art from 1900 to the present.",
+          "title": "Art since 1900 (2004) by Hal Foster | Open Library"
+        }
+      ],
+      "synthesis": "# Research report: the history of the Transformer architecture and cite sources\n\n_Depth: standard · 12 source(s) read · generated 2026-10-31T04:23:38.328Z_\n\n## Scope and method\n\nDiscovery providers used: wikipedia, crossref, openalex, github, openlibrary, duckduckgo.\nQueries issued: \"the history of the Transformer architecture and cite sources\".\n\n## Findings\n\n- Wallis and Futuna Western Sahara Yemen Zambia Zimbabwe Email Address * Invalid Email address Confirm Email Address * Entered Email address does not match I would like to receive information on Cite Them Right and related Bloomsbury products I agree with Terms & Conditions and Privacy & Cookies Policy * Alert Are you sure you want to reset the form? [4] [5] [6] [7] _(corroborated by multiple sources)_\n- Log in to Cite Them Right Incorrect username or password. [4] [5] [6] [7] _(corroborated by multiple sources)_\n- Cite Them Right - Why do I need to cite my sources? [4] [5] _(corroborated by multiple sources)_\n- Second, CNN-only or Transformer-only architectures provide incomplete feature modeling. [1]\n- Recent hybrid CNN-Transformer architectures demonstrate that combining convolutional inductive bias with global attention modeling can yield more balanced representations. [1]\n- More generally, Long ( 2024 ) survey the design space of CNN-Transformer hybrids and observe that these architectures can capture multi-scale features, “combining the local features extracted by CNNs with the global features learned by ViTs” to yield strong performance. [1]\n- 3.1 CNN-Transformer Hybrid Backbone In this section, we present the architecture of the proposed Convolution-Transformer Hybrid Attention model (CTHArt) for joint artist, style, and genre classification in fine art paintings. [1]\n- The CNN branch is based on the ResNet-50 architecture, while the Transformer branch adopts the Swin Transformer framework. [1]\n- The architecture of convolutional neural network (CNN)-Transformer hybrid backbone . [1]\n- Our method, called OAST-MAGC (Optimal Architecture for a Sentiment Analysis Transformer with Multihead Attention and Genetic Crossover), is distinguished by incorporating a multihead attention mechanism optimized using a genetic crossover technique. [2]\n- These limitations have gradually paved the way for more sophisticated approaches, based on deep learning techniques and, more recently, Transformer architectures. [2]\n- In 2017, a major breakthrough was made with the introduction of Transformers by Vaswani et al. in the article \"Attention is All You Need.\" This new architecture, based on the Multi-Head Attention mechanism, revolutionized natural language processing. [2]\n- Using BERT not only accelerates the training process (through transfer learning), but also reduces the need for task-specific annotated data, while ensuring better capture of contextual dependencies in texts. - Multihead attention: The multihead attention mechanism at the heart of the Transformer architecture allows for the simultaneous processing of different sub-representations of the text. [2]\n- To clearly explain the goal of our approach, in particular the architecture of a Sentiment Analysis Transformer using Multihead Attention (MHA), Dynamic pruning, and Genetic Crossover (GC), we proposed the following simplified scheme, as illustrated in Fig. [2]\n- Deep learning methods With the rise of deep neural architectures, models such as CNN, RNN and more recently Transformers (BERT, RoBERTa) have significantly improved the quality of sentiment analysis by capturing complex relationships between words. [2]\n- Exploring Transformers: Journey Through Language Processing Architectures and Tasks | OpenAlex Log in Get started Work Add to collection Exploring Transformers: Journey Through Language Processing Architectures and Tasks HTML PDF Details Locations Type: dissertation Abstract: This dissertation illustrates the research activities I carried out during my PhD years. [3]\n- It has as common thread the use of language models and Transformer architectures, that have emerged as the state-of-the-art technology in the Natural Language Processing field. [3]\n- Their evolution is traced, by starting from the basic Transformer architecture to advancements such as BERT and GPT-2, up to multimodal models such as OpenAI’s GPT-4 and Google’s Gemini, and their features are illustrated and discussed. [3]\n- Finally, it is shown how to employ the whole transformers architecture to cope with a foundational NLP task, such as word sense disambiguation. [3]\n- Information Extraction from clinical reports and argument mining for detecting grammatical errors are addressed first, as examples of applications relying on transformers encoders. [3]\n- The obtained results are discussed and interpreted in the light of the main technological and cultural trends in the NLP field. more Source: Institutional Research Information System University of Turin (University of Turin) Author: DELSANTO, MATTEO Language: English Topic: Topic Modeling Subfield: Artificial Intelligence Field: Computer Science Domain: Physical Sciences Open Access status: green OpenAlex ID: W7216848869 Cites: Cited by: Related to: 10 [3]\n- They are pre-trained on large datasets of unlabeled content, and are able to generate novel content. [ 2 ] [ 3 ] OpenAI was the first to apply generative pre-training to the transformer architecture, introducing the GPT-1 model in 2018. [ 6 ] The chatbot ChatGPT , released in late 2022 (using GPT-3.5 ), was followed by many competitor chatbots using their own generative pre-trained transformers to generate text, such as Gemini , DeepSeek and Claude . [8]\n- This pre-trained model is then adapted to a specific task using a labeled dataset (the \" fine-tuning \" step). [ 8 ] The transformer architecture for deep learning is the core technology of a GPT. [8]\n- The transformer architecture solved many of the performance issues that were associated with older recurrent neural network (RNN) designs for natural language processing (NLP). [8]\n- GPT models use only the decoder part of the transformer architecture, pre-trained to predict the next token in a sequence. [ 16 ] [ 17 ] Previously, the best-performing neural models in natural language processing (NLP) had commonly employed supervised learning from large amounts of manually labeled data – training a large language model with this approach would have been prohibitively expensive and time-consuming. [ 13 ] On February 14, 2019, OpenAI introduced GPT-2 , a larger model that could generate coherent text. [8]\n\n## Sources\n\n1. **Knowledge Organization | Multitask Art Painting Categorization by Convolution and Transformer Hybrid Architecture** — https://www.imrpress.com/journal/KO/53/2/10.31083/KO48360\n   Liangyu Wei, Qianheng Li, Dandan Wang · 2026-04-23 · https://doi.org/10.31083/ko48360\n   _openalex · academic · 68,397 chars read_\n2. **Optimal architecture for a sentiment analysis transformer with multihead attention and genetic crossover | Scientific Reports** — https://www.nature.com/articles/s41598-025-22064-5?error=cookies_not_supported&code=951019ed-385e-4323-a2e1-e7c388236d1f\n   Wiam Saidi, Boutaina Satouri, Abdellatif El Abderrahmani, Khalid Satori · 2025-10-28 · https://doi.org/10.1038/s41598-025-22064-5\n   _openalex · academic · 80,778 chars read_\n3. **Exploring Transformers: Journey Through Language Processing Architectures and Tasks | OpenAlex** — https://openalex.org/works/W7216848869\n   Matteo Delsanto\n   _openalex · academic · 2,164 chars read_\n4. **ctrcol-99** — https://www.citethemrightonline.com/video?docid=CTR_6341487995112&tocid=CTR_file_6341487995112\n   2023 · doi:10.5040/9781350885189\n   _crossref · academic · 7,076 chars read_\n5. **ctrcol-99** — https://www.citethemrightonline.com/article?docid=b-9781350928060&tocid=b-9781350928060-why-do-i-need-to-cite-my-sources\n   2021 · doi:10.5040/9781350928060.82\n   _crossref · academic · 7,088 chars read_\n6. **ctrcol-99** — https://www.citethemrightonline.com/article?docid=b-9781350928022&tocid=b-9781350928022-23\n   2021 · doi:10.5040/9781350928022.23\n   _crossref · academic · 7,082 chars read_\n7. **ctrcol-99** — https://www.citethemrightonline.com/article?docid=b-9781350927964&tocid=b-9781350927964-171\n   2021 · doi:10.5040/9781350927964.171\n   _crossref · academic · 7,082 chars read_\n8. **Generative pre-trained transformer - Wikipedia** — https://en.wikipedia.org/?curid=72970020\n   2026-10-31T03:19:38Z\n   _wikipedia · encyclopedia · 46,543 chars read_\n9. **In the Chinese city (2008) by Cité de l'architecture et du patrimoine (Paris, France) | Open Library** — https://openlibrary.org/works/OL19933626W/In_the_Chinese_city\n   Cité de l'architecture et du patrimoine (Paris, France) · 2008\n   _openlibrary · books · 6,956 chars read_\n10. **The Human Planet (2009) | Open Library** — https://openlibrary.org/works/OL17198654W/The_Human_Planet\n   2009\n   _openlibrary · books · 258,237 chars read_\n11. **A TOUR OF THE WORLD (2025) by Malik Mansab Khan | Open Library** — https://openlibrary.org/works/OL42823332W/A_TOUR_OF_THE_WORLD\n   Malik Mansab Khan, Muhammad Rafique Abdul Aziz · 2025\n   _openlibrary · books · 400,000 chars read_\n12. **Art since 1900 (2004) by Hal Foster | Open Library** — https://openlibrary.org/works/OL17943503W/Art_since_1900\n   Hal Foster, Rosalind E. Krauss, Yve Alain Bois, Benjamin Buchloh · 2004\n   _openlibrary · books · 8,543 chars read_\n\n## Sources that could not be read\n\n- https://doi.org/10.3390/biology12071033 — The source returned HTTP 403.\n- https://doi.org/10.1021/acs.jcim.3c02070 — The source returned HTTP 403.\n- https://doi.org/10.1109/mie.2016.2551418 — Only public HTTPS URLs can be retrieved.\n- https://doi.org/10.3366/edinburgh/9781474460729.003.0002 — The source returned HTTP 403.\n- https://doi.org/10.4324/9780203238233_chapter_10 — The source returned HTTP 403.\n\n## Limitations\n\n- 5 discovered source(s) could not be read (paywall, JavaScript-only page, or retrieval error).\n- 1 discovery provider(s) failed; coverage is narrower than requested.\n- Only public web sources reachable from this server were searched; private databases, paywalled archives and print-only material were not.\n",
+      "confidence": 0.95,
+      "timestamp": "2026-10-31T04:23:38.353Z",
+      "depth": "standard",
+      "status": "completed",
+      "scope": "12 source(s) read in full · providers: wikipedia, crossref, openalex, github, openlibrary, duckduckgo · categories: academic, encyclopedia, books · 1 discovery query",
+      "queries": [
+        "the history of the Transformer architecture and cite sources"
+      ],
+      "providersUsed": [
+        "wikipedia",
+        "crossref",
+        "openalex",
+        "github",
+        "openlibrary",
+        "duckduckgo"
+      ],
+      "providerErrors": [
+        "The source timed out."
+      ],
+      "sourceErrors": [
+        "The source timed out."
+      ],
+      "limitations": [
+        "5 discovered source(s) could not be read (paywall, JavaScript-only page, or retrieval error).",
+        "1 discovery provider(s) failed; coverage is narrower than requested.",
+        "Only public web sources reachable from this server were searched; private databases, paywalled archives and print-only material were not."
+      ],
+      "unreadable": [
+        {
+          "url": "https://doi.org/10.3390/biology12071033",
+          "reason": "The source returned HTTP 403."
+        },
+        {
+          "url": "https://doi.org/10.1021/acs.jcim.3c02070",
+          "reason": "The source returned HTTP 403."
+        },
+        {
+          "url": "https://doi.org/10.1109/mie.2016.2551418",
+          "reason": "Only public HTTPS URLs can be retrieved."
+        },
+        {
+          "url": "https://doi.org/10.3366/edinburgh/9781474460729.003.0002",
+          "reason": "The source returned HTTP 403."
+        },
+        {
+          "url": "https://doi.org/10.4324/9780203238233_chapter_10",
+          "reason": "The source returned HTTP 403."
+        }
+      ],
+      "claims": [
+        {
+          "text": "Wallis and Futuna Western Sahara Yemen Zambia Zimbabwe Email Address * Invalid Email address Confirm Email Address * Entered Email address does not match I would like to receive information on Cite Them Right and related Bloomsbury products I agree with Terms & Conditions and Privacy & Cookies Policy * Alert Are you sure you want to reset the form?",
+          "supportedBy": [
+            "src_doi_org_10_5040_9781350885189",
+            "src_doi_org_10_5040_9781350928060_82",
+            "src_doi_org_10_5040_9781350928022_23",
+            "src_doi_org_10_5040_9781350927964_171"
+          ],
+          "corroborated": true
+        },
+        {
+          "text": "Log in to Cite Them Right Incorrect username or password.",
+          "supportedBy": [
+            "src_doi_org_10_5040_9781350885189",
+            "src_doi_org_10_5040_9781350928060_82",
+            "src_doi_org_10_5040_9781350928022_23",
+            "src_doi_org_10_5040_9781350927964_171"
+          ],
+          "corroborated": true
+        },
+        {
+          "text": "Cite Them Right - Why do I need to cite my sources?",
+          "supportedBy": [
+            "src_doi_org_10_5040_9781350885189",
+            "src_doi_org_10_5040_9781350928060_82"
+          ],
+          "corroborated": true
+        },
+        {
+          "text": "Second, CNN-only or Transformer-only architectures provide incomplete feature modeling.",
+          "supportedBy": [
+            "src_doi_org_10_31083_ko48360"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Recent hybrid CNN-Transformer architectures demonstrate that combining convolutional inductive bias with global attention modeling can yield more balanced representations.",
+          "supportedBy": [
+            "src_doi_org_10_31083_ko48360"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "More generally, Long ( 2024 ) survey the design space of CNN-Transformer hybrids and observe that these architectures can capture multi-scale features, “combining the local features extracted by CNNs with the global features learned by ViTs” to yield strong performance.",
+          "supportedBy": [
+            "src_doi_org_10_31083_ko48360"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "3.1 CNN-Transformer Hybrid Backbone In this section, we present the architecture of the proposed Convolution-Transformer Hybrid Attention model (CTHArt) for joint artist, style, and genre classification in fine art paintings.",
+          "supportedBy": [
+            "src_doi_org_10_31083_ko48360"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "The CNN branch is based on the ResNet-50 architecture, while the Transformer branch adopts the Swin Transformer framework.",
+          "supportedBy": [
+            "src_doi_org_10_31083_ko48360"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "The architecture of convolutional neural network (CNN)-Transformer hybrid backbone .",
+          "supportedBy": [
+            "src_doi_org_10_31083_ko48360"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Our method, called OAST-MAGC (Optimal Architecture for a Sentiment Analysis Transformer with Multihead Attention and Genetic Crossover), is distinguished by incorporating a multihead attention mechanism optimized using a genetic crossover technique.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41598_025_22064_5"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "These limitations have gradually paved the way for more sophisticated approaches, based on deep learning techniques and, more recently, Transformer architectures.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41598_025_22064_5"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "In 2017, a major breakthrough was made with the introduction of Transformers by Vaswani et al. in the article \"Attention is All You Need.\" This new architecture, based on the Multi-Head Attention mechanism, revolutionized natural language processing.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41598_025_22064_5"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Using BERT not only accelerates the training process (through transfer learning), but also reduces the need for task-specific annotated data, while ensuring better capture of contextual dependencies in texts. - Multihead attention: The multihead attention mechanism at the heart of the Transformer architecture allows for the simultaneous processing of different sub-representations of the text.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41598_025_22064_5"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "To clearly explain the goal of our approach, in particular the architecture of a Sentiment Analysis Transformer using Multihead Attention (MHA), Dynamic pruning, and Genetic Crossover (GC), we proposed the following simplified scheme, as illustrated in Fig.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41598_025_22064_5"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Deep learning methods With the rise of deep neural architectures, models such as CNN, RNN and more recently Transformers (BERT, RoBERTa) have significantly improved the quality of sentiment analysis by capturing complex relationships between words.",
+          "supportedBy": [
+            "src_doi_org_10_1038_s41598_025_22064_5"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Exploring Transformers: Journey Through Language Processing Architectures and Tasks | OpenAlex Log in Get started Work Add to collection Exploring Transformers: Journey Through Language Processing Architectures and Tasks HTML PDF Details Locations Type: dissertation Abstract: This dissertation illustrates the research activities I carried out during my PhD years.",
+          "supportedBy": [
+            "src_openalex_org_w7216848869"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "It has as common thread the use of language models and Transformer architectures, that have emerged as the state-of-the-art technology in the Natural Language Processing field.",
+          "supportedBy": [
+            "src_openalex_org_w7216848869"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Their evolution is traced, by starting from the basic Transformer architecture to advancements such as BERT and GPT-2, up to multimodal models such as OpenAI’s GPT-4 and Google’s Gemini, and their features are illustrated and discussed.",
+          "supportedBy": [
+            "src_openalex_org_w7216848869"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Finally, it is shown how to employ the whole transformers architecture to cope with a foundational NLP task, such as word sense disambiguation.",
+          "supportedBy": [
+            "src_openalex_org_w7216848869"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "Information Extraction from clinical reports and argument mining for detecting grammatical errors are addressed first, as examples of applications relying on transformers encoders.",
+          "supportedBy": [
+            "src_openalex_org_w7216848869"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "The obtained results are discussed and interpreted in the light of the main technological and cultural trends in the NLP field. more Source: Institutional Research Information System University of Turin (University of Turin) Author: DELSANTO, MATTEO Language: English Topic: Topic Modeling Subfield: Artificial Intelligence Field: Computer Science Domain: Physical Sciences Open Access status: green OpenAlex ID: W7216848869 Cites: Cited by: Related to: 10",
+          "supportedBy": [
+            "src_openalex_org_w7216848869"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "They are pre-trained on large datasets of unlabeled content, and are able to generate novel content. [ 2 ] [ 3 ] OpenAI was the first to apply generative pre-training to the transformer architecture, introducing the GPT-1 model in 2018. [ 6 ] The chatbot ChatGPT , released in late 2022 (using GPT-3.5 ), was followed by many competitor chatbots using their own generative pre-trained transformers to generate text, such as Gemini , DeepSeek and Claude .",
+          "supportedBy": [
+            "src_en_wikipedia_org"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "This pre-trained model is then adapted to a specific task using a labeled dataset (the \" fine-tuning \" step). [ 8 ] The transformer architecture for deep learning is the core technology of a GPT.",
+          "supportedBy": [
+            "src_en_wikipedia_org"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "The transformer architecture solved many of the performance issues that were associated with older recurrent neural network (RNN) designs for natural language processing (NLP).",
+          "supportedBy": [
+            "src_en_wikipedia_org"
+          ],
+          "corroborated": false
+        },
+        {
+          "text": "GPT models use only the decoder part of the transformer architecture, pre-trained to predict the next token in a sequence. [ 16 ] [ 17 ] Previously, the best-performing neural models in natural language processing (NLP) had commonly employed supervised learning from large amounts of manually labeled data – training a large language model with this approach would have been prohibitively expensive and time-consuming. [ 13 ] On February 14, 2019, OpenAI introduced GPT-2 , a larger model that could generate coherent text.",
+          "supportedBy": [
+            "src_en_wikipedia_org"
+          ],
+          "corroborated": false
+        }
+      ],
+      "stats": {
+        "discovered": 17,
+        "retrieved": 17,
+        "fullText": 12,
+        "referencesFollowed": 0,
+        "durationMs": 34636
+      },
+      "progress": [
+        {
+          "stage": "plan",
+          "detail": "Question understood; 5 key terms; depth standard.",
+          "at": "2026-10-31T04:23:03.717Z"
+        },
+        {
+          "stage": "search",
+          "detail": "Discovery round 1: \"the history of the Transformer architecture and cite sources\"",
+          "at": "2026-10-31T04:23:03.718Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: Transformer Architecture and Attention Mechanisms in Genome Data Analysis: A Com",
+          "at": "2026-10-31T04:23:18.842Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: Application of Transformers in Cheminformatics",
+          "at": "2026-10-31T04:23:19.093Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: Multitask Art Painting Categorization by Convolution and Transformer Hybrid Arch",
+          "at": "2026-10-31T04:23:19.188Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: Optimal architecture for a sentiment analysis transformer with multihead attenti",
+          "at": "2026-10-31T04:23:21.039Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: Exploring Transformers: Journey Through Language Processing Architectures and Ta",
+          "at": "2026-10-31T04:23:22.559Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openalex: The Smart Transformer: Impact on the Electric Grid and Technology Challenges",
+          "at": "2026-10-31T04:23:23.146Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: Why do I need to cite my sources?",
+          "at": "2026-10-31T04:23:23.191Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: Why do I need to cite my sources?",
+          "at": "2026-10-31T04:23:24.177Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: History",
+          "at": "2026-10-31T04:23:24.557Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: International legal sources",
+          "at": "2026-10-31T04:23:24.646Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: Sources",
+          "at": "2026-10-31T04:23:25.060Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading crossref: International legal sources",
+          "at": "2026-10-31T04:23:25.158Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading wikipedia: Generative pre-trained transformer",
+          "at": "2026-10-31T04:23:25.520Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openlibrary: In the Chinese city",
+          "at": "2026-10-31T04:23:26.248Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openlibrary: The Human Planet",
+          "at": "2026-10-31T04:23:28.948Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openlibrary: A TOUR OF THE WORLD",
+          "at": "2026-10-31T04:23:31.552Z"
+        },
+        {
+          "stage": "retrieve",
+          "detail": "Reading openlibrary: Art since 1900",
+          "at": "2026-10-31T04:23:36.143Z"
+        },
+        {
+          "stage": "analyse",
+          "detail": "Extracting claims from 12 source(s).",
+          "at": "2026-10-31T04:23:38.326Z"
+        },
+        {
+          "stage": "report",
+          "detail": "Composing the cited report.",
+          "at": "2026-10-31T04:23:38.328Z"
+        }
+      ],
+      "origin": "chat",
+      "conversationId": "conv_bf26896e-e9d6-4d24-bef2-c88411da6cc8"
+    }
+  ]
 }

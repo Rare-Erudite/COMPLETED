@@ -35,6 +35,7 @@ import { runServerlessFrontendAvailabilityTests } from './test_serverless_fronte
 import { runContentEngineTests } from './test_content_engine.js';
 import { runChatPipelineTests } from './test_chat_pipeline.js';
 import { runDocumentsIncrementTests } from './test_documents_increment.js';
+import { runResearchIncrementTests } from './test_research_increment.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -168,6 +169,11 @@ async function main() {
     const documents = await runDocumentsIncrementTests();
     if (documents.failed > 0) {
       throw new Error(`Documents increment: ${documents.failed} assertion(s) failed.`);
+    }
+    console.log();
+    const research = await runResearchIncrementTests();
+    if (research.failed > 0) {
+      throw new Error(`Research increment: ${research.failed} assertion(s) failed.`);
     }
     console.log();
     console.log('=====================================================');
