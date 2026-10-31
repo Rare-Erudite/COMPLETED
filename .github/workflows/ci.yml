@@ -99,6 +99,10 @@ jobs:
           ls "$SDK" || true
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           "$SDK/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+          # build_apk.sh calls aapt/aapt2/d8/zipalign by bare name, so the
+          # build-tools directory has to be on PATH.
+          echo "$SDK/build-tools/34.0.0" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
           echo "Android SDK ready."
 
       - name: Install dependencies
