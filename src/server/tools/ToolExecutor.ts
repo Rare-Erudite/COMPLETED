@@ -502,6 +502,21 @@ export class ToolExecutor {
 
         case 'RUN_TEST': {
           const { testPath } = inputs;
+          // Guard against re-entrancy. The self-development cycle calls RUN_TEST
+          // with no path, which means `npm test` — and the self-development test
+          // itself runs inside `npm test`. Without this guard the suite spawns
+          // itself recursively until the process is killed, which looked like a
+          // memory failure but was unbounded recursion. A nested run reports
+          // honestly that it was skipped rather than pretending it passed.
+          if (process.env.RARE_TEST_RUNNING === 'true') {
+            output = {
+              success: true,
+              skipped: true,
+              exitCode: 0,
+              stdout: 'Skipped: a test run is already in progress in this process tree (RARE_TEST_RUNNING=true).',
+            };
+            break;
+          }
           let testCmd = 'npm';
           let testArgs = ['test'];
           if (testPath) {

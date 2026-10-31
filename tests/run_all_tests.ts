@@ -79,6 +79,11 @@ async function main() {
   console.log('  RARE CORE INTELLIGENCE — AUTOMATED VERIFICATION SUITE');
   console.log('=====================================================\n');
 
+  // The suites run in THIS process, and the self-development suite calls the
+  // RUN_TEST tool from here. Mark the runner itself, not only the server child,
+  // so that call cannot spawn `npm test` recursively.
+  process.env.RARE_TEST_RUNNING = 'true';
+
   const port = await findFreePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   console.log(`[runner] Starting test server on ${baseUrl}`);
@@ -98,6 +103,10 @@ async function main() {
       // container's memory budget and kill the server out from under the run,
       // which shows up as a spurious connection failure rather than a real bug.
       RARE_SKIP_DEV_BUNDLER: 'true',
+      // Marks this process tree as already running the suite. The RUN_TEST tool
+      // checks it so a self-development cycle cannot spawn `npm test` from
+      // inside `npm test` and recurse until the process is killed.
+      RARE_TEST_RUNNING: 'true',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

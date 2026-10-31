@@ -12,10 +12,28 @@ import { IModelProvider, ModelInfo, GenerationOptions, GenerationResult } from '
 const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
 const GEMINI_MODEL_LITE = process.env.GEMINI_MODEL_LITE?.trim() || 'gemini-3.8-flash-lite';
 
+/**
+ * Model ids that are known to exist, in preference order.
+ *
+ * The configured ids above are tried first, but a deployment whose key does not
+ * expose them must not be left with no model at all: that is what produced
+ * "models/gemini-3.8-flash-lite is not found" on every grounded answer. When the
+ * catalog probe runs, the real ids the key can use are recorded and used as the
+ * fallback chain.
+ */
+const KNOWN_GEMINI_FALLBACKS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+];
+
 export class GeminiCoprocessorProvider implements IModelProvider {
   private apiKey: string | null = null;
   private client: GoogleGenAI | null = null;
   private availabilityCache: { key: string; expiresAt: number; available: boolean } | null = null;
+  /** Model ids the key actually exposes, discovered from the catalog. */
+  private discoveredModels: string[] = [];
 
   constructor(private readonly fetchImpl: typeof fetch = fetch) {
     this.apiKey = process.env.GEMINI_API_KEY || null;
@@ -79,9 +97,15 @@ export class GeminiCoprocessorProvider implements IModelProvider {
           models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
         };
         const supportedModels = new Set([`models/${GEMINI_MODEL}`, `models/${GEMINI_MODEL_LITE}`]);
-        available = Boolean(data.models?.some((model) =>
-          model.name && supportedModels.has(model.name) && model.supportedGenerationMethods?.includes('generateContent'),
-        ));
+        const usable = (data.models || [])
+          .filter((model) =>
+            model.name && model.supportedGenerationMethods?.includes('generateContent'),
+          )
+          .map((model) => String(model.name).replace(/^models\//, ''));
+        // Remember what this key can really use, so generation never depends on
+        // a hardcoded id the account does not have.
+        this.discoveredModels = usable;
+        available = usable.some((id) => supportedModels.has(`models/${id}`)) || usable.length > 0;
       }
     } catch {
       available = false;
@@ -90,6 +114,23 @@ export class GeminiCoprocessorProvider implements IModelProvider {
     }
     this.availabilityCache = { key, expiresAt: Date.now() + 15_000, available };
     return available;
+  }
+
+  /**
+   * The model ids to try, in order.
+   *
+   * Configured ids first (an operator may pin a specific model), then whatever
+   * the catalog probe actually found for this key, then the known-good list.
+   * Deduplicated so a model is never requested twice in one call.
+   */
+  private candidateModelIds(): string[] {
+    const ordered = [
+      GEMINI_MODEL,
+      GEMINI_MODEL_LITE,
+      ...this.discoveredModels,
+      ...KNOWN_GEMINI_FALLBACKS,
+    ].filter((id): id is string => Boolean(id && id.trim()));
+    return [...new Set(ordered)];
   }
 
   public async generate(
@@ -113,7 +154,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
       'You are RARE, a standalone personal AI companion, researcher, and full-stack software builder.'
     }\n${personaTone}\n\nContext & Memory:\n${context || 'None'}`;
 
-    const candidateModels = [GEMINI_MODEL, GEMINI_MODEL_LITE];
+    const candidateModels = this.candidateModelIds();
     let lastError: any = null;
 
     const isDeepReasoning = options?.thinkHarder === true;
@@ -234,7 +275,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
       : prompt;
 
     let lastError: any = null;
-    for (const modelId of [GEMINI_MODEL, GEMINI_MODEL_LITE]) {
+    for (const modelId of this.candidateModelIds()) {
       // Once any token has been yielded, a retry would duplicate text the caller
       // has already rendered, so the fallback is only safe before the first token.
       let emitted = false;
@@ -274,7 +315,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
     // hardcoded id silently breaks transcription the day it is withdrawn
     // (gemini-2.5-flash now returns 404 "no longer available to new users").
     let lastError: unknown = null;
-    for (const modelId of [GEMINI_MODEL, GEMINI_MODEL_LITE]) {
+    for (const modelId of this.candidateModelIds()) {
       try {
         const response = await ai.models.generateContent({
           model: modelId,

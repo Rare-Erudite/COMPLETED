@@ -54,7 +54,12 @@ const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAp
 const PORT = process.argv.includes('--port')
   ? Number(process.argv[process.argv.indexOf('--port') + 1])
   : (Number(process.env.PORT) || 3000);
-process.env.RARE_INTELLIGENCE_URL = process.env.RARE_INTELLIGENCE_URL || `http://127.0.0.1:${PORT}`;
+// RARE_INTELLIGENCE_URL is deliberately NOT defaulted to this process's own
+// port. Doing so made the RareIntelligenceProvider call back into this server,
+// where /api/v1/chat requires a session the internal call does not have — so
+// every grounded answer failed with HTTP 401 and silently degraded to
+// "no model available". The bridge is only meaningful when it points at a
+// separate engine process, so it stays unset unless an operator sets it.
 const durableStateStore = new DurableStateStore();
 let persistentStorage: PersistentJsonStore | undefined;
 let serverInitialization: Promise<void> | undefined;
@@ -5959,7 +5964,6 @@ app.use('/api', (_req, res) => {
 
 // Start Server with Vite Middleware in Development
 async function startServer() {
-  process.env.RARE_INTELLIGENCE_URL = process.env.RARE_INTELLIGENCE_URL || `http://127.0.0.1:${PORT}`;
   const isProduction = process.env.NODE_ENV === 'production' || process.argv.includes('--production');
   if (isProduction && configuredOrigins.length === 0) {
     throw new Error('Set RARE_ALLOWED_ORIGINS to the exact production frontend origin before starting RARE in production.');

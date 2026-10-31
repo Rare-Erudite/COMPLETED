@@ -6462,6 +6462,690 @@
         "role": "user",
         "createdAt": "2026-10-13T06:13:46.435Z"
       }
+    ],
+    [
+      "local1793419129@rare-verify.test",
+      {
+        "id": "usr_db931a9d-57e6-4ea1-86b2-087a752c6b23",
+        "name": "Local",
+        "email": "local1793419129@rare-verify.test",
+        "passwordHash": "scrypt:60eed1469ff0f31e363a3599e3ec2cc1:54d0cb217fadb00fe6540cb26eb7649e1764ccd030d2d16ce47dab425ac4f7613adb1092e0a22e8d87e4cf4f16e71d4d1de5a84f17f1319ac00270cb64a5d00a",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T03:58:49.194Z"
+      }
+    ],
+    [
+      "test_regular_1793419184040@example.com",
+      {
+        "id": "usr_051dd7c5-9c02-4b09-a127-243c382c41db",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419184040@example.com",
+        "passwordHash": "scrypt:f8f1f4973225352c608e05155244eda5:b1f1c74c390437d5bfd06e2a37b71b65f9bb6d1b54a8c3356ab413864ba1f4d88eb444da296ad9bd3208b78ab8a01aeae25c6b43edf88e5a87e599bb21e01596",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T03:59:44.646Z"
+      }
+    ],
+    [
+      "test_other_1793419184656@example.com",
+      {
+        "id": "usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4",
+        "name": "Other Test User",
+        "email": "test_other_1793419184656@example.com",
+        "passwordHash": "scrypt:07108234db37da7c2484b7d7c9e1c583:60ecafdf053bbbdd11c16f93613a52d50ea16e50c785a5c3763c7ef4c6cb2cb5b04c7a8f3f6d4593e526b5308cc4f9b3aa2568d503ef2b1d8be10e1ee3a01c51",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T03:59:45.047Z"
+      }
+    ],
+    [
+      "test_regular_1793419206540@example.com",
+      {
+        "id": "usr_722ab142-b86f-484f-a06d-5669e776451f",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419206540@example.com",
+        "passwordHash": "scrypt:e2cc531116268b27d1556d8ae9181db5:9d0a2b6ab807afa5418dfc44b2e6797e2d926bafb8e0e2e4bd5369c14a2a8491292e9380b4ffd9319a2819eff85d9a65ae399fa570144afe9037bdc031d76be6",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:00:07.050Z"
+      }
+    ],
+    [
+      "test_other_1793419207141@example.com",
+      {
+        "id": "usr_3a3464f2-d770-4797-b08c-8b3474d971a5",
+        "name": "Other Test User",
+        "email": "test_other_1793419207141@example.com",
+        "passwordHash": "scrypt:b2130f990f68798e22cc1b46b5fbb249:fc6604be7c0bfaa099de015a93dc5c1580372bd2d869b4e6b3514d98bc2c545e3c6f2cbc7dd3e082ddfa2d11d3d14d4fbddbf922daaa30d380a07d7da99fd020",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:00:07.747Z"
+      }
+    ],
+    [
+      "test_regular_1793419227689@example.com",
+      {
+        "id": "usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419227689@example.com",
+        "passwordHash": "scrypt:faf49658207a709b2c56c866c79cebda:e21299ed8861f5be6825408d025091bc238a8d6bd006e3a8f03199d9ab1bae8a6ff8d41c78ee88d3abd5668e67a0846d610447e691fdf44b398c987e4d4da954",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:00:27.777Z"
+      }
+    ],
+    [
+      "test_other_1793419227795@example.com",
+      {
+        "id": "usr_81768ebe-9e96-4941-a9dc-4310a9a6f223",
+        "name": "Other Test User",
+        "email": "test_other_1793419227795@example.com",
+        "passwordHash": "scrypt:af58b81cf32f51ea3ca67863d5b1d668:79462788c5c58bb24245623cd2fccc4c6eaca17703732b1cb660eff63d924f6659b7fab717a3d581bd316eeb6d30143760ec29c057f72e9cc5113c7fcacadfd6",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:00:27.878Z"
+      }
+    ],
+    [
+      "test_regular_1793419235095@example.com",
+      {
+        "id": "usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419235095@example.com",
+        "passwordHash": "scrypt:de2a31c6bc1f2dc418b7bfc1ed5f3842:eb62c52347c83d34c20f5e4af1e5964c0013ae94d341e96782e36305d155a5793d7169505bea4149110467b03580642f9512b850311c4bbaea476d78ed9af41f",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:00:35.160Z"
+      }
+    ],
+    [
+      "test_other_1793419235176@example.com",
+      {
+        "id": "usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb",
+        "name": "Other Test User",
+        "email": "test_other_1793419235176@example.com",
+        "passwordHash": "scrypt:e9c023e6176c85de4133389d91a42cb5:3ccba125430c48eb6fcf109ed4052b6293c5cb9ee4542a596b175c69845548ffe004c0d7f3840167602b34095390727309c712ccb7d7dc2d6cb1678ce6388b2b",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:00:35.283Z"
+      }
+    ],
+    [
+      "test_regular_1793419242643@example.com",
+      {
+        "id": "usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419242643@example.com",
+        "passwordHash": "scrypt:e74f4a2e4f4df104138fdcca3d0496c6:7015db5a3bae93b8562391cd0c8ac4afb401a60f2bcd77c44a63c065c8311217969353968c2c57d8b6dfec55b639a5bfa88e9777c86bb93dd2c7ca8faf50356d",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:00:42.716Z"
+      }
+    ],
+    [
+      "test_other_1793419242746@example.com",
+      {
+        "id": "usr_40a439a0-7a06-4844-9a0f-ee777c17e386",
+        "name": "Other Test User",
+        "email": "test_other_1793419242746@example.com",
+        "passwordHash": "scrypt:dc31a413381922dd3a78d078906f8bd4:40c444068487093d407ca7dbe64da41749c655e55bee1913f716f7247eb2b7495671d380be999c710f19923edabb4e359c1d1a16d504339d7e6b6d744b92c57d",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:00:42.890Z"
+      }
+    ],
+    [
+      "test_regular_1793419253746@example.com",
+      {
+        "id": "usr_daba53d9-bc13-42ac-80f9-65dcd3816895",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419253746@example.com",
+        "passwordHash": "scrypt:7cf6e01792b30d3c078c23b5af1dd535:eb5cf7b8b4e188f86a66bc2ba0b1ec62cec9f794ed51e4ea017d9532044c5b513965ca0df3764c8a03097c06752c28e9ed4da30a9dc2d882efc6ff5e99140cdc",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:00:53.809Z"
+      }
+    ],
+    [
+      "test_other_1793419253825@example.com",
+      {
+        "id": "usr_19ee9035-28a4-4f71-bda4-887c6d401b9e",
+        "name": "Other Test User",
+        "email": "test_other_1793419253825@example.com",
+        "passwordHash": "scrypt:14769916a000637e8c04c4d6a859be39:3c851b134f0e7f2efb74d9c500446f07eb3c40a6480df8ce0bcdc5771cd79bf9288639105b2a9807b5cb432c68f84d912ac7926a9c8be7c3a4edeb64be597ef3",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:00:53.902Z"
+      }
+    ],
+    [
+      "test_regular_1793419260245@example.com",
+      {
+        "id": "usr_71ca13e3-8c1c-4171-b5fe-15b701778847",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419260245@example.com",
+        "passwordHash": "scrypt:22fb9cc0aab27dcf0ff913c22526d354:ab76561409ec9bb85599144cd6bebe3da58690d31797eff134fb0ffe0203ee04c847a39edfb385384b706cf4191f60cb3b0793530478f2d727848a7cb6779915",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:00.346Z"
+      }
+    ],
+    [
+      "test_other_1793419260356@example.com",
+      {
+        "id": "usr_cb032f6a-dae4-409b-8f09-a09564c77f01",
+        "name": "Other Test User",
+        "email": "test_other_1793419260356@example.com",
+        "passwordHash": "scrypt:16bda838da83a525bc319563b8942924:0e9b01449e9d333bf16cbadaa5829eb8ca22c4978ffd43077cb5a63b066642c916813ee1b5de837333dec58814c03a8b48c95ab1428573189c908758d75f5cbf",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:00.455Z"
+      }
+    ],
+    [
+      "test_regular_1793419266910@example.com",
+      {
+        "id": "usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419266910@example.com",
+        "passwordHash": "scrypt:b44159c196b9302f8ad802c244e5cff3:6de26174106bf89e07c9dab1145487d7cd54420e40062f9de2eca67e54e14b1d3d5638a73e0f9709838cdbca930f95cc69b05cd8a5d850e7c3299859b7d18255",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:07.002Z"
+      }
+    ],
+    [
+      "test_other_1793419267052@example.com",
+      {
+        "id": "usr_64b7d62a-2184-4d77-a2c8-94778ae4139e",
+        "name": "Other Test User",
+        "email": "test_other_1793419267052@example.com",
+        "passwordHash": "scrypt:524c5ffd61ea3033d68436857117099f:d40583b700f559880b2b4025b0b3617c69f1658952a07ee9da4bc97959b66c62086afd051d85b700890f893ba0851002becaa84cc05b0a51728b6960dc48c435",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:07.250Z"
+      }
+    ],
+    [
+      "test_regular_1793419274677@example.com",
+      {
+        "id": "usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419274677@example.com",
+        "passwordHash": "scrypt:167c54a6448fccec577f410c314676a4:63313afba36551b5049dfd473f84f38b8139bfcb0c56b7fb5f1b20f81747d23d6af1901482e097ee488075a042f28fffc0d85eede601837e125369454ceae3a9",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:14.761Z"
+      }
+    ],
+    [
+      "test_other_1793419274844@example.com",
+      {
+        "id": "usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3",
+        "name": "Other Test User",
+        "email": "test_other_1793419274844@example.com",
+        "passwordHash": "scrypt:9a0d0963c2ade8002aa9873ea03a7bce:05571d98974289d461e5a76d8863355ea09a2c90a82cc94ccaba661596a0de4f95ec0c0a5aad7cd1dee699d3705a5a696c1c765aa435c20364b627646e23dd8e",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:14.946Z"
+      }
+    ],
+    [
+      "test_regular_1793419281974@example.com",
+      {
+        "id": "usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419281974@example.com",
+        "passwordHash": "scrypt:11464834334c537915d5a7219045cbf4:99ef09d57379ca1625615870d9d7b37bb362098cb9964df4d3fb3ff59b9babfbd52fc06b42929e1c6c98ddca93f84faebde516ec4e522fef6d4dbab335980754",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:22.023Z"
+      }
+    ],
+    [
+      "test_other_1793419282046@example.com",
+      {
+        "id": "usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720",
+        "name": "Other Test User",
+        "email": "test_other_1793419282046@example.com",
+        "passwordHash": "scrypt:d1e21bae986b919a8c9adbec18724394:d5a0d5200095a52d987eb4da862f31338cc25ca6f5fb8ca3dc8464598adff4c5a80a3f9ff5da878278800e555124e54ae343068051d576c166b358adcaa77302",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:22.116Z"
+      }
+    ],
+    [
+      "test_regular_1793419304094@example.com",
+      {
+        "id": "usr_57e0d797-980f-4337-90c9-aec52e843fed",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419304094@example.com",
+        "passwordHash": "scrypt:a3bf25d5d23c07b03e4e1eba69c1aa1c:636f85cabb8537077c2ad5cb109f1992ad5b6db2a659f71a274fdc3aad1b16bd1d2dd63c1d0f386c51fc4de2e9a88923245609fdf4062748b8225f5e17b5d447",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:44.187Z"
+      }
+    ],
+    [
+      "test_other_1793419304207@example.com",
+      {
+        "id": "usr_df03fa27-63c2-4afa-b588-dfff6e1d6823",
+        "name": "Other Test User",
+        "email": "test_other_1793419304207@example.com",
+        "passwordHash": "scrypt:e5dbf294810916cc25404388c4b92a1d:4d22904363bcffd2991713c0da32d2703aa1b7db86eefb5d1fbdabd61b2dd14d3dbbd3d0c99b6e704e184f020830821685675d0a070703834e661a5e8a3a539c",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:44.306Z"
+      }
+    ],
+    [
+      "test_regular_1793419315658@example.com",
+      {
+        "id": "usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419315658@example.com",
+        "passwordHash": "scrypt:341b7ec4088be55b56267d09d85f0ef8:ec7fe4003aa2a46c76899a50260e328e9eb6f89ada4fab8a74b751398837b1a60d0068f0511dd20f36267cf01ad5b64f4d1d6e6ad5c2008cbe9bc046136405d1",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:56.047Z"
+      }
+    ],
+    [
+      "test_other_1793419316141@example.com",
+      {
+        "id": "usr_491aeaa7-f099-44ee-b706-c8075d6af3de",
+        "name": "Other Test User",
+        "email": "test_other_1793419316141@example.com",
+        "passwordHash": "scrypt:4a23a75323b6799fab64457c98e6cbda:183d61abe7574c33a89964bbe490a1ac6fc6f8d9145048a66214fc17a2c00b5845da8f2dbe3108b4c9edcdc6bce6a80ef12233f5b8e4090891d85bd6cf0cff2c",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:56.641Z"
+      }
+    ],
+    [
+      "test_regular_1793419319764@example.com",
+      {
+        "id": "usr_b0d4422b-5033-4381-8baf-209c76116ebe",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419319764@example.com",
+        "passwordHash": "scrypt:84e3d234f1c5af511b23d747fa983b68:fb579834e9f43b48b629c4ba68f7a0be118610466412021253b42b1fe7d69c1d832cded3ae8c1749d76e2c0538ed9ab80f51276c9cdb36b13405d48c1ff00fb3",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:01:59.853Z"
+      }
+    ],
+    [
+      "test_other_1793419319871@example.com",
+      {
+        "id": "usr_e6017f3f-7028-4b70-872a-adab061f5a0e",
+        "name": "Other Test User",
+        "email": "test_other_1793419319871@example.com",
+        "passwordHash": "scrypt:61f0cfd4f584db9146b95181fc706cde:01a7db47ce3ff28a0f9e06d2b5f1152da68f8a76651965de60f52b23a828f3fc66895f1b583400deb8d91deb558fdfe37f46a9c7b231f1a6f8354920d307bfed",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:02:00.051Z"
+      }
+    ],
+    [
+      "test_regular_1793419369245@example.com",
+      {
+        "id": "usr_c62ae1ea-2099-4e18-a31f-dd34344e7caf",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419369245@example.com",
+        "passwordHash": "scrypt:61674444959988a8eef91b8a51ea42c5:16e85a446289253c62620bdf0acbccd0f7ab73ab6b235e1dae79b81d30fa94cd6670e2dbccafc611ff1b676c79e83d411350e2519885c728883d919b45b3bd5f",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:02:49.747Z"
+      }
+    ],
+    [
+      "test_regular_1793419382341@example.com",
+      {
+        "id": "usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419382341@example.com",
+        "passwordHash": "scrypt:dabf94a49f79132a05079d5d5e38c0dd:d70eaf102f0cdb092be673b7c4d38a7753500276b62fe88ebe84f243935bc2688c40b3c0f8672d9f102dc6e487b2e438687ff46010c8023d4d311643748bfa40",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:03:03.140Z"
+      }
+    ],
+    [
+      "test_other_1793419383343@example.com",
+      {
+        "id": "usr_cb1dde45-4438-447e-a26a-276c63227953",
+        "name": "Other Test User",
+        "email": "test_other_1793419383343@example.com",
+        "passwordHash": "scrypt:08e04b381b978eea736e7ba3e9cc3909:68a999c053ed7d0255e316842fb8094618d6db256ca1959eb78b84f8cab9e174635e368496ef7004b3627917eca576fcc080af31fa5a6e65141f68cb190e4d87",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:03:03.843Z"
+      }
+    ],
+    [
+      "local1793419407@rare-verify.test",
+      {
+        "id": "usr_8485ca0a-77d5-4ee9-a836-b94081fce6a7",
+        "name": "Local",
+        "email": "local1793419407@rare-verify.test",
+        "passwordHash": "scrypt:55752a001958b376a67b9fbf35c1e934:1d968081ef741ca0ff45035f9aa8de22a850d4c6ed4e4c42f03355023520e5aefb821dff237c901c1729994056f640a3dac5f5772d2bb41b290c057200edf3d2",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:03:27.394Z"
+      }
+    ],
+    [
+      "test_regular_1793419555217@example.com",
+      {
+        "id": "usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419555217@example.com",
+        "passwordHash": "scrypt:d6da73b5f6c8013879759dc21d8a5024:b07b1944207cf5958520094eceb64c416081dd2dbeb21d11a6ec1d08d9e49bfb3ffb8eab55c13bbc9949ce3377dd4c17675bcfa51a300ec7eba90e3432713110",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:05:55.268Z"
+      }
+    ],
+    [
+      "test_other_1793419555290@example.com",
+      {
+        "id": "usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0",
+        "name": "Other Test User",
+        "email": "test_other_1793419555290@example.com",
+        "passwordHash": "scrypt:d4438ce26677c5897c9ad82916b4249d:ef78def4786db3a2dc5f79c4a85c68e1253aac6241feda5e6ba9e46362942147c61a08d6a8a7e83967439343c1c995c7bb2d4856434c78fd91749f38bc06514b",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:05:55.353Z"
+      }
+    ],
+    [
+      "test_regular_1793419564005@example.com",
+      {
+        "id": "usr_f82788d6-05e1-49f6-9271-5160d5c9a664",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419564005@example.com",
+        "passwordHash": "scrypt:f747a70f6380e1c50339a1c72949494c:727fef6a44e560a091149dc9b4d96728da3634e5a3d740c5a4157bdde49ba1c289f9914228fe7aaf56b5f2c50a3dc17a6769bb8056168ca0dd2c8a4eda0b7c86",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:06:04.073Z"
+      }
+    ],
+    [
+      "test_other_1793419564085@example.com",
+      {
+        "id": "usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6",
+        "name": "Other Test User",
+        "email": "test_other_1793419564085@example.com",
+        "passwordHash": "scrypt:5495cb5989260d093bccbc4af83876f8:fc321f9c8521279424537cad3061f3862bfcdd897b126fbe30cb695d742ee2a73fd98cec63a3a25f92849079c896c9615379f29071ff14c2c2fd1fd3188c4f2d",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:06:04.185Z"
+      }
+    ],
+    [
+      "test_regular_1793419574247@example.com",
+      {
+        "id": "usr_a888df09-29f4-49e9-80e7-0ac932c06efd",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419574247@example.com",
+        "passwordHash": "scrypt:f31a88706b2ab680e84f2b7a834b0203:da25180f5d478ad109b95f37b97fc5ad5042c614a39e9b356c620ef892258462f8dcef2605987750aad50d41e64c83a6ba30de4c496f7654917e0fd38ca08946",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:06:14.388Z"
+      }
+    ],
+    [
+      "test_other_1793419574410@example.com",
+      {
+        "id": "usr_1ba96225-976d-467e-bf65-37468717dcef",
+        "name": "Other Test User",
+        "email": "test_other_1793419574410@example.com",
+        "passwordHash": "scrypt:95883ab2adbd0520a46d256ccb9ddc44:c350a7b8a03a3d87da6550c47154a5c1ff5827c6b85b0353268ce345257d11758aa3383e33dfccf26d782b715046a10ba0efe15e602bd5afa75d36178f6332b7",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:06:14.505Z"
+      }
+    ],
+    [
+      "local1793419597@rare-verify.test",
+      {
+        "id": "usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49",
+        "name": "Local",
+        "email": "local1793419597@rare-verify.test",
+        "passwordHash": "scrypt:af00a3b85dd1adb9a69b38a7b3f4b90c:a68f6af55c367e284f16335168d09396c50c519cd4e3d9b7af15b75f7e33911ff7ef266a52791fd5b457d88988d1ed7607004cfee78d9bab2e017d00acf00be0",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:06:37.147Z"
+      }
+    ],
+    [
+      "test_regular_1793419741172@example.com",
+      {
+        "id": "usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419741172@example.com",
+        "passwordHash": "scrypt:30aa46a09c9c733b692eef37859810ba:671b6b1794c41547ae9f9b7b2445fb02563129c437381373e80585114b720ebccfae023ca809a502f125328b1e922a9551b11ddde8890860432d1ae3534efaaf",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:01.272Z"
+      }
+    ],
+    [
+      "test_other_1793419741287@example.com",
+      {
+        "id": "usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6",
+        "name": "Other Test User",
+        "email": "test_other_1793419741287@example.com",
+        "passwordHash": "scrypt:63f3d4babc3b71da948db0c0c366f5a3:cd167850f70ca088f70330bf6d028a196240cf0de93d0d9feeed150e488dad3c82401a1ad1fbcc93f6a635ef414cb46faf32c27f6c24c8ad09f88b6029d0e46e",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:01.370Z"
+      }
+    ],
+    [
+      "test_regular_1793419749358@example.com",
+      {
+        "id": "usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419749358@example.com",
+        "passwordHash": "scrypt:92724f5e81f792eb1787b1250d2ec206:247fe3be80e5692ef20d2215f6e08985c15cdd576b9176153d1cef799cd030233f4fe9720fa82f83110ba83ca6ef7d38f46fc7a43bb2d9c543fdda5e3524ca9c",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:09.495Z"
+      }
+    ],
+    [
+      "test_other_1793419749545@example.com",
+      {
+        "id": "usr_ef58fba3-1560-41d8-b808-406db1d54c5c",
+        "name": "Other Test User",
+        "email": "test_other_1793419749545@example.com",
+        "passwordHash": "scrypt:8eff45bf2352c33640682d5325b20f27:8a9325634eb5ef673b553f304ebd7f65d0df68afdff91a1cc17674f6cf1fde0030cfea76870339d82fe151990ee5c95d66687f48dffb7b8ccdf6a277c7a5bdec",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:09.642Z"
+      }
+    ],
+    [
+      "test_regular_1793419757060@example.com",
+      {
+        "id": "usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419757060@example.com",
+        "passwordHash": "scrypt:d0a7759924d5d78b02410be2b330a36e:d90b58ee8618f9e790ea92a6845c399c9e646d1fbc349d1278a9c0bb174348ed709321c25f98c200a0d39ea76d9c8603ce3e71a1c7495b918bbbd18083608383",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:17.351Z"
+      }
+    ],
+    [
+      "test_other_1793419757373@example.com",
+      {
+        "id": "usr_253a012f-4e80-4770-8e80-76c4d87b79dc",
+        "name": "Other Test User",
+        "email": "test_other_1793419757373@example.com",
+        "passwordHash": "scrypt:5f4b77d9a0c57f1d04f1decb19397c5d:7b128b4e956167f30b42003fc05e1faa88a09d9f08f1b748b33f7d1d5b39f33c6840e34ba1b053614d304cde72005d484091247fce23e62f676e18508f62c3ac",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:17.569Z"
+      }
+    ],
+    [
+      "test_regular_1793419765461@example.com",
+      {
+        "id": "usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419765461@example.com",
+        "passwordHash": "scrypt:97a71842e0f4b66e6f63184e187cf15b:00c931e05deba58133b08cc92584c7605cfb1da7b73f0d3ef91e971619e7dbcc64f23e5934b1def51e87ddb8d8bddc760d775e8494deed02b06ba4debf601743",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:25.751Z"
+      }
+    ],
+    [
+      "test_other_1793419765776@example.com",
+      {
+        "id": "usr_2ece36b6-07c0-42de-be85-ada6889c8303",
+        "name": "Other Test User",
+        "email": "test_other_1793419765776@example.com",
+        "passwordHash": "scrypt:2901b3d44c550726ef2924d7ac6f2f90:aebc3da95248e44f8a84fc7395bd9e81151e1d63527050f20788bfb0395626ee7178c2f6d021ccde6ef325ec97770ab926ba0c87fdb3c0304a0bbb443fa20809",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:25.944Z"
+      }
+    ],
+    [
+      "test_regular_1793419781454@example.com",
+      {
+        "id": "usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419781454@example.com",
+        "passwordHash": "scrypt:a8fecf09a07e7d82455451f0a7b48f10:a0aadccb35619cbdf5f4e7bc7141ad3bd3cf5453d7943d22b6e7375da2e02b52e2f34c2944e880a7cbd1e787d48aaecc426d2c8180c0c93a30fdbfe901527f43",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:41.662Z"
+      }
+    ],
+    [
+      "test_other_1793419781688@example.com",
+      {
+        "id": "usr_ad39f6e0-aea8-456e-8677-de4002484c91",
+        "name": "Other Test User",
+        "email": "test_other_1793419781688@example.com",
+        "passwordHash": "scrypt:5587c2794341f5e3aa8edb07a9231b64:176a88fb00052946d2408d4ea339f12ac5a165c23cb6c772c4dec6b60b8f5d2f093666d4b9206719a6d16222292082244beefdc88a76782f277298b4176d6bfd",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:41.797Z"
+      }
+    ],
+    [
+      "test_regular_1793419789782@example.com",
+      {
+        "id": "usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419789782@example.com",
+        "passwordHash": "scrypt:eed3dce295a39ad534e544de31bec093:1098284747e002962c29b35b1dea959c9842f33a1325beafd9b1e306351500cb4e59dbccca0f444516fbc29a5c7bb0c58c0ff02eb621a989c5c30b08e3058a8b",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:49.893Z"
+      }
+    ],
+    [
+      "test_other_1793419789917@example.com",
+      {
+        "id": "usr_359b1896-4adf-4a71-8e65-a54c4c8e8678",
+        "name": "Other Test User",
+        "email": "test_other_1793419789917@example.com",
+        "passwordHash": "scrypt:2faa04a617afb19e23c997509b9f6b3a:8a23498387ca45911cfe27f0ae720d42d32f1169b17ad6f2cd17513d0628286290a56bdfe0b0273898e7676d4dfe8db348a29ffbaf0393dbaf323a4ace007e6f",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:09:50.085Z"
+      }
+    ],
+    [
+      "test_regular_1793419804996@example.com",
+      {
+        "id": "usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419804996@example.com",
+        "passwordHash": "scrypt:6330bf320e22cd473a7ea301d5252c07:8a69a28a5fb916aaf1fe9b3db2e33f3214c37fee9dd53dc9d65053f26def2c94564e255ff727d909148e4d88a2630f8abf69f88b5a4618643b9683375a4d026d",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:10:05.103Z"
+      }
+    ],
+    [
+      "test_other_1793419805131@example.com",
+      {
+        "id": "usr_1530229a-b657-4f08-8622-22dc5983e534",
+        "name": "Other Test User",
+        "email": "test_other_1793419805131@example.com",
+        "passwordHash": "scrypt:2e6c94a6e0c41777eb7a1f0f9dd9b68f:b27fb4d798dc48c20b9fd59ac7fb69630469b828dc2d4555eddc03506d28756008ddc7b56081b6c99ba60eb914edf64a7a04d0bb1769d8cbf8bf6934520884a1",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:10:05.247Z"
+      }
+    ],
+    [
+      "test_regular_1793419815270@example.com",
+      {
+        "id": "usr_96b29966-aeac-4956-915a-bf0f52e49d92",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419815270@example.com",
+        "passwordHash": "scrypt:df76e368823fdb326e2e12a5a9acc6d0:3a1f5197c05530ff9d437c3f5bf72ce00f73103c7b2a200b70e89fc254a55192d604643acc5fae2fe7b0e0b425d01d68bc93fb441171a5a14fe96588a219136c",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:10:15.378Z"
+      }
+    ],
+    [
+      "test_other_1793419815450@example.com",
+      {
+        "id": "usr_5c1314d3-16d9-43a1-936b-00a4cb740032",
+        "name": "Other Test User",
+        "email": "test_other_1793419815450@example.com",
+        "passwordHash": "scrypt:6769c50688c45d6b697811c1d46cfcf2:39ee0d12bdb0f99c9d6c6298bb14b3782c0c8bf3ab97588170adb205fd8d077e402da61e4d7486a0c3f1a01c6b9fc2c1906199394043c0935986d8c23781e92e",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:10:15.741Z"
+      }
+    ],
+    [
+      "test_regular_1793419842823@example.com",
+      {
+        "id": "usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638",
+        "name": "Regular Test User",
+        "email": "test_regular_1793419842823@example.com",
+        "passwordHash": "scrypt:f797708a0af1c8d683f330ef57902ba1:d5887385381243008db96837176d33ad799c51273e025eae2392488d40aa9a3bdd8f42aa82cecdbeb9090fcd1b1e967b306ba1afaf450f6e6c6c6ddcebbaefd0",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:10:42.969Z"
+      }
+    ],
+    [
+      "test_other_1793419842980@example.com",
+      {
+        "id": "usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83",
+        "name": "Other Test User",
+        "email": "test_other_1793419842980@example.com",
+        "passwordHash": "scrypt:bfc35b68ce3281ee154f348402f6c93d:e0fa319b8bd6518f56152a057431e30ab4d7614944395f03c9bc4e6ee56cce3e93d8a499d54a873448dfbedfff52baf3535da50eeb449362e3dbdb95b371acfc",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:10:43.102Z"
+      }
+    ],
+    [
+      "local1793419854@rare-verify.test",
+      {
+        "id": "usr_18c4d1c0-6dc8-4c16-917a-6ee17f0a82d8",
+        "name": "Local",
+        "email": "local1793419854@rare-verify.test",
+        "passwordHash": "scrypt:df92610c4ab978eb24536c795fa85ea0:9270a8faf4cb8f42b8032d19b06deed1ebfe7fce4c11260c44d4ea5861abc80cd46f3367b08621762d786a0c5df6e347f3da131c057bb84f685a9b8c03bb8b7f",
+        "provider": "email",
+        "role": "user",
+        "createdAt": "2026-10-31T04:10:54.346Z"
+      }
     ]
   ],
   "audit_log": [
@@ -6553,7 +7237,449 @@
   ],
   "documents": {},
   "research_items": [],
-  "user_sessions": [],
+  "user_sessions": [
+    [
+      "f3a1e9085f557f455d2e0bab2754c1efeb8a716c947bed620c0eef2125927bd7",
+      {
+        "userId": "usr_db931a9d-57e6-4ea1-86b2-087a752c6b23",
+        "expiresAt": 1796011129202
+      }
+    ],
+    [
+      "ea1b2b55d3e3a23b36f868003e26f127cf1a957a3615ebcbfe2315721af1d2b5",
+      {
+        "userId": "usr_051dd7c5-9c02-4b09-a127-243c382c41db",
+        "expiresAt": 1796011184651
+      }
+    ],
+    [
+      "bed69fea46b70721cdab7c7a699fb314964967ea91f205bd77774cc0d634e111",
+      {
+        "userId": "usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4",
+        "expiresAt": 1796011185051
+      }
+    ],
+    [
+      "9601cbfac49d49b35f1448f90c197af532607d5aec7335310b67e95a6b4c8bf7",
+      {
+        "userId": "usr_722ab142-b86f-484f-a06d-5669e776451f",
+        "expiresAt": 1796011207053
+      }
+    ],
+    [
+      "30ea02eca3ede8ed59b78581031ebce3bd644cd154fd48545aab659b11170233",
+      {
+        "userId": "usr_3a3464f2-d770-4797-b08c-8b3474d971a5",
+        "expiresAt": 1796011207840
+      }
+    ],
+    [
+      "b3017c6429be217d85fa4e04575f293267a878b9cf3958c2b6f066d2332d2c34",
+      {
+        "userId": "usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651",
+        "expiresAt": 1796011227785
+      }
+    ],
+    [
+      "cd5f95980df9a41d80c1ca17f8df3d9323bd1908fcccba9cdd9846bba9c39b49",
+      {
+        "userId": "usr_81768ebe-9e96-4941-a9dc-4310a9a6f223",
+        "expiresAt": 1796011227885
+      }
+    ],
+    [
+      "7942765e7f5f94e8d9a4a44052e442c8331c377e00dafa8162575ffb85e0d467",
+      {
+        "userId": "usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd",
+        "expiresAt": 1796011235170
+      }
+    ],
+    [
+      "13b12a9db6d28f2383c008d0b9da7988d01e74f39525f23e78f96f427f293910",
+      {
+        "userId": "usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb",
+        "expiresAt": 1796011235292
+      }
+    ],
+    [
+      "59831b5725aca3f2e5c6915bcb3cc658ba2e597789a0f6f13db56c460e40714e",
+      {
+        "userId": "usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541",
+        "expiresAt": 1796011242740
+      }
+    ],
+    [
+      "329b3c033685094aeae4d9cd9ffcaf61095d919892ebb66d207979c66c8a60fb",
+      {
+        "userId": "usr_40a439a0-7a06-4844-9a0f-ee777c17e386",
+        "expiresAt": 1796011242897
+      }
+    ],
+    [
+      "9ab14c832f5ab38247c2b6d16bfa3c1d37e277af03485d9de68de8dc33be17d2",
+      {
+        "userId": "usr_daba53d9-bc13-42ac-80f9-65dcd3816895",
+        "expiresAt": 1796011253818
+      }
+    ],
+    [
+      "ea4bd314e89dfb9447a109272521cdd1a83bc92589191bf4e68b08c65cc91daf",
+      {
+        "userId": "usr_19ee9035-28a4-4f71-bda4-887c6d401b9e",
+        "expiresAt": 1796011253906
+      }
+    ],
+    [
+      "a037b3b47c50300c80c3da608fa6c64b375691f654b37eaef5d8df23dbf1b004",
+      {
+        "userId": "usr_71ca13e3-8c1c-4171-b5fe-15b701778847",
+        "expiresAt": 1796011260350
+      }
+    ],
+    [
+      "6bc63e476d836906b265c7e047d8b59174027bc0db9ae738d795bbbfc65bd593",
+      {
+        "userId": "usr_cb032f6a-dae4-409b-8f09-a09564c77f01",
+        "expiresAt": 1796011260458
+      }
+    ],
+    [
+      "53b408e920cf774916b9b1aefb43b3ea7b7808a4290065e54927c5bb876fa99c",
+      {
+        "userId": "usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9",
+        "expiresAt": 1796011267043
+      }
+    ],
+    [
+      "86adc6b4f997a33749ccf625a5f55061e37cedb655c900345da56593f27b5ce7",
+      {
+        "userId": "usr_64b7d62a-2184-4d77-a2c8-94778ae4139e",
+        "expiresAt": 1796011267257
+      }
+    ],
+    [
+      "5e61d30c9801c7ce9506197adb0efe50bd0c180de3aa306416618830b2f60fdd",
+      {
+        "userId": "usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192",
+        "expiresAt": 1796011274770
+      }
+    ],
+    [
+      "bd739e788e9baebffe2d566ed05c0ed7f2d5dc549dc6528a0abc0e227f53a09c",
+      {
+        "userId": "usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3",
+        "expiresAt": 1796011274955
+      }
+    ],
+    [
+      "d0c51f1c715db89dff993a04fad1b98ea916e70a5beedf816125b89393fcca69",
+      {
+        "userId": "usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13",
+        "expiresAt": 1796011282032
+      }
+    ],
+    [
+      "625f85d897960997b0eb7a8d6f5a25507010253879b1576758e728633a39737d",
+      {
+        "userId": "usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720",
+        "expiresAt": 1796011282120
+      }
+    ],
+    [
+      "48eb1750e89aa55230be8d8fc7017bbef0689e049b6de2e6a401590362e5bb36",
+      {
+        "userId": "usr_57e0d797-980f-4337-90c9-aec52e843fed",
+        "expiresAt": 1796011304196
+      }
+    ],
+    [
+      "50bd6200dbcdc5726cb24dc66914c3c431bedcd5a8d27504774cefb8ce67f7db",
+      {
+        "userId": "usr_df03fa27-63c2-4afa-b588-dfff6e1d6823",
+        "expiresAt": 1796011304311
+      }
+    ],
+    [
+      "01a356895bdf7814746a2d4ccc2a25694af51c25b368a3290838f48556fe71d1",
+      {
+        "userId": "usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4",
+        "expiresAt": 1796011316052
+      }
+    ],
+    [
+      "ee610a664fec289803ea156e05b5cdb74cab77951eba06c4a70c4084480a360d",
+      {
+        "userId": "usr_491aeaa7-f099-44ee-b706-c8075d6af3de",
+        "expiresAt": 1796011316651
+      }
+    ],
+    [
+      "0085a41402600ca9530cbf639eb334dcc41d1c9bd927521e64ace73e9c4a73bb",
+      {
+        "userId": "usr_b0d4422b-5033-4381-8baf-209c76116ebe",
+        "expiresAt": 1796011319863
+      }
+    ],
+    [
+      "881a1275f90b5286622a8b04e060362d2f6ea6adfed1b80f0294708a7b1cb960",
+      {
+        "userId": "usr_e6017f3f-7028-4b70-872a-adab061f5a0e",
+        "expiresAt": 1796011320060
+      }
+    ],
+    [
+      "08e238305bbf21a490f8179f3b5e86d0cf0536dd1e9f85b54565c5f5a79a94ae",
+      {
+        "userId": "usr_c62ae1ea-2099-4e18-a31f-dd34344e7caf",
+        "expiresAt": 1796011369943
+      }
+    ],
+    [
+      "84f5abc3917e288a0a7cd75e458e5029b64e76408814fee64beb635188990315",
+      {
+        "userId": "usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa",
+        "expiresAt": 1796011383145
+      }
+    ],
+    [
+      "266f4bd1de4f7e816bc71f85131eae1b94b14e86a1a43910fccfb2797ede6f92",
+      {
+        "userId": "usr_cb1dde45-4438-447e-a26a-276c63227953",
+        "expiresAt": 1796011383847
+      }
+    ],
+    [
+      "feded113bb85aa96a83eb2f45d61dd76ba14d61a7f18c12ba3aa2118b49fe9d2",
+      {
+        "userId": "usr_8485ca0a-77d5-4ee9-a836-b94081fce6a7",
+        "expiresAt": 1796011407401
+      }
+    ],
+    [
+      "23f031bdb00003f3ae73b31d861efbb863ef7f601ad691f1126dbc2d7c72c433",
+      {
+        "userId": "usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f",
+        "expiresAt": 1796011555279
+      }
+    ],
+    [
+      "044ef47320cd0b46f9f8a3ad6e32f04d022528495159c4911f265616ccf12571",
+      {
+        "userId": "usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0",
+        "expiresAt": 1796011555363
+      }
+    ],
+    [
+      "317d6b4db0adb6dfe9d9600b72a9f3e81ab1e5a9faaee1c8c002a547b2ae68c0",
+      {
+        "userId": "usr_f82788d6-05e1-49f6-9271-5160d5c9a664",
+        "expiresAt": 1796011564080
+      }
+    ],
+    [
+      "5d6b022c6d4da9131ee85acc8fa7b66f500d4ecb94dc7b552684affa5a53a834",
+      {
+        "userId": "usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6",
+        "expiresAt": 1796011564239
+      }
+    ],
+    [
+      "37a966e3ad874b41bf7d0a72ac90c4ddab4a68112d2484c3ec7f98af044080b9",
+      {
+        "userId": "usr_a888df09-29f4-49e9-80e7-0ac932c06efd",
+        "expiresAt": 1796011574398
+      }
+    ],
+    [
+      "2bc168e4df1d4f6c20f615480aabd271e45725447e143188b88b4e9d013fab9d",
+      {
+        "userId": "usr_1ba96225-976d-467e-bf65-37468717dcef",
+        "expiresAt": 1796011574514
+      }
+    ],
+    [
+      "7ca1678e7d6c6b3f269c02762b4709793a03cd4621de40559f4992299055a895",
+      {
+        "userId": "usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49",
+        "expiresAt": 1796011597160
+      }
+    ],
+    [
+      "e5a7a948a351218511330b3e0c8798f64fbf546827fb6b893311da2ccbd82fdb",
+      {
+        "userId": "usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49",
+        "expiresAt": 1796011722855
+      }
+    ],
+    [
+      "3f48c5e0e9814da3c95ac7a2e0219bcd81616b82edcd824c4deb49a31bbfea72",
+      {
+        "userId": "usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49",
+        "expiresAt": 1796011737763
+      }
+    ],
+    [
+      "1d42d72bb73319e215eada8f17cfdcf627f2e24a45d6688ad56d53263d35801b",
+      {
+        "userId": "usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d",
+        "expiresAt": 1796011741279
+      }
+    ],
+    [
+      "191354d996ec610eaeef3ce46287d03b9c771ba6965bb1968df471c432223237",
+      {
+        "userId": "usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6",
+        "expiresAt": 1796011741376
+      }
+    ],
+    [
+      "ccb5aa0f704d39b6c593c9d327ebacb81e3c6d8a71314a7243d4515a8aee1afd",
+      {
+        "userId": "usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab",
+        "expiresAt": 1796011749539
+      }
+    ],
+    [
+      "a9cc720cc0f4b3970b0c00bd7dbcbe2bd33beef1f84ae9ffe223fdfb8248dd89",
+      {
+        "userId": "usr_ef58fba3-1560-41d8-b808-406db1d54c5c",
+        "expiresAt": 1796011749646
+      }
+    ],
+    [
+      "eb9ac8bc28c146a25caace0960a9ba4aa9ff5f21c45e1c3cd6fdef6e91827de6",
+      {
+        "userId": "usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c",
+        "expiresAt": 1796011757362
+      }
+    ],
+    [
+      "20f38db2a27466a85d2d896aaa90f0cf6f24312de6c4b3644f6c72eb91b4a2ac",
+      {
+        "userId": "usr_253a012f-4e80-4770-8e80-76c4d87b79dc",
+        "expiresAt": 1796011757580
+      }
+    ],
+    [
+      "5604fdbf9a71ad68e405ca27cea0ab3b6dd8f7d9beb1c01d774ba9278eb2fcb7",
+      {
+        "userId": "usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d",
+        "expiresAt": 1796011765762
+      }
+    ],
+    [
+      "74e47c34e5c33c1639803ab847a01379fc67123749128d20abb0deb8feed1e74",
+      {
+        "userId": "usr_2ece36b6-07c0-42de-be85-ada6889c8303",
+        "expiresAt": 1796011765954
+      }
+    ],
+    [
+      "1a4d1320e93d7989cd1105ccbd65492d43d4f852d5412d2efa8f6c7be3d202fb",
+      {
+        "userId": "usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9",
+        "expiresAt": 1796011781674
+      }
+    ],
+    [
+      "252b6e2a1626edbd93bfacfc2af4473abe9ce609c418ebc32d0848ba6426e0d1",
+      {
+        "userId": "usr_ad39f6e0-aea8-456e-8677-de4002484c91",
+        "expiresAt": 1796011781808
+      }
+    ],
+    [
+      "e3b01bac96996ca512140b4bfef9c503db78177af742b1c6ddedbc26f2e9adad",
+      {
+        "userId": "usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c",
+        "expiresAt": 1796011789904
+      }
+    ],
+    [
+      "843fb7f6684264f54816eda295fc810bc7574fe4147c429d43e6c5da0db14209",
+      {
+        "userId": "usr_359b1896-4adf-4a71-8e65-a54c4c8e8678",
+        "expiresAt": 1796011790094
+      }
+    ],
+    [
+      "81750b158cd3e30a0cbe4a9b7cc64d301fd6f6e1828305b272c86584650e09ae",
+      {
+        "userId": "usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e",
+        "expiresAt": 1796011805117
+      }
+    ],
+    [
+      "dbc1627155cfbef63c0011c10283c5f8f644f77c3875ee95b14fdaeda9944333",
+      {
+        "userId": "usr_1530229a-b657-4f08-8622-22dc5983e534",
+        "expiresAt": 1796011805254
+      }
+    ],
+    [
+      "38ef3636ba5494045edac3c6d1fa1d8bccd420b084b720020d7a0f1d0104f369",
+      {
+        "userId": "usr_96b29966-aeac-4956-915a-bf0f52e49d92",
+        "expiresAt": 1796011815444
+      }
+    ],
+    [
+      "5ee3a090287cac5dd0105c92734a958aa7dc6f7df4b48abc16900c8a1b56078c",
+      {
+        "userId": "usr_5c1314d3-16d9-43a1-936b-00a4cb740032",
+        "expiresAt": 1796011815748
+      }
+    ],
+    [
+      "f27759e22c4ece1984b83060229be227a0a9ec301d0c5518f79562bbb6ba5cec",
+      {
+        "userId": "usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638",
+        "expiresAt": 1796011842974
+      }
+    ],
+    [
+      "81997c09ef7d569ec9caab655a9321fb15e038559ed284bced21cff38febcd0c",
+      {
+        "userId": "usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83",
+        "expiresAt": 1796011843112
+      }
+    ],
+    [
+      "21d430971cb236903262b4b0519c6c46ddd2c99126ab9d2fdeb8600bdad95981",
+      {
+        "userId": "guest_0d8c2738-1df5-4409-9bb4-6b5f945857f6",
+        "expiresAt": 1796011848368
+      }
+    ],
+    [
+      "1b653bd51e3648100ee124e9ed89fa891fa17a2600b15155f14b0dddc733dd37",
+      {
+        "userId": "guest_7a04be7c-6c47-4cc7-a194-6dd33d0e4524",
+        "expiresAt": 1796011848552
+      }
+    ],
+    [
+      "fb6cc0e20d08e55f9e2626c9dfbf39d24c2e96955f0f60dbe4785c7e11de1c7f",
+      {
+        "userId": "usr_18c4d1c0-6dc8-4c16-917a-6ee17f0a82d8",
+        "expiresAt": 1796011854358
+      }
+    ],
+    [
+      "c6b58ca8d88da636e3f39191a90d147922f8592f4d5cd5040a1654aedc95222c",
+      {
+        "userId": "guest_11133e11-c453-4d1c-aa44-7427589ef305",
+        "expiresAt": 1796011889351
+      }
+    ],
+    [
+      "1e740dc2810c8d3ffe3bca52551a776a2d1209aee1d247b50a13b199f19f4b0f",
+      {
+        "userId": "guest_9da8a1d6-caf6-4550-8835-2ee1f77ec986",
+        "expiresAt": 1796011897096
+      }
+    ]
+  ],
   "rare_auth_users": [
     {
       "id": "usr_owner_1",
@@ -9044,10 +10170,2787 @@
       "provider": "email",
       "role": "user",
       "createdAt": "2026-10-13T06:13:46.435Z"
+    },
+    {
+      "id": "usr_db931a9d-57e6-4ea1-86b2-087a752c6b23",
+      "name": "Local",
+      "email": "local1793419129@rare-verify.test",
+      "phone": null,
+      "passwordHash": "scrypt:60eed1469ff0f31e363a3599e3ec2cc1:54d0cb217fadb00fe6540cb26eb7649e1764ccd030d2d16ce47dab425ac4f7613adb1092e0a22e8d87e4cf4f16e71d4d1de5a84f17f1319ac00270cb64a5d00a",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T03:58:49.194Z"
+    },
+    {
+      "id": "usr_051dd7c5-9c02-4b09-a127-243c382c41db",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419184040@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:f8f1f4973225352c608e05155244eda5:b1f1c74c390437d5bfd06e2a37b71b65f9bb6d1b54a8c3356ab413864ba1f4d88eb444da296ad9bd3208b78ab8a01aeae25c6b43edf88e5a87e599bb21e01596",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T03:59:44.646Z"
+    },
+    {
+      "id": "usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4",
+      "name": "Other Test User",
+      "email": "test_other_1793419184656@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:07108234db37da7c2484b7d7c9e1c583:60ecafdf053bbbdd11c16f93613a52d50ea16e50c785a5c3763c7ef4c6cb2cb5b04c7a8f3f6d4593e526b5308cc4f9b3aa2568d503ef2b1d8be10e1ee3a01c51",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T03:59:45.047Z"
+    },
+    {
+      "id": "usr_722ab142-b86f-484f-a06d-5669e776451f",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419206540@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:e2cc531116268b27d1556d8ae9181db5:9d0a2b6ab807afa5418dfc44b2e6797e2d926bafb8e0e2e4bd5369c14a2a8491292e9380b4ffd9319a2819eff85d9a65ae399fa570144afe9037bdc031d76be6",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:00:07.050Z"
+    },
+    {
+      "id": "usr_3a3464f2-d770-4797-b08c-8b3474d971a5",
+      "name": "Other Test User",
+      "email": "test_other_1793419207141@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:b2130f990f68798e22cc1b46b5fbb249:fc6604be7c0bfaa099de015a93dc5c1580372bd2d869b4e6b3514d98bc2c545e3c6f2cbc7dd3e082ddfa2d11d3d14d4fbddbf922daaa30d380a07d7da99fd020",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:00:07.747Z"
+    },
+    {
+      "id": "usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419227689@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:faf49658207a709b2c56c866c79cebda:e21299ed8861f5be6825408d025091bc238a8d6bd006e3a8f03199d9ab1bae8a6ff8d41c78ee88d3abd5668e67a0846d610447e691fdf44b398c987e4d4da954",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:00:27.777Z"
+    },
+    {
+      "id": "usr_81768ebe-9e96-4941-a9dc-4310a9a6f223",
+      "name": "Other Test User",
+      "email": "test_other_1793419227795@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:af58b81cf32f51ea3ca67863d5b1d668:79462788c5c58bb24245623cd2fccc4c6eaca17703732b1cb660eff63d924f6659b7fab717a3d581bd316eeb6d30143760ec29c057f72e9cc5113c7fcacadfd6",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:00:27.878Z"
+    },
+    {
+      "id": "usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419235095@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:de2a31c6bc1f2dc418b7bfc1ed5f3842:eb62c52347c83d34c20f5e4af1e5964c0013ae94d341e96782e36305d155a5793d7169505bea4149110467b03580642f9512b850311c4bbaea476d78ed9af41f",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:00:35.160Z"
+    },
+    {
+      "id": "usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb",
+      "name": "Other Test User",
+      "email": "test_other_1793419235176@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:e9c023e6176c85de4133389d91a42cb5:3ccba125430c48eb6fcf109ed4052b6293c5cb9ee4542a596b175c69845548ffe004c0d7f3840167602b34095390727309c712ccb7d7dc2d6cb1678ce6388b2b",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:00:35.283Z"
+    },
+    {
+      "id": "usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419242643@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:e74f4a2e4f4df104138fdcca3d0496c6:7015db5a3bae93b8562391cd0c8ac4afb401a60f2bcd77c44a63c065c8311217969353968c2c57d8b6dfec55b639a5bfa88e9777c86bb93dd2c7ca8faf50356d",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:00:42.716Z"
+    },
+    {
+      "id": "usr_40a439a0-7a06-4844-9a0f-ee777c17e386",
+      "name": "Other Test User",
+      "email": "test_other_1793419242746@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:dc31a413381922dd3a78d078906f8bd4:40c444068487093d407ca7dbe64da41749c655e55bee1913f716f7247eb2b7495671d380be999c710f19923edabb4e359c1d1a16d504339d7e6b6d744b92c57d",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:00:42.890Z"
+    },
+    {
+      "id": "usr_daba53d9-bc13-42ac-80f9-65dcd3816895",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419253746@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:7cf6e01792b30d3c078c23b5af1dd535:eb5cf7b8b4e188f86a66bc2ba0b1ec62cec9f794ed51e4ea017d9532044c5b513965ca0df3764c8a03097c06752c28e9ed4da30a9dc2d882efc6ff5e99140cdc",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:00:53.809Z"
+    },
+    {
+      "id": "usr_19ee9035-28a4-4f71-bda4-887c6d401b9e",
+      "name": "Other Test User",
+      "email": "test_other_1793419253825@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:14769916a000637e8c04c4d6a859be39:3c851b134f0e7f2efb74d9c500446f07eb3c40a6480df8ce0bcdc5771cd79bf9288639105b2a9807b5cb432c68f84d912ac7926a9c8be7c3a4edeb64be597ef3",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:00:53.902Z"
+    },
+    {
+      "id": "usr_71ca13e3-8c1c-4171-b5fe-15b701778847",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419260245@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:22fb9cc0aab27dcf0ff913c22526d354:ab76561409ec9bb85599144cd6bebe3da58690d31797eff134fb0ffe0203ee04c847a39edfb385384b706cf4191f60cb3b0793530478f2d727848a7cb6779915",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:00.346Z"
+    },
+    {
+      "id": "usr_cb032f6a-dae4-409b-8f09-a09564c77f01",
+      "name": "Other Test User",
+      "email": "test_other_1793419260356@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:16bda838da83a525bc319563b8942924:0e9b01449e9d333bf16cbadaa5829eb8ca22c4978ffd43077cb5a63b066642c916813ee1b5de837333dec58814c03a8b48c95ab1428573189c908758d75f5cbf",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:00.455Z"
+    },
+    {
+      "id": "usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419266910@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:b44159c196b9302f8ad802c244e5cff3:6de26174106bf89e07c9dab1145487d7cd54420e40062f9de2eca67e54e14b1d3d5638a73e0f9709838cdbca930f95cc69b05cd8a5d850e7c3299859b7d18255",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:07.002Z"
+    },
+    {
+      "id": "usr_64b7d62a-2184-4d77-a2c8-94778ae4139e",
+      "name": "Other Test User",
+      "email": "test_other_1793419267052@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:524c5ffd61ea3033d68436857117099f:d40583b700f559880b2b4025b0b3617c69f1658952a07ee9da4bc97959b66c62086afd051d85b700890f893ba0851002becaa84cc05b0a51728b6960dc48c435",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:07.250Z"
+    },
+    {
+      "id": "usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419274677@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:167c54a6448fccec577f410c314676a4:63313afba36551b5049dfd473f84f38b8139bfcb0c56b7fb5f1b20f81747d23d6af1901482e097ee488075a042f28fffc0d85eede601837e125369454ceae3a9",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:14.761Z"
+    },
+    {
+      "id": "usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3",
+      "name": "Other Test User",
+      "email": "test_other_1793419274844@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:9a0d0963c2ade8002aa9873ea03a7bce:05571d98974289d461e5a76d8863355ea09a2c90a82cc94ccaba661596a0de4f95ec0c0a5aad7cd1dee699d3705a5a696c1c765aa435c20364b627646e23dd8e",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:14.946Z"
+    },
+    {
+      "id": "usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419281974@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:11464834334c537915d5a7219045cbf4:99ef09d57379ca1625615870d9d7b37bb362098cb9964df4d3fb3ff59b9babfbd52fc06b42929e1c6c98ddca93f84faebde516ec4e522fef6d4dbab335980754",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:22.023Z"
+    },
+    {
+      "id": "usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720",
+      "name": "Other Test User",
+      "email": "test_other_1793419282046@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:d1e21bae986b919a8c9adbec18724394:d5a0d5200095a52d987eb4da862f31338cc25ca6f5fb8ca3dc8464598adff4c5a80a3f9ff5da878278800e555124e54ae343068051d576c166b358adcaa77302",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:22.116Z"
+    },
+    {
+      "id": "usr_57e0d797-980f-4337-90c9-aec52e843fed",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419304094@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:a3bf25d5d23c07b03e4e1eba69c1aa1c:636f85cabb8537077c2ad5cb109f1992ad5b6db2a659f71a274fdc3aad1b16bd1d2dd63c1d0f386c51fc4de2e9a88923245609fdf4062748b8225f5e17b5d447",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:44.187Z"
+    },
+    {
+      "id": "usr_df03fa27-63c2-4afa-b588-dfff6e1d6823",
+      "name": "Other Test User",
+      "email": "test_other_1793419304207@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:e5dbf294810916cc25404388c4b92a1d:4d22904363bcffd2991713c0da32d2703aa1b7db86eefb5d1fbdabd61b2dd14d3dbbd3d0c99b6e704e184f020830821685675d0a070703834e661a5e8a3a539c",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:44.306Z"
+    },
+    {
+      "id": "usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419315658@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:341b7ec4088be55b56267d09d85f0ef8:ec7fe4003aa2a46c76899a50260e328e9eb6f89ada4fab8a74b751398837b1a60d0068f0511dd20f36267cf01ad5b64f4d1d6e6ad5c2008cbe9bc046136405d1",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:56.047Z"
+    },
+    {
+      "id": "usr_491aeaa7-f099-44ee-b706-c8075d6af3de",
+      "name": "Other Test User",
+      "email": "test_other_1793419316141@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:4a23a75323b6799fab64457c98e6cbda:183d61abe7574c33a89964bbe490a1ac6fc6f8d9145048a66214fc17a2c00b5845da8f2dbe3108b4c9edcdc6bce6a80ef12233f5b8e4090891d85bd6cf0cff2c",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:56.641Z"
+    },
+    {
+      "id": "usr_b0d4422b-5033-4381-8baf-209c76116ebe",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419319764@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:84e3d234f1c5af511b23d747fa983b68:fb579834e9f43b48b629c4ba68f7a0be118610466412021253b42b1fe7d69c1d832cded3ae8c1749d76e2c0538ed9ab80f51276c9cdb36b13405d48c1ff00fb3",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:01:59.853Z"
+    },
+    {
+      "id": "usr_e6017f3f-7028-4b70-872a-adab061f5a0e",
+      "name": "Other Test User",
+      "email": "test_other_1793419319871@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:61f0cfd4f584db9146b95181fc706cde:01a7db47ce3ff28a0f9e06d2b5f1152da68f8a76651965de60f52b23a828f3fc66895f1b583400deb8d91deb558fdfe37f46a9c7b231f1a6f8354920d307bfed",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:02:00.051Z"
+    },
+    {
+      "id": "usr_c62ae1ea-2099-4e18-a31f-dd34344e7caf",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419369245@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:61674444959988a8eef91b8a51ea42c5:16e85a446289253c62620bdf0acbccd0f7ab73ab6b235e1dae79b81d30fa94cd6670e2dbccafc611ff1b676c79e83d411350e2519885c728883d919b45b3bd5f",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:02:49.747Z"
+    },
+    {
+      "id": "usr_ce6e10ba-a7cf-4c6b-82e4-0e9167fccd12",
+      "name": "Other Test User",
+      "email": "test_other_1793419370048@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:91311e40549700d19c255564d956f636:aaf3a791671549030a6ac14b5e532cb5967593d8d4c949cceba3cb1a535e06e23461c885e89aba2d98068a6d177063bc88a73a3316419567291f68e051321971",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:02:51.044Z"
+    },
+    {
+      "id": "usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419382341@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:dabf94a49f79132a05079d5d5e38c0dd:d70eaf102f0cdb092be673b7c4d38a7753500276b62fe88ebe84f243935bc2688c40b3c0f8672d9f102dc6e487b2e438687ff46010c8023d4d311643748bfa40",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:03:03.140Z"
+    },
+    {
+      "id": "usr_cb1dde45-4438-447e-a26a-276c63227953",
+      "name": "Other Test User",
+      "email": "test_other_1793419383343@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:08e04b381b978eea736e7ba3e9cc3909:68a999c053ed7d0255e316842fb8094618d6db256ca1959eb78b84f8cab9e174635e368496ef7004b3627917eca576fcc080af31fa5a6e65141f68cb190e4d87",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:03:03.843Z"
+    },
+    {
+      "id": "usr_8485ca0a-77d5-4ee9-a836-b94081fce6a7",
+      "name": "Local",
+      "email": "local1793419407@rare-verify.test",
+      "phone": null,
+      "passwordHash": "scrypt:55752a001958b376a67b9fbf35c1e934:1d968081ef741ca0ff45035f9aa8de22a850d4c6ed4e4c42f03355023520e5aefb821dff237c901c1729994056f640a3dac5f5772d2bb41b290c057200edf3d2",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:03:27.394Z"
+    },
+    {
+      "id": "usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419555217@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:d6da73b5f6c8013879759dc21d8a5024:b07b1944207cf5958520094eceb64c416081dd2dbeb21d11a6ec1d08d9e49bfb3ffb8eab55c13bbc9949ce3377dd4c17675bcfa51a300ec7eba90e3432713110",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:05:55.268Z"
+    },
+    {
+      "id": "usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0",
+      "name": "Other Test User",
+      "email": "test_other_1793419555290@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:d4438ce26677c5897c9ad82916b4249d:ef78def4786db3a2dc5f79c4a85c68e1253aac6241feda5e6ba9e46362942147c61a08d6a8a7e83967439343c1c995c7bb2d4856434c78fd91749f38bc06514b",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:05:55.353Z"
+    },
+    {
+      "id": "usr_f82788d6-05e1-49f6-9271-5160d5c9a664",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419564005@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:f747a70f6380e1c50339a1c72949494c:727fef6a44e560a091149dc9b4d96728da3634e5a3d740c5a4157bdde49ba1c289f9914228fe7aaf56b5f2c50a3dc17a6769bb8056168ca0dd2c8a4eda0b7c86",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:06:04.073Z"
+    },
+    {
+      "id": "usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6",
+      "name": "Other Test User",
+      "email": "test_other_1793419564085@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:5495cb5989260d093bccbc4af83876f8:fc321f9c8521279424537cad3061f3862bfcdd897b126fbe30cb695d742ee2a73fd98cec63a3a25f92849079c896c9615379f29071ff14c2c2fd1fd3188c4f2d",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:06:04.185Z"
+    },
+    {
+      "id": "usr_a888df09-29f4-49e9-80e7-0ac932c06efd",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419574247@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:f31a88706b2ab680e84f2b7a834b0203:da25180f5d478ad109b95f37b97fc5ad5042c614a39e9b356c620ef892258462f8dcef2605987750aad50d41e64c83a6ba30de4c496f7654917e0fd38ca08946",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:06:14.388Z"
+    },
+    {
+      "id": "usr_1ba96225-976d-467e-bf65-37468717dcef",
+      "name": "Other Test User",
+      "email": "test_other_1793419574410@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:95883ab2adbd0520a46d256ccb9ddc44:c350a7b8a03a3d87da6550c47154a5c1ff5827c6b85b0353268ce345257d11758aa3383e33dfccf26d782b715046a10ba0efe15e602bd5afa75d36178f6332b7",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:06:14.505Z"
+    },
+    {
+      "id": "usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49",
+      "name": "Local",
+      "email": "local1793419597@rare-verify.test",
+      "phone": null,
+      "passwordHash": "scrypt:af00a3b85dd1adb9a69b38a7b3f4b90c:a68f6af55c367e284f16335168d09396c50c519cd4e3d9b7af15b75f7e33911ff7ef266a52791fd5b457d88988d1ed7607004cfee78d9bab2e017d00acf00be0",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:06:37.147Z"
+    },
+    {
+      "id": "usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419741172@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:30aa46a09c9c733b692eef37859810ba:671b6b1794c41547ae9f9b7b2445fb02563129c437381373e80585114b720ebccfae023ca809a502f125328b1e922a9551b11ddde8890860432d1ae3534efaaf",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:01.272Z"
+    },
+    {
+      "id": "usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6",
+      "name": "Other Test User",
+      "email": "test_other_1793419741287@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:63f3d4babc3b71da948db0c0c366f5a3:cd167850f70ca088f70330bf6d028a196240cf0de93d0d9feeed150e488dad3c82401a1ad1fbcc93f6a635ef414cb46faf32c27f6c24c8ad09f88b6029d0e46e",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:01.370Z"
+    },
+    {
+      "id": "usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419749358@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:92724f5e81f792eb1787b1250d2ec206:247fe3be80e5692ef20d2215f6e08985c15cdd576b9176153d1cef799cd030233f4fe9720fa82f83110ba83ca6ef7d38f46fc7a43bb2d9c543fdda5e3524ca9c",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:09.495Z"
+    },
+    {
+      "id": "usr_ef58fba3-1560-41d8-b808-406db1d54c5c",
+      "name": "Other Test User",
+      "email": "test_other_1793419749545@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:8eff45bf2352c33640682d5325b20f27:8a9325634eb5ef673b553f304ebd7f65d0df68afdff91a1cc17674f6cf1fde0030cfea76870339d82fe151990ee5c95d66687f48dffb7b8ccdf6a277c7a5bdec",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:09.642Z"
+    },
+    {
+      "id": "usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419757060@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:d0a7759924d5d78b02410be2b330a36e:d90b58ee8618f9e790ea92a6845c399c9e646d1fbc349d1278a9c0bb174348ed709321c25f98c200a0d39ea76d9c8603ce3e71a1c7495b918bbbd18083608383",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:17.351Z"
+    },
+    {
+      "id": "usr_253a012f-4e80-4770-8e80-76c4d87b79dc",
+      "name": "Other Test User",
+      "email": "test_other_1793419757373@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:5f4b77d9a0c57f1d04f1decb19397c5d:7b128b4e956167f30b42003fc05e1faa88a09d9f08f1b748b33f7d1d5b39f33c6840e34ba1b053614d304cde72005d484091247fce23e62f676e18508f62c3ac",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:17.569Z"
+    },
+    {
+      "id": "usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419765461@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:97a71842e0f4b66e6f63184e187cf15b:00c931e05deba58133b08cc92584c7605cfb1da7b73f0d3ef91e971619e7dbcc64f23e5934b1def51e87ddb8d8bddc760d775e8494deed02b06ba4debf601743",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:25.751Z"
+    },
+    {
+      "id": "usr_2ece36b6-07c0-42de-be85-ada6889c8303",
+      "name": "Other Test User",
+      "email": "test_other_1793419765776@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:2901b3d44c550726ef2924d7ac6f2f90:aebc3da95248e44f8a84fc7395bd9e81151e1d63527050f20788bfb0395626ee7178c2f6d021ccde6ef325ec97770ab926ba0c87fdb3c0304a0bbb443fa20809",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:25.944Z"
+    },
+    {
+      "id": "usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419781454@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:a8fecf09a07e7d82455451f0a7b48f10:a0aadccb35619cbdf5f4e7bc7141ad3bd3cf5453d7943d22b6e7375da2e02b52e2f34c2944e880a7cbd1e787d48aaecc426d2c8180c0c93a30fdbfe901527f43",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:41.662Z"
+    },
+    {
+      "id": "usr_ad39f6e0-aea8-456e-8677-de4002484c91",
+      "name": "Other Test User",
+      "email": "test_other_1793419781688@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:5587c2794341f5e3aa8edb07a9231b64:176a88fb00052946d2408d4ea339f12ac5a165c23cb6c772c4dec6b60b8f5d2f093666d4b9206719a6d16222292082244beefdc88a76782f277298b4176d6bfd",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:41.797Z"
+    },
+    {
+      "id": "usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419789782@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:eed3dce295a39ad534e544de31bec093:1098284747e002962c29b35b1dea959c9842f33a1325beafd9b1e306351500cb4e59dbccca0f444516fbc29a5c7bb0c58c0ff02eb621a989c5c30b08e3058a8b",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:49.893Z"
+    },
+    {
+      "id": "usr_359b1896-4adf-4a71-8e65-a54c4c8e8678",
+      "name": "Other Test User",
+      "email": "test_other_1793419789917@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:2faa04a617afb19e23c997509b9f6b3a:8a23498387ca45911cfe27f0ae720d42d32f1169b17ad6f2cd17513d0628286290a56bdfe0b0273898e7676d4dfe8db348a29ffbaf0393dbaf323a4ace007e6f",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:09:50.085Z"
+    },
+    {
+      "id": "usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419804996@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:6330bf320e22cd473a7ea301d5252c07:8a69a28a5fb916aaf1fe9b3db2e33f3214c37fee9dd53dc9d65053f26def2c94564e255ff727d909148e4d88a2630f8abf69f88b5a4618643b9683375a4d026d",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:10:05.103Z"
+    },
+    {
+      "id": "usr_1530229a-b657-4f08-8622-22dc5983e534",
+      "name": "Other Test User",
+      "email": "test_other_1793419805131@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:2e6c94a6e0c41777eb7a1f0f9dd9b68f:b27fb4d798dc48c20b9fd59ac7fb69630469b828dc2d4555eddc03506d28756008ddc7b56081b6c99ba60eb914edf64a7a04d0bb1769d8cbf8bf6934520884a1",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:10:05.247Z"
+    },
+    {
+      "id": "usr_96b29966-aeac-4956-915a-bf0f52e49d92",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419815270@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:df76e368823fdb326e2e12a5a9acc6d0:3a1f5197c05530ff9d437c3f5bf72ce00f73103c7b2a200b70e89fc254a55192d604643acc5fae2fe7b0e0b425d01d68bc93fb441171a5a14fe96588a219136c",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:10:15.378Z"
+    },
+    {
+      "id": "usr_5c1314d3-16d9-43a1-936b-00a4cb740032",
+      "name": "Other Test User",
+      "email": "test_other_1793419815450@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:6769c50688c45d6b697811c1d46cfcf2:39ee0d12bdb0f99c9d6c6298bb14b3782c0c8bf3ab97588170adb205fd8d077e402da61e4d7486a0c3f1a01c6b9fc2c1906199394043c0935986d8c23781e92e",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:10:15.741Z"
+    },
+    {
+      "id": "usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638",
+      "name": "Regular Test User",
+      "email": "test_regular_1793419842823@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:f797708a0af1c8d683f330ef57902ba1:d5887385381243008db96837176d33ad799c51273e025eae2392488d40aa9a3bdd8f42aa82cecdbeb9090fcd1b1e967b306ba1afaf450f6e6c6c6ddcebbaefd0",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:10:42.969Z"
+    },
+    {
+      "id": "usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83",
+      "name": "Other Test User",
+      "email": "test_other_1793419842980@example.com",
+      "phone": null,
+      "passwordHash": "scrypt:bfc35b68ce3281ee154f348402f6c93d:e0fa319b8bd6518f56152a057431e30ab4d7614944395f03c9bc4e6ee56cce3e93d8a499d54a873448dfbedfff52baf3535da50eeb449362e3dbdb95b371acfc",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:10:43.102Z"
+    },
+    {
+      "id": "usr_18c4d1c0-6dc8-4c16-917a-6ee17f0a82d8",
+      "name": "Local",
+      "email": "local1793419854@rare-verify.test",
+      "phone": null,
+      "passwordHash": "scrypt:df92610c4ab978eb24536c795fa85ea0:9270a8faf4cb8f42b8032d19b06deed1ebfe7fce4c11260c44d4ea5861abc80cd46f3367b08621762d786a0c5df6e347f3da131c057bb84f685a9b8c03bb8b7f",
+      "provider": "email",
+      "role": "user",
+      "createdAt": "2026-10-31T04:10:54.346Z"
     }
   ],
-  "rare_auth_sessions": [],
+  "rare_auth_sessions": [
+    [
+      "f3a1e9085f557f455d2e0bab2754c1efeb8a716c947bed620c0eef2125927bd7",
+      {
+        "ownerId": "usr_db931a9d-57e6-4ea1-86b2-087a752c6b23",
+        "accountId": "usr_db931a9d-57e6-4ea1-86b2-087a752c6b23",
+        "expiresAt": 1796011129202
+      }
+    ],
+    [
+      "ea1b2b55d3e3a23b36f868003e26f127cf1a957a3615ebcbfe2315721af1d2b5",
+      {
+        "ownerId": "usr_051dd7c5-9c02-4b09-a127-243c382c41db",
+        "accountId": "usr_051dd7c5-9c02-4b09-a127-243c382c41db",
+        "expiresAt": 1796011184651
+      }
+    ],
+    [
+      "bed69fea46b70721cdab7c7a699fb314964967ea91f205bd77774cc0d634e111",
+      {
+        "ownerId": "usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4",
+        "accountId": "usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4",
+        "expiresAt": 1796011185051
+      }
+    ],
+    [
+      "9601cbfac49d49b35f1448f90c197af532607d5aec7335310b67e95a6b4c8bf7",
+      {
+        "ownerId": "usr_722ab142-b86f-484f-a06d-5669e776451f",
+        "accountId": "usr_722ab142-b86f-484f-a06d-5669e776451f",
+        "expiresAt": 1796011207053
+      }
+    ],
+    [
+      "30ea02eca3ede8ed59b78581031ebce3bd644cd154fd48545aab659b11170233",
+      {
+        "ownerId": "usr_3a3464f2-d770-4797-b08c-8b3474d971a5",
+        "accountId": "usr_3a3464f2-d770-4797-b08c-8b3474d971a5",
+        "expiresAt": 1796011207840
+      }
+    ],
+    [
+      "b3017c6429be217d85fa4e04575f293267a878b9cf3958c2b6f066d2332d2c34",
+      {
+        "ownerId": "usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651",
+        "accountId": "usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651",
+        "expiresAt": 1796011227785
+      }
+    ],
+    [
+      "cd5f95980df9a41d80c1ca17f8df3d9323bd1908fcccba9cdd9846bba9c39b49",
+      {
+        "ownerId": "usr_81768ebe-9e96-4941-a9dc-4310a9a6f223",
+        "accountId": "usr_81768ebe-9e96-4941-a9dc-4310a9a6f223",
+        "expiresAt": 1796011227885
+      }
+    ],
+    [
+      "7942765e7f5f94e8d9a4a44052e442c8331c377e00dafa8162575ffb85e0d467",
+      {
+        "ownerId": "usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd",
+        "accountId": "usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd",
+        "expiresAt": 1796011235170
+      }
+    ],
+    [
+      "13b12a9db6d28f2383c008d0b9da7988d01e74f39525f23e78f96f427f293910",
+      {
+        "ownerId": "usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb",
+        "accountId": "usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb",
+        "expiresAt": 1796011235292
+      }
+    ],
+    [
+      "59831b5725aca3f2e5c6915bcb3cc658ba2e597789a0f6f13db56c460e40714e",
+      {
+        "ownerId": "usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541",
+        "accountId": "usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541",
+        "expiresAt": 1796011242740
+      }
+    ],
+    [
+      "329b3c033685094aeae4d9cd9ffcaf61095d919892ebb66d207979c66c8a60fb",
+      {
+        "ownerId": "usr_40a439a0-7a06-4844-9a0f-ee777c17e386",
+        "accountId": "usr_40a439a0-7a06-4844-9a0f-ee777c17e386",
+        "expiresAt": 1796011242897
+      }
+    ],
+    [
+      "9ab14c832f5ab38247c2b6d16bfa3c1d37e277af03485d9de68de8dc33be17d2",
+      {
+        "ownerId": "usr_daba53d9-bc13-42ac-80f9-65dcd3816895",
+        "accountId": "usr_daba53d9-bc13-42ac-80f9-65dcd3816895",
+        "expiresAt": 1796011253818
+      }
+    ],
+    [
+      "ea4bd314e89dfb9447a109272521cdd1a83bc92589191bf4e68b08c65cc91daf",
+      {
+        "ownerId": "usr_19ee9035-28a4-4f71-bda4-887c6d401b9e",
+        "accountId": "usr_19ee9035-28a4-4f71-bda4-887c6d401b9e",
+        "expiresAt": 1796011253906
+      }
+    ],
+    [
+      "a037b3b47c50300c80c3da608fa6c64b375691f654b37eaef5d8df23dbf1b004",
+      {
+        "ownerId": "usr_71ca13e3-8c1c-4171-b5fe-15b701778847",
+        "accountId": "usr_71ca13e3-8c1c-4171-b5fe-15b701778847",
+        "expiresAt": 1796011260350
+      }
+    ],
+    [
+      "6bc63e476d836906b265c7e047d8b59174027bc0db9ae738d795bbbfc65bd593",
+      {
+        "ownerId": "usr_cb032f6a-dae4-409b-8f09-a09564c77f01",
+        "accountId": "usr_cb032f6a-dae4-409b-8f09-a09564c77f01",
+        "expiresAt": 1796011260458
+      }
+    ],
+    [
+      "53b408e920cf774916b9b1aefb43b3ea7b7808a4290065e54927c5bb876fa99c",
+      {
+        "ownerId": "usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9",
+        "accountId": "usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9",
+        "expiresAt": 1796011267043
+      }
+    ],
+    [
+      "86adc6b4f997a33749ccf625a5f55061e37cedb655c900345da56593f27b5ce7",
+      {
+        "ownerId": "usr_64b7d62a-2184-4d77-a2c8-94778ae4139e",
+        "accountId": "usr_64b7d62a-2184-4d77-a2c8-94778ae4139e",
+        "expiresAt": 1796011267257
+      }
+    ],
+    [
+      "5e61d30c9801c7ce9506197adb0efe50bd0c180de3aa306416618830b2f60fdd",
+      {
+        "ownerId": "usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192",
+        "accountId": "usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192",
+        "expiresAt": 1796011274770
+      }
+    ],
+    [
+      "bd739e788e9baebffe2d566ed05c0ed7f2d5dc549dc6528a0abc0e227f53a09c",
+      {
+        "ownerId": "usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3",
+        "accountId": "usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3",
+        "expiresAt": 1796011274955
+      }
+    ],
+    [
+      "d0c51f1c715db89dff993a04fad1b98ea916e70a5beedf816125b89393fcca69",
+      {
+        "ownerId": "usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13",
+        "accountId": "usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13",
+        "expiresAt": 1796011282032
+      }
+    ],
+    [
+      "625f85d897960997b0eb7a8d6f5a25507010253879b1576758e728633a39737d",
+      {
+        "ownerId": "usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720",
+        "accountId": "usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720",
+        "expiresAt": 1796011282120
+      }
+    ],
+    [
+      "48eb1750e89aa55230be8d8fc7017bbef0689e049b6de2e6a401590362e5bb36",
+      {
+        "ownerId": "usr_57e0d797-980f-4337-90c9-aec52e843fed",
+        "accountId": "usr_57e0d797-980f-4337-90c9-aec52e843fed",
+        "expiresAt": 1796011304196
+      }
+    ],
+    [
+      "50bd6200dbcdc5726cb24dc66914c3c431bedcd5a8d27504774cefb8ce67f7db",
+      {
+        "ownerId": "usr_df03fa27-63c2-4afa-b588-dfff6e1d6823",
+        "accountId": "usr_df03fa27-63c2-4afa-b588-dfff6e1d6823",
+        "expiresAt": 1796011304311
+      }
+    ],
+    [
+      "01a356895bdf7814746a2d4ccc2a25694af51c25b368a3290838f48556fe71d1",
+      {
+        "ownerId": "usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4",
+        "accountId": "usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4",
+        "expiresAt": 1796011316052
+      }
+    ],
+    [
+      "ee610a664fec289803ea156e05b5cdb74cab77951eba06c4a70c4084480a360d",
+      {
+        "ownerId": "usr_491aeaa7-f099-44ee-b706-c8075d6af3de",
+        "accountId": "usr_491aeaa7-f099-44ee-b706-c8075d6af3de",
+        "expiresAt": 1796011316651
+      }
+    ],
+    [
+      "0085a41402600ca9530cbf639eb334dcc41d1c9bd927521e64ace73e9c4a73bb",
+      {
+        "ownerId": "usr_b0d4422b-5033-4381-8baf-209c76116ebe",
+        "accountId": "usr_b0d4422b-5033-4381-8baf-209c76116ebe",
+        "expiresAt": 1796011319863
+      }
+    ],
+    [
+      "881a1275f90b5286622a8b04e060362d2f6ea6adfed1b80f0294708a7b1cb960",
+      {
+        "ownerId": "usr_e6017f3f-7028-4b70-872a-adab061f5a0e",
+        "accountId": "usr_e6017f3f-7028-4b70-872a-adab061f5a0e",
+        "expiresAt": 1796011320060
+      }
+    ],
+    [
+      "08e238305bbf21a490f8179f3b5e86d0cf0536dd1e9f85b54565c5f5a79a94ae",
+      {
+        "ownerId": "usr_c62ae1ea-2099-4e18-a31f-dd34344e7caf",
+        "accountId": "usr_c62ae1ea-2099-4e18-a31f-dd34344e7caf",
+        "expiresAt": 1796011369943
+      }
+    ],
+    [
+      "84f5abc3917e288a0a7cd75e458e5029b64e76408814fee64beb635188990315",
+      {
+        "ownerId": "usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa",
+        "accountId": "usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa",
+        "expiresAt": 1796011383145
+      }
+    ],
+    [
+      "266f4bd1de4f7e816bc71f85131eae1b94b14e86a1a43910fccfb2797ede6f92",
+      {
+        "ownerId": "usr_cb1dde45-4438-447e-a26a-276c63227953",
+        "accountId": "usr_cb1dde45-4438-447e-a26a-276c63227953",
+        "expiresAt": 1796011383847
+      }
+    ],
+    [
+      "feded113bb85aa96a83eb2f45d61dd76ba14d61a7f18c12ba3aa2118b49fe9d2",
+      {
+        "ownerId": "usr_8485ca0a-77d5-4ee9-a836-b94081fce6a7",
+        "accountId": "usr_8485ca0a-77d5-4ee9-a836-b94081fce6a7",
+        "expiresAt": 1796011407401
+      }
+    ],
+    [
+      "23f031bdb00003f3ae73b31d861efbb863ef7f601ad691f1126dbc2d7c72c433",
+      {
+        "ownerId": "usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f",
+        "accountId": "usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f",
+        "expiresAt": 1796011555279
+      }
+    ],
+    [
+      "044ef47320cd0b46f9f8a3ad6e32f04d022528495159c4911f265616ccf12571",
+      {
+        "ownerId": "usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0",
+        "accountId": "usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0",
+        "expiresAt": 1796011555363
+      }
+    ],
+    [
+      "317d6b4db0adb6dfe9d9600b72a9f3e81ab1e5a9faaee1c8c002a547b2ae68c0",
+      {
+        "ownerId": "usr_f82788d6-05e1-49f6-9271-5160d5c9a664",
+        "accountId": "usr_f82788d6-05e1-49f6-9271-5160d5c9a664",
+        "expiresAt": 1796011564080
+      }
+    ],
+    [
+      "5d6b022c6d4da9131ee85acc8fa7b66f500d4ecb94dc7b552684affa5a53a834",
+      {
+        "ownerId": "usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6",
+        "accountId": "usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6",
+        "expiresAt": 1796011564239
+      }
+    ],
+    [
+      "37a966e3ad874b41bf7d0a72ac90c4ddab4a68112d2484c3ec7f98af044080b9",
+      {
+        "ownerId": "usr_a888df09-29f4-49e9-80e7-0ac932c06efd",
+        "accountId": "usr_a888df09-29f4-49e9-80e7-0ac932c06efd",
+        "expiresAt": 1796011574398
+      }
+    ],
+    [
+      "2bc168e4df1d4f6c20f615480aabd271e45725447e143188b88b4e9d013fab9d",
+      {
+        "ownerId": "usr_1ba96225-976d-467e-bf65-37468717dcef",
+        "accountId": "usr_1ba96225-976d-467e-bf65-37468717dcef",
+        "expiresAt": 1796011574514
+      }
+    ],
+    [
+      "7ca1678e7d6c6b3f269c02762b4709793a03cd4621de40559f4992299055a895",
+      {
+        "ownerId": "usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49",
+        "accountId": "usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49",
+        "expiresAt": 1796011597160
+      }
+    ],
+    [
+      "e5a7a948a351218511330b3e0c8798f64fbf546827fb6b893311da2ccbd82fdb",
+      {
+        "ownerId": "usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49",
+        "accountId": "usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49",
+        "expiresAt": 1796011722855
+      }
+    ],
+    [
+      "3f48c5e0e9814da3c95ac7a2e0219bcd81616b82edcd824c4deb49a31bbfea72",
+      {
+        "ownerId": "usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49",
+        "accountId": "usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49",
+        "expiresAt": 1796011737763
+      }
+    ],
+    [
+      "1d42d72bb73319e215eada8f17cfdcf627f2e24a45d6688ad56d53263d35801b",
+      {
+        "ownerId": "usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d",
+        "accountId": "usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d",
+        "expiresAt": 1796011741279
+      }
+    ],
+    [
+      "191354d996ec610eaeef3ce46287d03b9c771ba6965bb1968df471c432223237",
+      {
+        "ownerId": "usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6",
+        "accountId": "usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6",
+        "expiresAt": 1796011741376
+      }
+    ],
+    [
+      "ccb5aa0f704d39b6c593c9d327ebacb81e3c6d8a71314a7243d4515a8aee1afd",
+      {
+        "ownerId": "usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab",
+        "accountId": "usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab",
+        "expiresAt": 1796011749539
+      }
+    ],
+    [
+      "a9cc720cc0f4b3970b0c00bd7dbcbe2bd33beef1f84ae9ffe223fdfb8248dd89",
+      {
+        "ownerId": "usr_ef58fba3-1560-41d8-b808-406db1d54c5c",
+        "accountId": "usr_ef58fba3-1560-41d8-b808-406db1d54c5c",
+        "expiresAt": 1796011749646
+      }
+    ],
+    [
+      "eb9ac8bc28c146a25caace0960a9ba4aa9ff5f21c45e1c3cd6fdef6e91827de6",
+      {
+        "ownerId": "usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c",
+        "accountId": "usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c",
+        "expiresAt": 1796011757362
+      }
+    ],
+    [
+      "20f38db2a27466a85d2d896aaa90f0cf6f24312de6c4b3644f6c72eb91b4a2ac",
+      {
+        "ownerId": "usr_253a012f-4e80-4770-8e80-76c4d87b79dc",
+        "accountId": "usr_253a012f-4e80-4770-8e80-76c4d87b79dc",
+        "expiresAt": 1796011757580
+      }
+    ],
+    [
+      "5604fdbf9a71ad68e405ca27cea0ab3b6dd8f7d9beb1c01d774ba9278eb2fcb7",
+      {
+        "ownerId": "usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d",
+        "accountId": "usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d",
+        "expiresAt": 1796011765762
+      }
+    ],
+    [
+      "74e47c34e5c33c1639803ab847a01379fc67123749128d20abb0deb8feed1e74",
+      {
+        "ownerId": "usr_2ece36b6-07c0-42de-be85-ada6889c8303",
+        "accountId": "usr_2ece36b6-07c0-42de-be85-ada6889c8303",
+        "expiresAt": 1796011765954
+      }
+    ],
+    [
+      "1a4d1320e93d7989cd1105ccbd65492d43d4f852d5412d2efa8f6c7be3d202fb",
+      {
+        "ownerId": "usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9",
+        "accountId": "usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9",
+        "expiresAt": 1796011781674
+      }
+    ],
+    [
+      "252b6e2a1626edbd93bfacfc2af4473abe9ce609c418ebc32d0848ba6426e0d1",
+      {
+        "ownerId": "usr_ad39f6e0-aea8-456e-8677-de4002484c91",
+        "accountId": "usr_ad39f6e0-aea8-456e-8677-de4002484c91",
+        "expiresAt": 1796011781808
+      }
+    ],
+    [
+      "e3b01bac96996ca512140b4bfef9c503db78177af742b1c6ddedbc26f2e9adad",
+      {
+        "ownerId": "usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c",
+        "accountId": "usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c",
+        "expiresAt": 1796011789904
+      }
+    ],
+    [
+      "843fb7f6684264f54816eda295fc810bc7574fe4147c429d43e6c5da0db14209",
+      {
+        "ownerId": "usr_359b1896-4adf-4a71-8e65-a54c4c8e8678",
+        "accountId": "usr_359b1896-4adf-4a71-8e65-a54c4c8e8678",
+        "expiresAt": 1796011790094
+      }
+    ],
+    [
+      "81750b158cd3e30a0cbe4a9b7cc64d301fd6f6e1828305b272c86584650e09ae",
+      {
+        "ownerId": "usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e",
+        "accountId": "usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e",
+        "expiresAt": 1796011805117
+      }
+    ],
+    [
+      "dbc1627155cfbef63c0011c10283c5f8f644f77c3875ee95b14fdaeda9944333",
+      {
+        "ownerId": "usr_1530229a-b657-4f08-8622-22dc5983e534",
+        "accountId": "usr_1530229a-b657-4f08-8622-22dc5983e534",
+        "expiresAt": 1796011805254
+      }
+    ],
+    [
+      "38ef3636ba5494045edac3c6d1fa1d8bccd420b084b720020d7a0f1d0104f369",
+      {
+        "ownerId": "usr_96b29966-aeac-4956-915a-bf0f52e49d92",
+        "accountId": "usr_96b29966-aeac-4956-915a-bf0f52e49d92",
+        "expiresAt": 1796011815444
+      }
+    ],
+    [
+      "5ee3a090287cac5dd0105c92734a958aa7dc6f7df4b48abc16900c8a1b56078c",
+      {
+        "ownerId": "usr_5c1314d3-16d9-43a1-936b-00a4cb740032",
+        "accountId": "usr_5c1314d3-16d9-43a1-936b-00a4cb740032",
+        "expiresAt": 1796011815748
+      }
+    ],
+    [
+      "f27759e22c4ece1984b83060229be227a0a9ec301d0c5518f79562bbb6ba5cec",
+      {
+        "ownerId": "usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638",
+        "accountId": "usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638",
+        "expiresAt": 1796011842974
+      }
+    ],
+    [
+      "81997c09ef7d569ec9caab655a9321fb15e038559ed284bced21cff38febcd0c",
+      {
+        "ownerId": "usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83",
+        "accountId": "usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83",
+        "expiresAt": 1796011843112
+      }
+    ],
+    [
+      "21d430971cb236903262b4b0519c6c46ddd2c99126ab9d2fdeb8600bdad95981",
+      {
+        "ownerId": "guest_0d8c2738-1df5-4409-9bb4-6b5f945857f6",
+        "accountId": null,
+        "expiresAt": 1796011848368
+      }
+    ],
+    [
+      "1b653bd51e3648100ee124e9ed89fa891fa17a2600b15155f14b0dddc733dd37",
+      {
+        "ownerId": "guest_7a04be7c-6c47-4cc7-a194-6dd33d0e4524",
+        "accountId": null,
+        "expiresAt": 1796011848552
+      }
+    ],
+    [
+      "fb6cc0e20d08e55f9e2626c9dfbf39d24c2e96955f0f60dbe4785c7e11de1c7f",
+      {
+        "ownerId": "usr_18c4d1c0-6dc8-4c16-917a-6ee17f0a82d8",
+        "accountId": "usr_18c4d1c0-6dc8-4c16-917a-6ee17f0a82d8",
+        "expiresAt": 1796011854358
+      }
+    ],
+    [
+      "c6b58ca8d88da636e3f39191a90d147922f8592f4d5cd5040a1654aedc95222c",
+      {
+        "ownerId": "guest_11133e11-c453-4d1c-aa44-7427589ef305",
+        "accountId": null,
+        "expiresAt": 1796011889351
+      }
+    ],
+    [
+      "1e740dc2810c8d3ffe3bca52551a776a2d1209aee1d247b50a13b199f19f4b0f",
+      {
+        "ownerId": "guest_9da8a1d6-caf6-4550-8835-2ee1f77ec986",
+        "accountId": null,
+        "expiresAt": 1796011897096
+      }
+    ]
+  ],
   "rare_auth_oauth_identities": [],
   "rare_developer_credentials": [],
-  "rare_developer_grants": []
+  "rare_developer_grants": [],
+  "rare_user_state:usr_db931a9d-57e6-4ea1-86b2-087a752c6b23:documents": [
+    {
+      "path": "transcripts/short_1793419139266.md",
+      "content": "# Transcript — short\n\n- Duration: 00:21\n- Speakers detected: 1 (provider did not distinguish them)\n- Segments transcribed: 1/1\n- Coverage: 100%\n- Model: faster-whisper/base\n\n## Extraction notes\n\n- The provider did not distinguish individual speakers; every turn is attributed to one speaker.\n\n[00:00 – 00:03] Speaker 1: The quarterly planning meeting opened at either clock.\n[00:04 – 00:08] Speaker 1: Atheroconcwo confirmed that the migration to the new billing system is complete.\n[00:09 – 00:13] Speaker 1: We decided to launch the customer portal on the 14th of November.\n[00:13 – 00:16] Speaker 1: Tund will prepare the release notice by Friday.\n[00:16 – 00:20] Speaker 1: The team agreed that the support queue must be renewed and remain morning.",
+      "format": "md",
+      "updatedAt": "2026-10-31T03:58:59.267Z",
+      "version": 1,
+      "history": [],
+      "origin": "transcript"
+    }
+  ],
+  "rare_user_state:usr_051dd7c5-9c02-4b09-a127-243c382c41db:memories": [
+    {
+      "id": "mem_13d10de3-58ce-4008-b8e0-4a3b10589692",
+      "timestamp": "2026-10-31T03:59:45.151Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4:memories": [],
+  "rare_user_state:usr_051dd7c5-9c02-4b09-a127-243c382c41db:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T03:59:45.261Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4:documents": [],
+  "rare_user_state:usr_051dd7c5-9c02-4b09-a127-243c382c41db:conversations": [
+    {
+      "id": "conv_349e7c20-6abf-4fd9-b74a-7998ca3c3277",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T03:59:45.278Z",
+      "userId": "usr_051dd7c5-9c02-4b09-a127-243c382c41db",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4:conversations": [],
+  "rare_user_state:usr_051dd7c5-9c02-4b09-a127-243c382c41db:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4:settings": {},
+  "rare_user_state:usr_051dd7c5-9c02-4b09-a127-243c382c41db:schedules": [
+    {
+      "id": "sch_6bc4a41c-5c74-42c5-a4df-df641462cd03",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T03:59:45.458Z"
+    }
+  ],
+  "rare_user_state:usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4:schedules": [],
+  "rare_user_state:usr_051dd7c5-9c02-4b09-a127-243c382c41db:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4:plugin_settings": {},
+  "rare_user_state:usr_805d6f2b-9eee-4294-ba8b-10042a39d0a4:projects": [],
+  "rare_user_state:usr_722ab142-b86f-484f-a06d-5669e776451f:memories": [
+    {
+      "id": "mem_9e80b732-5f65-45d8-9a37-cec7e43cb09a",
+      "timestamp": "2026-10-31T04:00:07.948Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_3a3464f2-d770-4797-b08c-8b3474d971a5:memories": [],
+  "rare_user_state:usr_722ab142-b86f-484f-a06d-5669e776451f:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:00:08.148Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_3a3464f2-d770-4797-b08c-8b3474d971a5:documents": [],
+  "rare_user_state:usr_722ab142-b86f-484f-a06d-5669e776451f:conversations": [
+    {
+      "id": "conv_b4e47b7a-7d74-4152-8982-1f805edc590a",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:00:08.244Z",
+      "userId": "usr_722ab142-b86f-484f-a06d-5669e776451f",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_3a3464f2-d770-4797-b08c-8b3474d971a5:conversations": [],
+  "rare_user_state:usr_722ab142-b86f-484f-a06d-5669e776451f:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_3a3464f2-d770-4797-b08c-8b3474d971a5:settings": {},
+  "rare_user_state:usr_722ab142-b86f-484f-a06d-5669e776451f:schedules": [
+    {
+      "id": "sch_c5a57ca6-c0b1-45b5-9328-90014b1f31d0",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:00:08.643Z"
+    }
+  ],
+  "rare_user_state:usr_3a3464f2-d770-4797-b08c-8b3474d971a5:schedules": [],
+  "rare_user_state:usr_722ab142-b86f-484f-a06d-5669e776451f:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_3a3464f2-d770-4797-b08c-8b3474d971a5:plugin_settings": {},
+  "rare_user_state:usr_3a3464f2-d770-4797-b08c-8b3474d971a5:projects": [],
+  "rare_user_state:usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651:memories": [
+    {
+      "id": "mem_2bd5eed0-a60c-40dc-815d-194c0d8a071b",
+      "timestamp": "2026-10-31T04:00:27.944Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_81768ebe-9e96-4941-a9dc-4310a9a6f223:memories": [],
+  "rare_user_state:usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:00:27.967Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_81768ebe-9e96-4941-a9dc-4310a9a6f223:documents": [],
+  "rare_user_state:usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651:conversations": [
+    {
+      "id": "conv_5c95b89d-1c2d-4908-9f43-7a07b4547412",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:00:27.975Z",
+      "userId": "usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_81768ebe-9e96-4941-a9dc-4310a9a6f223:conversations": [],
+  "rare_user_state:usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_81768ebe-9e96-4941-a9dc-4310a9a6f223:settings": {},
+  "rare_user_state:usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651:schedules": [
+    {
+      "id": "sch_05003c89-00ae-437f-b028-37cc452ab67b",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:00:28.068Z"
+    }
+  ],
+  "rare_user_state:usr_81768ebe-9e96-4941-a9dc-4310a9a6f223:schedules": [],
+  "rare_user_state:usr_ece5e7de-4760-4f5f-a64c-75a45c7b9651:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_81768ebe-9e96-4941-a9dc-4310a9a6f223:plugin_settings": {},
+  "rare_user_state:usr_81768ebe-9e96-4941-a9dc-4310a9a6f223:projects": [],
+  "rare_user_state:usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd:memories": [
+    {
+      "id": "mem_dab35974-4d5f-4ffb-b6e9-1cf2868409d7",
+      "timestamp": "2026-10-31T04:00:35.310Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb:memories": [],
+  "rare_user_state:usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:00:35.347Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb:documents": [],
+  "rare_user_state:usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd:conversations": [
+    {
+      "id": "conv_e51c8ed8-5ae8-4225-87aa-254eed19b83b",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:00:35.361Z",
+      "userId": "usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb:conversations": [],
+  "rare_user_state:usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb:settings": {},
+  "rare_user_state:usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd:schedules": [
+    {
+      "id": "sch_d7ce26a4-a3e0-4215-a369-266dd524e2f2",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:00:35.405Z"
+    }
+  ],
+  "rare_user_state:usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb:schedules": [],
+  "rare_user_state:usr_0276098d-c65a-4bb6-907d-64bf2dbef6cd:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb:plugin_settings": {},
+  "rare_user_state:usr_0a6c0ffa-6204-4c7f-8ae6-f40e6c3014bb:projects": [],
+  "rare_user_state:usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541:memories": [
+    {
+      "id": "mem_7918ad13-e8f1-497a-a9cf-36d16c8b1468",
+      "timestamp": "2026-10-31T04:00:42.907Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_40a439a0-7a06-4844-9a0f-ee777c17e386:memories": [],
+  "rare_user_state:usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:00:42.920Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_40a439a0-7a06-4844-9a0f-ee777c17e386:documents": [],
+  "rare_user_state:usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541:conversations": [
+    {
+      "id": "conv_d55d0501-759d-4df5-8de0-6f84131cf721",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:00:42.946Z",
+      "userId": "usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_40a439a0-7a06-4844-9a0f-ee777c17e386:conversations": [],
+  "rare_user_state:usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_40a439a0-7a06-4844-9a0f-ee777c17e386:settings": {},
+  "rare_user_state:usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541:schedules": [
+    {
+      "id": "sch_4a9015d9-45b4-43bf-931f-1c6b3805cc4e",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:00:42.996Z"
+    }
+  ],
+  "rare_user_state:usr_40a439a0-7a06-4844-9a0f-ee777c17e386:schedules": [],
+  "rare_user_state:usr_c49799b0-48ac-41f3-96e4-bc3fc3ae7541:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_40a439a0-7a06-4844-9a0f-ee777c17e386:plugin_settings": {},
+  "rare_user_state:usr_40a439a0-7a06-4844-9a0f-ee777c17e386:projects": [],
+  "rare_user_state:usr_daba53d9-bc13-42ac-80f9-65dcd3816895:memories": [
+    {
+      "id": "mem_c917c295-50bc-4fb2-8e76-95a4f7ee6da7",
+      "timestamp": "2026-10-31T04:00:53.914Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_19ee9035-28a4-4f71-bda4-887c6d401b9e:memories": [],
+  "rare_user_state:usr_daba53d9-bc13-42ac-80f9-65dcd3816895:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:00:53.943Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_19ee9035-28a4-4f71-bda4-887c6d401b9e:documents": [],
+  "rare_user_state:usr_daba53d9-bc13-42ac-80f9-65dcd3816895:conversations": [
+    {
+      "id": "conv_de1fe152-d438-4df5-aeed-b0f0ea15df55",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:00:53.950Z",
+      "userId": "usr_daba53d9-bc13-42ac-80f9-65dcd3816895",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_19ee9035-28a4-4f71-bda4-887c6d401b9e:conversations": [],
+  "rare_user_state:usr_daba53d9-bc13-42ac-80f9-65dcd3816895:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_19ee9035-28a4-4f71-bda4-887c6d401b9e:settings": {},
+  "rare_user_state:usr_daba53d9-bc13-42ac-80f9-65dcd3816895:schedules": [
+    {
+      "id": "sch_04665388-92bc-47dc-9e04-4d277529a54d",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:00:54.048Z"
+    }
+  ],
+  "rare_user_state:usr_19ee9035-28a4-4f71-bda4-887c6d401b9e:schedules": [],
+  "rare_user_state:usr_daba53d9-bc13-42ac-80f9-65dcd3816895:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_19ee9035-28a4-4f71-bda4-887c6d401b9e:plugin_settings": {},
+  "rare_user_state:usr_19ee9035-28a4-4f71-bda4-887c6d401b9e:projects": [],
+  "rare_user_state:usr_71ca13e3-8c1c-4171-b5fe-15b701778847:memories": [
+    {
+      "id": "mem_b76b3444-cbfa-47e8-84d3-f36fe0addbd8",
+      "timestamp": "2026-10-31T04:01:00.466Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_cb032f6a-dae4-409b-8f09-a09564c77f01:memories": [],
+  "rare_user_state:usr_71ca13e3-8c1c-4171-b5fe-15b701778847:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:01:00.478Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_cb032f6a-dae4-409b-8f09-a09564c77f01:documents": [],
+  "rare_user_state:usr_71ca13e3-8c1c-4171-b5fe-15b701778847:conversations": [
+    {
+      "id": "conv_99687fca-af5a-4bf8-9ed2-bd7df94b1752",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:01:00.486Z",
+      "userId": "usr_71ca13e3-8c1c-4171-b5fe-15b701778847",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_cb032f6a-dae4-409b-8f09-a09564c77f01:conversations": [],
+  "rare_user_state:usr_71ca13e3-8c1c-4171-b5fe-15b701778847:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_cb032f6a-dae4-409b-8f09-a09564c77f01:settings": {},
+  "rare_user_state:usr_71ca13e3-8c1c-4171-b5fe-15b701778847:schedules": [
+    {
+      "id": "sch_c25698d3-61bd-4afc-870c-59ab8c9a4a02",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:01:00.587Z"
+    }
+  ],
+  "rare_user_state:usr_cb032f6a-dae4-409b-8f09-a09564c77f01:schedules": [],
+  "rare_user_state:usr_71ca13e3-8c1c-4171-b5fe-15b701778847:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_cb032f6a-dae4-409b-8f09-a09564c77f01:plugin_settings": {},
+  "rare_user_state:usr_cb032f6a-dae4-409b-8f09-a09564c77f01:projects": [],
+  "rare_user_state:usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9:memories": [
+    {
+      "id": "mem_d5a58d28-9ec7-4a4b-bf08-45b8672a092b",
+      "timestamp": "2026-10-31T04:01:07.274Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_64b7d62a-2184-4d77-a2c8-94778ae4139e:memories": [],
+  "rare_user_state:usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:01:07.294Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_64b7d62a-2184-4d77-a2c8-94778ae4139e:documents": [],
+  "rare_user_state:usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9:conversations": [
+    {
+      "id": "conv_9806a57c-5219-4ede-998d-3438b4117bf0",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:01:07.341Z",
+      "userId": "usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_64b7d62a-2184-4d77-a2c8-94778ae4139e:conversations": [],
+  "rare_user_state:usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_64b7d62a-2184-4d77-a2c8-94778ae4139e:settings": {},
+  "rare_user_state:usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9:schedules": [
+    {
+      "id": "sch_159bd7fd-6dce-48db-81ac-1a4d5603e70e",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:01:07.387Z"
+    }
+  ],
+  "rare_user_state:usr_64b7d62a-2184-4d77-a2c8-94778ae4139e:schedules": [],
+  "rare_user_state:usr_f288cc3b-49aa-4a81-a5f4-72bd81c793f9:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_64b7d62a-2184-4d77-a2c8-94778ae4139e:plugin_settings": {},
+  "rare_user_state:usr_64b7d62a-2184-4d77-a2c8-94778ae4139e:projects": [],
+  "rare_user_state:usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192:memories": [
+    {
+      "id": "mem_2a135756-9b0f-4488-8736-5cf9e912199f",
+      "timestamp": "2026-10-31T04:01:14.971Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3:memories": [],
+  "rare_user_state:usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:01:15.047Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3:documents": [],
+  "rare_user_state:usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192:conversations": [
+    {
+      "id": "conv_26ef0d75-cae7-4336-951b-1ff5aa76ce11",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:01:15.056Z",
+      "userId": "usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3:conversations": [],
+  "rare_user_state:usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3:settings": {},
+  "rare_user_state:usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192:schedules": [
+    {
+      "id": "sch_f22ae3c8-02f4-4c97-a29b-477fd7a570e6",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:01:15.154Z"
+    }
+  ],
+  "rare_user_state:usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3:schedules": [],
+  "rare_user_state:usr_9a2116a3-fd44-42e9-accb-5ed82d7b3192:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3:plugin_settings": {},
+  "rare_user_state:usr_52c3a2f3-096a-47f7-b28f-15d01d8198b3:projects": [],
+  "rare_user_state:usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13:memories": [
+    {
+      "id": "mem_7f457db0-a2b1-4e28-bbf4-1c02defe68ad",
+      "timestamp": "2026-10-31T04:01:22.130Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720:memories": [],
+  "rare_user_state:usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:01:22.148Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720:documents": [],
+  "rare_user_state:usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13:conversations": [
+    {
+      "id": "conv_443236b3-2440-455e-9fc6-14e723482b7a",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:01:22.157Z",
+      "userId": "usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720:conversations": [],
+  "rare_user_state:usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720:settings": {},
+  "rare_user_state:usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13:schedules": [
+    {
+      "id": "sch_c8e7d15c-c6d2-43f1-8141-a8f47c9bb671",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:01:22.262Z"
+    }
+  ],
+  "rare_user_state:usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720:schedules": [],
+  "rare_user_state:usr_4f2c258b-18c2-4e42-8c8e-588df2bcae13:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720:plugin_settings": {},
+  "rare_user_state:usr_ea0bf03e-ff65-4fd9-8adb-ca5ad1a9b720:projects": [],
+  "rare_user_state:usr_57e0d797-980f-4337-90c9-aec52e843fed:memories": [
+    {
+      "id": "mem_995f6a5d-544f-4a8a-bf75-9e18e9c89b95",
+      "timestamp": "2026-10-31T04:01:44.322Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_df03fa27-63c2-4afa-b588-dfff6e1d6823:memories": [],
+  "rare_user_state:usr_57e0d797-980f-4337-90c9-aec52e843fed:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:01:44.345Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_df03fa27-63c2-4afa-b588-dfff6e1d6823:documents": [],
+  "rare_user_state:usr_57e0d797-980f-4337-90c9-aec52e843fed:conversations": [
+    {
+      "id": "conv_2d2869e1-adda-498c-87b8-f239f2d60dc0",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:01:44.367Z",
+      "userId": "usr_57e0d797-980f-4337-90c9-aec52e843fed",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_df03fa27-63c2-4afa-b588-dfff6e1d6823:conversations": [],
+  "rare_user_state:usr_57e0d797-980f-4337-90c9-aec52e843fed:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_df03fa27-63c2-4afa-b588-dfff6e1d6823:settings": {},
+  "rare_user_state:usr_57e0d797-980f-4337-90c9-aec52e843fed:schedules": [
+    {
+      "id": "sch_07d783d2-5d61-4595-a5f1-0c6be4df8c8a",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:01:44.440Z"
+    }
+  ],
+  "rare_user_state:usr_df03fa27-63c2-4afa-b588-dfff6e1d6823:schedules": [],
+  "rare_user_state:usr_57e0d797-980f-4337-90c9-aec52e843fed:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_df03fa27-63c2-4afa-b588-dfff6e1d6823:plugin_settings": {},
+  "rare_user_state:usr_df03fa27-63c2-4afa-b588-dfff6e1d6823:projects": [],
+  "rare_user_state:usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4:memories": [
+    {
+      "id": "mem_ef4fae34-605a-45df-8582-866ad0b1dc77",
+      "timestamp": "2026-10-31T04:01:56.747Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_491aeaa7-f099-44ee-b706-c8075d6af3de:memories": [],
+  "rare_user_state:usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:01:56.855Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_491aeaa7-f099-44ee-b706-c8075d6af3de:documents": [],
+  "rare_user_state:usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4:conversations": [
+    {
+      "id": "conv_8bec88b0-1805-4837-a80a-9a09106e798c",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:01:56.958Z",
+      "userId": "usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_491aeaa7-f099-44ee-b706-c8075d6af3de:conversations": [],
+  "rare_user_state:usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_491aeaa7-f099-44ee-b706-c8075d6af3de:settings": {},
+  "rare_user_state:usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4:schedules": [
+    {
+      "id": "sch_af44b556-534a-4429-8bdc-33bd0281597c",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:01:57.353Z"
+    }
+  ],
+  "rare_user_state:usr_491aeaa7-f099-44ee-b706-c8075d6af3de:schedules": [],
+  "rare_user_state:usr_8ef9f0a0-918c-4552-b0d6-b40d630e70d4:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_491aeaa7-f099-44ee-b706-c8075d6af3de:plugin_settings": {},
+  "rare_user_state:usr_491aeaa7-f099-44ee-b706-c8075d6af3de:projects": [],
+  "rare_user_state:usr_b0d4422b-5033-4381-8baf-209c76116ebe:memories": [
+    {
+      "id": "mem_e6db4506-9e54-4ca2-bffe-b15dc99094f6",
+      "timestamp": "2026-10-31T04:02:00.081Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_e6017f3f-7028-4b70-872a-adab061f5a0e:memories": [],
+  "rare_user_state:usr_b0d4422b-5033-4381-8baf-209c76116ebe:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:02:00.166Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_e6017f3f-7028-4b70-872a-adab061f5a0e:documents": [],
+  "rare_user_state:usr_b0d4422b-5033-4381-8baf-209c76116ebe:conversations": [
+    {
+      "id": "conv_abe49348-c479-4d94-93a8-4d863bf9f94c",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:02:00.180Z",
+      "userId": "usr_b0d4422b-5033-4381-8baf-209c76116ebe",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_e6017f3f-7028-4b70-872a-adab061f5a0e:conversations": [],
+  "rare_user_state:usr_b0d4422b-5033-4381-8baf-209c76116ebe:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_e6017f3f-7028-4b70-872a-adab061f5a0e:settings": {},
+  "rare_user_state:usr_b0d4422b-5033-4381-8baf-209c76116ebe:schedules": [
+    {
+      "id": "sch_fc37cf94-cd24-4366-8f7b-b8070c548a57",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:02:00.266Z"
+    }
+  ],
+  "rare_user_state:usr_e6017f3f-7028-4b70-872a-adab061f5a0e:schedules": [],
+  "rare_user_state:usr_b0d4422b-5033-4381-8baf-209c76116ebe:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_e6017f3f-7028-4b70-872a-adab061f5a0e:plugin_settings": {},
+  "rare_user_state:usr_e6017f3f-7028-4b70-872a-adab061f5a0e:projects": [],
+  "rare_user_state:usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa:memories": [
+    {
+      "id": "mem_0d22cb6c-0c3c-479a-b40b-0443d4250931",
+      "timestamp": "2026-10-31T04:03:04.042Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_cb1dde45-4438-447e-a26a-276c63227953:memories": [],
+  "rare_user_state:usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:03:04.244Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_cb1dde45-4438-447e-a26a-276c63227953:documents": [],
+  "rare_user_state:usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa:conversations": [
+    {
+      "id": "conv_71b368e2-f6f3-42e3-a904-4e14cc97d1f8",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:03:04.443Z",
+      "userId": "usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_cb1dde45-4438-447e-a26a-276c63227953:conversations": [],
+  "rare_user_state:usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_cb1dde45-4438-447e-a26a-276c63227953:settings": {},
+  "rare_user_state:usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa:schedules": [
+    {
+      "id": "sch_fc677102-f07c-4e3c-85bc-365673717289",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:03:05.243Z"
+    }
+  ],
+  "rare_user_state:usr_cb1dde45-4438-447e-a26a-276c63227953:schedules": [],
+  "rare_user_state:usr_9d1a0fc0-78e1-4de8-99dc-fc32b1703eaa:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_cb1dde45-4438-447e-a26a-276c63227953:plugin_settings": {},
+  "rare_user_state:usr_cb1dde45-4438-447e-a26a-276c63227953:projects": [],
+  "rare_user_state:usr_8485ca0a-77d5-4ee9-a836-b94081fce6a7:documents": [
+    {
+      "path": "transcripts/product_review_1793419548148.md",
+      "content": "# Transcript — product review\n\n- Duration: 06:04\n- Speakers detected: 1 (provider did not distinguish them)\n- Segments transcribed: 4/4\n- Coverage: 100%\n- Model: faster-whisper/base\n\n## Extraction notes\n\n- The provider did not distinguish individual speakers; every turn is attributed to one speaker.\n\n[00:00 – 00:03] Speaker 1: This is the recording of the product review for the rare project.\n[00:04 – 00:07] Speaker 1: The meeting began with a summary of the previous print.\n[00:07 – 00:12] Speaker 1: Ada Rock Encore reported that the document pipeline now handles canned files correctly.\n[00:13 – 00:20] Speaker 1: She explained that the extraction stage was written and that the new version reads table as well as plain text.\n[00:20 – 00:25] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[00:26 – 00:32] Speaker 1: Ada said it had been tested with a two-hour interview and at the time stamps were accurate to within one second.\n[00:33 – 00:39] Speaker 1: We decided to unopt the local speed engine as the default because it keeps audio on the device.\n[00:39 – 00:46] Speaker 1: The team agreed that the cloud provider should remain available as an option for users who prefer higher accuracy.\n[00:46 – 00:51] Speaker 1: Kiddy will prepare a comparison of the two engines by the 21st of November.\n[00:51 – 00:56] Speaker 1: Ada needs to update the security documentation before the next review.\n[00:56 – 01:00] Speaker 1: The group discussed the remaining work on the research module.\n[01:00 – 01:07] Speaker 1: Tundra said the fetching layer already blocks private network addresses and three directs are evaluated at every hop.\n[01:08 – 01:11] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[01:12 – 01:19] Speaker 1: One open question was whether the mobile application should ship with the model bundled or download it on first run.\n[01:19 – 01:24] Speaker 1: Ada will investigate the download size and report back next week.\n[01:24 – 01:30] Speaker 1: The meeting closed with a review of the action items and a reminder that the next review is on the fifth of December.\n[01:31 – 01:34] Speaker 1: This is the recording of the product review for the rare project.\n[01:35 – 01:38] Speaker 1: The meeting began with a summary of the previous print.\n[01:38 – 01:43] Speaker 1: Ada rock-on-quo reported that the document pipeline now handles and files correctly.\n[01:43 – 01:51] Speaker 1: She explained that the extraction stage was written and that the new version reads table as well as plain text.\n[01:51 – 01:56] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[01:57 – 02:00] Speaker 1: Ada said it had been tested with a two-hour interview.\n[02:00 – 02:03] Speaker 1: and at the time stamps were accurate within one second.\n[02:04 – 02:10] Speaker 1: We decided to unopt the local speed engine as the default because it keeps audio on the device.\n[02:10 – 02:15] Speaker 1: The team agreed that the cloud provider should remain available as an option for users\n[02:15 – 02:17] Speaker 1: who prefer higher accuracy.\n[02:17 – 02:22] Speaker 1: Kid will prepare a comparison of the two engines by the 21st of November.\n[02:23 – 02:27] Speaker 1: Aiden needs to update the security documentation before the next review.\n[02:27 – 02:31] Speaker 1: The group discussed the remaining work on the research module.\n[02:31 – 02:35] Speaker 1: Tonset the fetching layer already blocks private network addresses\n[02:35 – 02:38] Speaker 1: and the three directs are evaluated at every hop.\n[02:39 – 02:42] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[02:43 – 02:50] Speaker 1: One open question was whether the mobile application should ship with the model bundled or download it on first run.\n[02:50 – 02:55] Speaker 1: Aiden will investigate the download size and report back next week.\n[02:55 – 03:01] Speaker 1: The meeting closed with a review of the action items and a reminder that the next review is on the 5th of December.\n[03:02 – 03:05] Speaker 1: This is the recording of the product review for the rare project.\n[03:06 – 03:09] Speaker 1: The meeting began with a summary of the previous print.\n[03:09 – 03:15] Speaker 1: Aiden Oconquo reported that the document pipeline now handles and files correctly.\n[03:15 – 03:22] Speaker 1: She explained that the extraction stage was written and that the new version reads table as well as plain text.\n[03:22 – 03:27] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[03:28 – 03:34] Speaker 1: Aiden said it had been tested with a two-hour interview and at the time stamps were accurate or within one second.\n[03:35 – 03:41] Speaker 1: We decided to adopt the local speed engine as the default because it keeps audio on the device.\n[03:41 – 03:48] Speaker 1: The team agreed that the cloud provider should remain available as an option for users who prefer higher accuracy.\n[03:48 – 03:53] Speaker 1: The team will prepare a comparison on the two engines by the 21st of November.\n[03:54 – 03:58] Speaker 1: Aiden needs to update the security documentation before the next review.\n[03:59 – 04:00] Speaker 1: The group discussed the review.\n[04:00 – 04:02] Speaker 1: in work on the research module.\n[04:02 – 04:08] Speaker 1: Tonset the fetching layer already blocks private network addresses, and 3 directs are\n[04:08 – 04:09] Speaker 1: validated at every hop.\n[04:10 – 04:13] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[04:14 – 04:20] Speaker 1: One open question was whether the mobile application should ship with the model bundled, or download\n[04:20 – 04:21] Speaker 1: it on first run.\n[04:21 – 04:26] Speaker 1: Ada will investigate the download size, and report back next week.\n[04:26 – 04:31] Speaker 1: The meeting closed with a review of the action items, and a reminder that the next review\n[04:31 – 04:32] Speaker 1: is on the 5th of December.\n[04:33 – 04:36] Speaker 1: This is the recording of the product review for the rare project.\n[04:37 – 04:40] Speaker 1: The meeting began with a summary of the previous print.\n[04:40 – 04:46] Speaker 1: Ada Rock Enquo reported that the document pipeline now handles canned files correctly.\n[04:46 – 04:51] Speaker 1: She explained that the extraction stage was written, and that the new version reads table\n[04:51 – 04:53] Speaker 1: as well as plain text.\n[04:53 – 04:58] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[04:59 – 05:04] Speaker 1: Ada said it had been tested with a two-hour interview, and at the time-tempts were accurate\n[05:04 – 05:05] Speaker 1: to within one second.\n[05:06 – 05:12] Speaker 1: We decided to adopt the local speak engine as the default, because it keeps audio on the device.\n[05:12 – 05:17] Speaker 1: The team agreed that the cloud provider should remain available as an option for users,\n[05:17 – 05:19] Speaker 1: who prefer higher accuracy.\n[05:19 – 05:24] Speaker 1: The team will prepare a comparison of the two engines by the 21st of November.\n[05:25 – 05:29] Speaker 1: Ada needs to update the security documentation before the next review.\n[05:30 – 05:33] Speaker 1: The group discussed the remaining work on the research module.\n[05:33 – 05:37] Speaker 1: Tundra said the fetching layer already blocks private network addresses,\n[05:37 – 05:40] Speaker 1: and three directs are evaluated at every hop.\n[05:41 – 05:44] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[05:44 – 05:50] Speaker 1: One open question was whether the mobile application should ship with the model bundled,\n[05:50 – 05:52] Speaker 1: or download it on 1st run.\n[05:52 – 05:57] Speaker 1: Ada will investigate the download size, and report back next week.\n[05:57 – 06:00] Speaker 1: The meeting closed with a review of the action items.\n[06:00 – 06:03] Speaker 1: the reminder that the next review is on the 5th of December.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:05:48.148Z",
+      "version": 1,
+      "history": [],
+      "origin": "transcript"
+    },
+    {
+      "path": "transcripts/short_1793419420855.md",
+      "content": "# Transcript — short\n\n- Duration: 00:21\n- Speakers detected: 1 (provider did not distinguish them)\n- Segments transcribed: 1/1\n- Coverage: 100%\n- Model: faster-whisper/base\n\n## Extraction notes\n\n- The provider did not distinguish individual speakers; every turn is attributed to one speaker.\n\n[00:00 – 00:03] Speaker 1: The quarterly planning meeting opened at either clock.\n[00:04 – 00:08] Speaker 1: Atheroconcwo confirmed that the migration to the new billing system is complete.\n[00:09 – 00:13] Speaker 1: We decided to launch the customer portal on the 14th of November.\n[00:13 – 00:16] Speaker 1: Tund will prepare the release notice by Friday.\n[00:16 – 00:20] Speaker 1: The team agreed that the support queue must be renewed and remain morning.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:03:40.855Z",
+      "version": 1,
+      "history": [],
+      "origin": "transcript"
+    }
+  ],
+  "rare_user_state:usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f:memories": [
+    {
+      "id": "mem_c76dbe0a-dee6-4366-86aa-51a6ea42b11f",
+      "timestamp": "2026-10-31T04:05:55.382Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0:memories": [],
+  "rare_user_state:usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:05:55.469Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0:documents": [],
+  "rare_user_state:usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f:conversations": [
+    {
+      "id": "conv_f2e845c7-05a9-48a6-85d9-a19aae229df9",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:05:55.484Z",
+      "userId": "usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0:conversations": [],
+  "rare_user_state:usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0:settings": {},
+  "rare_user_state:usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f:schedules": [
+    {
+      "id": "sch_3675382b-0006-4460-b2a2-f5d0b7cfba35",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:05:55.564Z"
+    }
+  ],
+  "rare_user_state:usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0:schedules": [],
+  "rare_user_state:usr_2a3a7f86-6f72-4dc1-af98-65000a1f501f:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0:plugin_settings": {},
+  "rare_user_state:usr_51ebc041-4a35-4b64-81b8-e857c72bfaa0:projects": [],
+  "rare_user_state:usr_f82788d6-05e1-49f6-9271-5160d5c9a664:memories": [
+    {
+      "id": "mem_a406a22a-b5b8-44ec-a024-44d300334540",
+      "timestamp": "2026-10-31T04:06:04.249Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6:memories": [],
+  "rare_user_state:usr_f82788d6-05e1-49f6-9271-5160d5c9a664:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:06:04.261Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6:documents": [],
+  "rare_user_state:usr_f82788d6-05e1-49f6-9271-5160d5c9a664:conversations": [
+    {
+      "id": "conv_c83534af-01ee-49c4-adcd-82dc4698540f",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:06:04.270Z",
+      "userId": "usr_f82788d6-05e1-49f6-9271-5160d5c9a664",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6:conversations": [],
+  "rare_user_state:usr_f82788d6-05e1-49f6-9271-5160d5c9a664:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6:settings": {},
+  "rare_user_state:usr_f82788d6-05e1-49f6-9271-5160d5c9a664:schedules": [
+    {
+      "id": "sch_e4309504-20c3-40ff-a827-6005042aa4d1",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:06:04.362Z"
+    }
+  ],
+  "rare_user_state:usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6:schedules": [],
+  "rare_user_state:usr_f82788d6-05e1-49f6-9271-5160d5c9a664:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6:plugin_settings": {},
+  "rare_user_state:usr_6ddeab9d-6ec6-422c-83a0-fd1582000fa6:projects": [],
+  "rare_user_state:usr_a888df09-29f4-49e9-80e7-0ac932c06efd:memories": [
+    {
+      "id": "mem_817e30b5-4718-4e6b-b5fe-1a7d599d76c8",
+      "timestamp": "2026-10-31T04:06:14.543Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_1ba96225-976d-467e-bf65-37468717dcef:memories": [],
+  "rare_user_state:usr_a888df09-29f4-49e9-80e7-0ac932c06efd:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:06:14.567Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_1ba96225-976d-467e-bf65-37468717dcef:documents": [],
+  "rare_user_state:usr_a888df09-29f4-49e9-80e7-0ac932c06efd:conversations": [
+    {
+      "id": "conv_1ddc89c6-926a-4ad4-8ef7-c4eca2595a50",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:06:14.576Z",
+      "userId": "usr_a888df09-29f4-49e9-80e7-0ac932c06efd",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_1ba96225-976d-467e-bf65-37468717dcef:conversations": [],
+  "rare_user_state:usr_a888df09-29f4-49e9-80e7-0ac932c06efd:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_1ba96225-976d-467e-bf65-37468717dcef:settings": {},
+  "rare_user_state:usr_a888df09-29f4-49e9-80e7-0ac932c06efd:schedules": [
+    {
+      "id": "sch_2f09b2c1-464a-4525-b135-94b8c5754e6c",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:06:14.662Z"
+    }
+  ],
+  "rare_user_state:usr_1ba96225-976d-467e-bf65-37468717dcef:schedules": [],
+  "rare_user_state:usr_a888df09-29f4-49e9-80e7-0ac932c06efd:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_1ba96225-976d-467e-bf65-37468717dcef:plugin_settings": {},
+  "rare_user_state:usr_1ba96225-976d-467e-bf65-37468717dcef:projects": [],
+  "rare_user_state:usr_53a2e286-b8cc-40d9-8956-6bbb0ebc3f49:documents": [
+    {
+      "path": "transcripts/product_review_1793419721548.md",
+      "content": "# Transcript — product review\n\n- Duration: 06:04\n- Speakers detected: 1 (provider did not distinguish them)\n- Segments transcribed: 4/4\n- Coverage: 100%\n- Model: faster-whisper/base\n\n## Extraction notes\n\n- The provider did not distinguish individual speakers; every turn is attributed to one speaker.\n\n[00:00 – 00:03] Speaker 1: This is the recording of the product review for the rare project.\n[00:04 – 00:07] Speaker 1: The meeting began with a summary of the previous print.\n[00:07 – 00:12] Speaker 1: Ada Rock Encore reported that the document pipeline now handles canned files correctly.\n[00:13 – 00:20] Speaker 1: She explained that the extraction stage was written and that the new version reads table as well as plain text.\n[00:20 – 00:25] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[00:26 – 00:32] Speaker 1: Ada said it had been tested with a two-hour interview and at the time stamps were accurate to within one second.\n[00:33 – 00:39] Speaker 1: We decided to unopt the local speed engine as the default because it keeps audio on the device.\n[00:39 – 00:46] Speaker 1: The team agreed that the cloud provider should remain available as an option for users who prefer higher accuracy.\n[00:46 – 00:51] Speaker 1: Kiddy will prepare a comparison of the two engines by the 21st of November.\n[00:51 – 00:56] Speaker 1: Ada needs to update the security documentation before the next review.\n[00:56 – 01:00] Speaker 1: The group discussed the remaining work on the research module.\n[01:00 – 01:07] Speaker 1: Tundra said the fetching layer already blocks private network addresses and three directs are evaluated at every hop.\n[01:08 – 01:11] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[01:12 – 01:19] Speaker 1: One open question was whether the mobile application should ship with the model bundled or download it on first run.\n[01:19 – 01:24] Speaker 1: Ada will investigate the download size and report back next week.\n[01:24 – 01:30] Speaker 1: The meeting closed with a review of the action items and a reminder that the next review is on the fifth of December.\n[01:31 – 01:34] Speaker 1: This is the recording of the product review for the rare project.\n[01:35 – 01:38] Speaker 1: The meeting began with a summary of the previous print.\n[01:38 – 01:43] Speaker 1: Ada rock-on-quo reported that the document pipeline now handles and files correctly.\n[01:43 – 01:51] Speaker 1: She explained that the extraction stage was written and that the new version reads table as well as plain text.\n[01:51 – 01:56] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[01:57 – 02:00] Speaker 1: Ada said it had been tested with a two-hour interview.\n[02:00 – 02:03] Speaker 1: and at the time stamps were accurate within one second.\n[02:04 – 02:10] Speaker 1: We decided to unopt the local speed engine as the default because it keeps audio on the device.\n[02:10 – 02:15] Speaker 1: The team agreed that the cloud provider should remain available as an option for users\n[02:15 – 02:17] Speaker 1: who prefer higher accuracy.\n[02:17 – 02:22] Speaker 1: Kid will prepare a comparison of the two engines by the 21st of November.\n[02:23 – 02:27] Speaker 1: Aiden needs to update the security documentation before the next review.\n[02:27 – 02:31] Speaker 1: The group discussed the remaining work on the research module.\n[02:31 – 02:35] Speaker 1: Tonset the fetching layer already blocks private network addresses\n[02:35 – 02:38] Speaker 1: and the three directs are evaluated at every hop.\n[02:39 – 02:42] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[02:43 – 02:50] Speaker 1: One open question was whether the mobile application should ship with the model bundled or download it on first run.\n[02:50 – 02:55] Speaker 1: Aiden will investigate the download size and report back next week.\n[02:55 – 03:01] Speaker 1: The meeting closed with a review of the action items and a reminder that the next review is on the 5th of December.\n[03:02 – 03:05] Speaker 1: This is the recording of the product review for the rare project.\n[03:06 – 03:09] Speaker 1: The meeting began with a summary of the previous print.\n[03:09 – 03:15] Speaker 1: Aiden Oconquo reported that the document pipeline now handles and files correctly.\n[03:15 – 03:22] Speaker 1: She explained that the extraction stage was written and that the new version reads table as well as plain text.\n[03:22 – 03:27] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[03:28 – 03:34] Speaker 1: Aiden said it had been tested with a two-hour interview and at the time stamps were accurate or within one second.\n[03:35 – 03:41] Speaker 1: We decided to adopt the local speed engine as the default because it keeps audio on the device.\n[03:41 – 03:48] Speaker 1: The team agreed that the cloud provider should remain available as an option for users who prefer higher accuracy.\n[03:48 – 03:53] Speaker 1: The team will prepare a comparison on the two engines by the 21st of November.\n[03:54 – 03:58] Speaker 1: Aiden needs to update the security documentation before the next review.\n[03:59 – 04:00] Speaker 1: The group discussed the review.\n[04:00 – 04:02] Speaker 1: in work on the research module.\n[04:02 – 04:08] Speaker 1: Tonset the fetching layer already blocks private network addresses, and 3 directs are\n[04:08 – 04:09] Speaker 1: validated at every hop.\n[04:10 – 04:13] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[04:14 – 04:20] Speaker 1: One open question was whether the mobile application should ship with the model bundled, or download\n[04:20 – 04:21] Speaker 1: it on first run.\n[04:21 – 04:26] Speaker 1: Ada will investigate the download size, and report back next week.\n[04:26 – 04:31] Speaker 1: The meeting closed with a review of the action items, and a reminder that the next review\n[04:31 – 04:32] Speaker 1: is on the 5th of December.\n[04:33 – 04:36] Speaker 1: This is the recording of the product review for the rare project.\n[04:37 – 04:40] Speaker 1: The meeting began with a summary of the previous print.\n[04:40 – 04:46] Speaker 1: Ada Rock Enquo reported that the document pipeline now handles canned files correctly.\n[04:46 – 04:51] Speaker 1: She explained that the extraction stage was written, and that the new version reads table\n[04:51 – 04:53] Speaker 1: as well as plain text.\n[04:53 – 04:58] Speaker 1: Tundra may be asked whether the transcription service had been tested with long recordings.\n[04:59 – 05:04] Speaker 1: Ada said it had been tested with a two-hour interview, and at the time-tempts were accurate\n[05:04 – 05:05] Speaker 1: to within one second.\n[05:06 – 05:12] Speaker 1: We decided to adopt the local speak engine as the default, because it keeps audio on the device.\n[05:12 – 05:17] Speaker 1: The team agreed that the cloud provider should remain available as an option for users,\n[05:17 – 05:19] Speaker 1: who prefer higher accuracy.\n[05:19 – 05:24] Speaker 1: The team will prepare a comparison of the two engines by the 21st of November.\n[05:25 – 05:29] Speaker 1: Ada needs to update the security documentation before the next review.\n[05:30 – 05:33] Speaker 1: The group discussed the remaining work on the research module.\n[05:33 – 05:37] Speaker 1: Tundra said the fetching layer already blocks private network addresses,\n[05:37 – 05:40] Speaker 1: and three directs are evaluated at every hop.\n[05:41 – 05:44] Speaker 1: We agreed to schedule the deployment for the second week of December.\n[05:44 – 05:50] Speaker 1: One open question was whether the mobile application should ship with the model bundled,\n[05:50 – 05:52] Speaker 1: or download it on 1st run.\n[05:52 – 05:57] Speaker 1: Ada will investigate the download size, and report back next week.\n[05:57 – 06:00] Speaker 1: The meeting closed with a review of the action items.\n[06:00 – 06:03] Speaker 1: the reminder that the next review is on the 5th of December.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:08:41.548Z",
+      "version": 1,
+      "history": [],
+      "origin": "transcript"
+    },
+    {
+      "path": "transcripts/short_1793419606553.md",
+      "content": "# Transcript — short\n\n- Duration: 00:21\n- Speakers detected: 1 (provider did not distinguish them)\n- Segments transcribed: 1/1\n- Coverage: 100%\n- Model: faster-whisper/base\n\n## Extraction notes\n\n- The provider did not distinguish individual speakers; every turn is attributed to one speaker.\n\n[00:00 – 00:03] Speaker 1: The quarterly planning meeting opened at either clock.\n[00:04 – 00:08] Speaker 1: Atheroconcwo confirmed that the migration to the new billing system is complete.\n[00:09 – 00:13] Speaker 1: We decided to launch the customer portal on the 14th of November.\n[00:13 – 00:16] Speaker 1: Tund will prepare the release notice by Friday.\n[00:16 – 00:20] Speaker 1: The team agreed that the support queue must be renewed and remain morning.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:06:46.553Z",
+      "version": 1,
+      "history": [],
+      "origin": "transcript"
+    }
+  ],
+  "rare_user_state:usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d:memories": [
+    {
+      "id": "mem_9c9038e2-92af-40c6-8b9f-06d049d301fd",
+      "timestamp": "2026-10-31T04:09:01.442Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6:memories": [],
+  "rare_user_state:usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:09:01.465Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6:documents": [],
+  "rare_user_state:usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d:conversations": [
+    {
+      "id": "conv_1cdb3d09-494c-4284-8d74-71feaed747f1",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:09:01.546Z",
+      "userId": "usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6:conversations": [],
+  "rare_user_state:usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6:settings": {},
+  "rare_user_state:usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d:schedules": [
+    {
+      "id": "sch_73419ad0-9e95-478f-a5b6-738fef487865",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:09:01.675Z"
+    }
+  ],
+  "rare_user_state:usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6:schedules": [],
+  "rare_user_state:usr_6f8501a0-843f-414a-bed9-9a605d9b7e8d:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6:plugin_settings": {},
+  "rare_user_state:usr_27e7f98f-ced4-48b0-a363-074cfd4b85e6:projects": [],
+  "rare_user_state:usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab:memories": [
+    {
+      "id": "mem_cb1c1595-0961-42b4-9700-ce7237c0912f",
+      "timestamp": "2026-10-31T04:09:09.656Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_ef58fba3-1560-41d8-b808-406db1d54c5c:memories": [],
+  "rare_user_state:usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:09:09.675Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_ef58fba3-1560-41d8-b808-406db1d54c5c:documents": [],
+  "rare_user_state:usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab:conversations": [
+    {
+      "id": "conv_e4f96160-4e3b-4191-8698-5738697632ba",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:09:09.683Z",
+      "userId": "usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_ef58fba3-1560-41d8-b808-406db1d54c5c:conversations": [],
+  "rare_user_state:usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_ef58fba3-1560-41d8-b808-406db1d54c5c:settings": {},
+  "rare_user_state:usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab:schedules": [
+    {
+      "id": "sch_24dd1d72-fcac-4571-98db-6c33d3524a39",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:09:09.747Z"
+    }
+  ],
+  "rare_user_state:usr_ef58fba3-1560-41d8-b808-406db1d54c5c:schedules": [],
+  "rare_user_state:usr_75240401-cea1-45d7-9fcf-6d6cfaac6eab:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_ef58fba3-1560-41d8-b808-406db1d54c5c:plugin_settings": {},
+  "rare_user_state:usr_ef58fba3-1560-41d8-b808-406db1d54c5c:projects": [],
+  "rare_user_state:usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c:memories": [
+    {
+      "id": "mem_4aa6e343-732f-4c32-a803-01abe75b62ff",
+      "timestamp": "2026-10-31T04:09:17.598Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_253a012f-4e80-4770-8e80-76c4d87b79dc:memories": [],
+  "rare_user_state:usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:09:17.623Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_253a012f-4e80-4770-8e80-76c4d87b79dc:documents": [],
+  "rare_user_state:usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c:conversations": [
+    {
+      "id": "conv_de8e3429-b91e-4e23-8aa2-3e7f9f32820d",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:09:17.643Z",
+      "userId": "usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_253a012f-4e80-4770-8e80-76c4d87b79dc:conversations": [],
+  "rare_user_state:usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_253a012f-4e80-4770-8e80-76c4d87b79dc:settings": {},
+  "rare_user_state:usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c:schedules": [
+    {
+      "id": "sch_bd927600-1c20-464c-b377-e47ab641e611",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:09:17.692Z"
+    }
+  ],
+  "rare_user_state:usr_253a012f-4e80-4770-8e80-76c4d87b79dc:schedules": [],
+  "rare_user_state:usr_5ea130e4-9037-4e0c-9ca3-6a404f03287c:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_253a012f-4e80-4770-8e80-76c4d87b79dc:plugin_settings": {},
+  "rare_user_state:usr_253a012f-4e80-4770-8e80-76c4d87b79dc:projects": [],
+  "rare_user_state:usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d:memories": [
+    {
+      "id": "mem_ae57e342-0f80-41f4-99be-9cb5c8c1f54b",
+      "timestamp": "2026-10-31T04:09:25.972Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_2ece36b6-07c0-42de-be85-ada6889c8303:memories": [],
+  "rare_user_state:usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:09:26.003Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_2ece36b6-07c0-42de-be85-ada6889c8303:documents": [],
+  "rare_user_state:usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d:conversations": [
+    {
+      "id": "conv_5256e0cb-f1cc-4e2e-ae56-849659ff6c40",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:09:26.043Z",
+      "userId": "usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_2ece36b6-07c0-42de-be85-ada6889c8303:conversations": [],
+  "rare_user_state:usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_2ece36b6-07c0-42de-be85-ada6889c8303:settings": {},
+  "rare_user_state:usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d:schedules": [
+    {
+      "id": "sch_c3db82d7-3052-4226-ae29-2353596f80ab",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:09:26.093Z"
+    }
+  ],
+  "rare_user_state:usr_2ece36b6-07c0-42de-be85-ada6889c8303:schedules": [],
+  "rare_user_state:usr_9d2db89a-fa76-4d10-a754-0c0a0c2dbc7d:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_2ece36b6-07c0-42de-be85-ada6889c8303:plugin_settings": {},
+  "rare_user_state:usr_2ece36b6-07c0-42de-be85-ada6889c8303:projects": [],
+  "rare_user_state:usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9:memories": [
+    {
+      "id": "mem_4e6c044e-39a1-47a3-b8d1-07b8667d7c7f",
+      "timestamp": "2026-10-31T04:09:41.829Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_ad39f6e0-aea8-456e-8677-de4002484c91:memories": [],
+  "rare_user_state:usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:09:41.853Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_ad39f6e0-aea8-456e-8677-de4002484c91:documents": [],
+  "rare_user_state:usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9:conversations": [
+    {
+      "id": "conv_5cb2c625-c5e0-49fb-aa6c-69052f11f884",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:09:41.862Z",
+      "userId": "usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_ad39f6e0-aea8-456e-8677-de4002484c91:conversations": [],
+  "rare_user_state:usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_ad39f6e0-aea8-456e-8677-de4002484c91:settings": {},
+  "rare_user_state:usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9:schedules": [
+    {
+      "id": "sch_a4aa6a79-347b-4d0a-adae-0e89a07d11f4",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:09:41.912Z"
+    }
+  ],
+  "rare_user_state:usr_ad39f6e0-aea8-456e-8677-de4002484c91:schedules": [],
+  "rare_user_state:usr_08db19b3-6cec-4bd7-9df3-cf86e0c094a9:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_ad39f6e0-aea8-456e-8677-de4002484c91:plugin_settings": {},
+  "rare_user_state:usr_ad39f6e0-aea8-456e-8677-de4002484c91:projects": [],
+  "rare_user_state:usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c:memories": [
+    {
+      "id": "mem_d7c5e9e7-3d38-4ecc-bf4e-9020f0c30405",
+      "timestamp": "2026-10-31T04:09:50.108Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_359b1896-4adf-4a71-8e65-a54c4c8e8678:memories": [],
+  "rare_user_state:usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:09:50.145Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_359b1896-4adf-4a71-8e65-a54c4c8e8678:documents": [],
+  "rare_user_state:usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c:conversations": [
+    {
+      "id": "conv_d0c5e91e-f813-4ed9-87db-e10b7d8c62b9",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:09:50.154Z",
+      "userId": "usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_359b1896-4adf-4a71-8e65-a54c4c8e8678:conversations": [],
+  "rare_user_state:usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_359b1896-4adf-4a71-8e65-a54c4c8e8678:settings": {},
+  "rare_user_state:usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c:schedules": [
+    {
+      "id": "sch_203645b3-0a13-4acb-a189-76640a343282",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:09:50.207Z"
+    }
+  ],
+  "rare_user_state:usr_359b1896-4adf-4a71-8e65-a54c4c8e8678:schedules": [],
+  "rare_user_state:usr_2073df1e-cdd5-4ad7-91d2-567dcbce9a8c:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_359b1896-4adf-4a71-8e65-a54c4c8e8678:plugin_settings": {},
+  "rare_user_state:usr_359b1896-4adf-4a71-8e65-a54c4c8e8678:projects": [],
+  "rare_user_state:usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e:memories": [
+    {
+      "id": "mem_93b4a568-1fd7-4c10-b498-4198ac2b0377",
+      "timestamp": "2026-10-31T04:10:05.266Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_1530229a-b657-4f08-8622-22dc5983e534:memories": [],
+  "rare_user_state:usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:10:05.370Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_1530229a-b657-4f08-8622-22dc5983e534:documents": [],
+  "rare_user_state:usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e:conversations": [
+    {
+      "id": "conv_5274b2fe-1e8c-48ec-9657-a5256b268657",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:10:05.442Z",
+      "userId": "usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_1530229a-b657-4f08-8622-22dc5983e534:conversations": [],
+  "rare_user_state:usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_1530229a-b657-4f08-8622-22dc5983e534:settings": {},
+  "rare_user_state:usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e:schedules": [
+    {
+      "id": "sch_50da6f9d-7706-4c30-b839-890afe94ecba",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:10:05.503Z"
+    }
+  ],
+  "rare_user_state:usr_1530229a-b657-4f08-8622-22dc5983e534:schedules": [],
+  "rare_user_state:usr_e7629292-ecb9-48fe-be8b-3fa1c0c8d02e:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_1530229a-b657-4f08-8622-22dc5983e534:plugin_settings": {},
+  "rare_user_state:usr_1530229a-b657-4f08-8622-22dc5983e534:projects": [],
+  "rare_user_state:usr_96b29966-aeac-4956-915a-bf0f52e49d92:memories": [
+    {
+      "id": "mem_e663c788-b021-4f47-a535-09fac9a92d0f",
+      "timestamp": "2026-10-31T04:10:15.764Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_5c1314d3-16d9-43a1-936b-00a4cb740032:memories": [],
+  "rare_user_state:usr_96b29966-aeac-4956-915a-bf0f52e49d92:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:10:15.860Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_5c1314d3-16d9-43a1-936b-00a4cb740032:documents": [],
+  "rare_user_state:usr_96b29966-aeac-4956-915a-bf0f52e49d92:conversations": [
+    {
+      "id": "conv_d7aea290-db24-431a-a0b2-81756041c8ee",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:10:15.957Z",
+      "userId": "usr_96b29966-aeac-4956-915a-bf0f52e49d92",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_5c1314d3-16d9-43a1-936b-00a4cb740032:conversations": [],
+  "rare_user_state:usr_96b29966-aeac-4956-915a-bf0f52e49d92:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_5c1314d3-16d9-43a1-936b-00a4cb740032:settings": {},
+  "rare_user_state:usr_96b29966-aeac-4956-915a-bf0f52e49d92:schedules": [
+    {
+      "id": "sch_b91cb04e-94b2-4ab8-96c5-11ef14854a92",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:10:16.251Z"
+    }
+  ],
+  "rare_user_state:usr_5c1314d3-16d9-43a1-936b-00a4cb740032:schedules": [],
+  "rare_user_state:usr_96b29966-aeac-4956-915a-bf0f52e49d92:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_5c1314d3-16d9-43a1-936b-00a4cb740032:plugin_settings": {},
+  "rare_user_state:usr_5c1314d3-16d9-43a1-936b-00a4cb740032:projects": [],
+  "rare_user_state:usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638:memories": [
+    {
+      "id": "mem_d75121cf-c8e2-4929-9acc-03b55dbfbad0",
+      "timestamp": "2026-10-31T04:10:43.130Z",
+      "kind": "fact",
+      "text": "owner A private marker",
+      "tags": [],
+      "importance": 3,
+      "source": "user_stated",
+      "verifiedByUser": true
+    }
+  ],
+  "rare_user_state:usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83:memories": [],
+  "rare_user_state:usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638:documents": [
+    {
+      "path": "private-owner-a.txt",
+      "content": "owner A private document",
+      "format": "txt",
+      "updatedAt": "2026-10-31T04:10:43.170Z",
+      "version": 1,
+      "history": [],
+      "origin": "manual"
+    }
+  ],
+  "rare_user_state:usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83:documents": [],
+  "rare_user_state:usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638:conversations": [
+    {
+      "id": "conv_3c9e1716-5ab7-412a-9e5c-b2662304032e",
+      "title": "Owner A private chat",
+      "created_at": "2026-10-31T04:10:43.185Z",
+      "userId": "usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638",
+      "messages": [],
+      "messageCount": 0
+    }
+  ],
+  "rare_user_state:usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83:conversations": [],
+  "rare_user_state:usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638:settings": {
+    "assistant_name": "Private A",
+    "theme": "red"
+  },
+  "rare_user_state:usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83:settings": {},
+  "rare_user_state:usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638:schedules": [
+    {
+      "id": "sch_6b3b94b5-26de-4103-99eb-b14690b12833",
+      "title": "Owner A reminder",
+      "time": "10:30",
+      "type": "reminder",
+      "action": "Execute scheduled action",
+      "enabled": true,
+      "repeat": "Once",
+      "created_at": "2026-10-31T04:10:43.242Z"
+    }
+  ],
+  "rare_user_state:usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83:schedules": [],
+  "rare_user_state:usr_3aa043cf-7965-4fd5-8d4c-21870c8f4638:plugin_settings": {
+    "plugin_smart_scheduler": false
+  },
+  "rare_user_state:usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83:plugin_settings": {},
+  "rare_user_state:usr_0b5a72ba-eef5-44e6-829b-dc708c76cb83:projects": [],
+  "rare_user_state:guest_0d8c2738-1df5-4409-9bb4-6b5f945857f6:conversations": [
+    {
+      "id": "conv_6f7b84be-a02a-44a5-aa67-50ed3989c2d2",
+      "title": "Pipeline Test",
+      "created_at": "2026-10-31T04:10:48.447Z",
+      "userId": "guest_0d8c2738-1df5-4409-9bb4-6b5f945857f6",
+      "messages": [
+        {
+          "id": "msg_5a2d3d94-c75d-4f7a-be96-c3febf059be2",
+          "role": "assistant",
+          "content": "Hello! I am RARE — your personal AI companion and software builder. What would you like to work on today?",
+          "timestamp": "2026-10-31T04:10:48.447Z"
+        }
+      ]
+    }
+  ],
+  "rare_user_state:guest_0d8c2738-1df5-4409-9bb4-6b5f945857f6:guest_usage": {
+    "online_chat_messages": 2
+  },
+  "rare_user_state:guest_0d8c2738-1df5-4409-9bb4-6b5f945857f6:memories": [],
+  "rare_user_state:usr_18c4d1c0-6dc8-4c16-917a-6ee17f0a82d8:documents": [
+    {
+      "path": "transcripts/short_1793419866651.md",
+      "content": "# Transcript — short\n\n- Duration: 00:21\n- Speakers detected: 1 (provider did not distinguish them)\n- Segments transcribed: 1/1\n- Coverage: 100%\n- Model: faster-whisper/base\n\n## Extraction notes\n\n- The provider did not distinguish individual speakers; every turn is attributed to one speaker.\n\n[00:00 – 00:03] Speaker 1: The quarterly planning meeting opened at either clock.\n[00:04 – 00:08] Speaker 1: Atheroconcwo confirmed that the migration to the new billing system is complete.\n[00:09 – 00:13] Speaker 1: We decided to launch the customer portal on the 14th of November.\n[00:13 – 00:16] Speaker 1: Tund will prepare the release notice by Friday.\n[00:16 – 00:20] Speaker 1: The team agreed that the support queue must be renewed and remain morning.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:11:06.652Z",
+      "version": 1,
+      "history": [],
+      "origin": "transcript"
+    }
+  ],
+  "rare_user_state:guest_11133e11-c453-4d1c-aa44-7427589ef305:documents": [
+    {
+      "path": "uploads/versioned-1793419889368.md",
+      "content": "version one",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:11:37.090Z",
+      "version": 4,
+      "history": [
+        {
+          "content": "version three",
+          "updatedAt": "2026-10-31T04:11:37.084Z",
+          "version": 3
+        },
+        {
+          "content": "version two",
+          "updatedAt": "2026-10-31T04:11:37.076Z",
+          "version": 2
+        },
+        {
+          "content": "version one",
+          "updatedAt": "2026-10-31T04:11:37.065Z",
+          "version": 1
+        }
+      ],
+      "origin": "manual"
+    },
+    {
+      "path": "uploads/sales-1793419889368-1793419892665.md",
+      "content": "## Sales\n\n| Region | Revenue | Units |\n| --- | --- | --- |\n| Lagos | 2100000 | 412 |\n| Abuja | 800000 | 190 |",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:11:32.665Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "xlsx",
+      "label": "Excel workbook (XLSX)",
+      "method": "spreadsheet-sheetjs",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/contract-1793419889368-1793419892294.md",
+      "content": "Contract between RARE and Nova Systems.\n\nPayment of 45000 pounds is due on 2027-01-15.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:11:32.294Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "docx",
+      "label": "Word document (DOCX)",
+      "method": "docx-mammoth",
+      "ocr": false,
+      "warnings": []
+    },
+    {
+      "path": "uploads/report-1793419889368-1793419892154.md",
+      "content": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan.",
+      "format": "md",
+      "updatedAt": "2026-10-31T04:11:32.154Z",
+      "version": 1,
+      "history": [],
+      "origin": "upload",
+      "kind": "pdf",
+      "label": "PDF document",
+      "method": "pdfjs-text",
+      "ocr": false,
+      "pages": [
+        {
+          "page": 1,
+          "text": "RARE Quarterly Report Revenue was 2100000 pounds in the quarter. The decision is to expand to Lagos by March 2027. Ada Okafor owns the expansion plan."
+        }
+      ],
+      "warnings": []
+    }
+  ],
+  "rare_user_state:guest_9da8a1d6-caf6-4550-8835-2ee1f77ec986:documents": []
 }

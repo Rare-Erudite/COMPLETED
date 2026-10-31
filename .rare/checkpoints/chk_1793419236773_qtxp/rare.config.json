@@ -1,0 +1,212 @@
+{
+    "schema_version":  1,
+    "project":  {
+                    "name":  "RARE",
+                    "source_dirs":  [
+                                        "rare_core",
+                                        "capabilities"
+                                    ],
+                    "test_dirs":  [
+                                      "tests"
+                                  ],
+                    "ignore":  [
+                                   ".rare/**",
+                                   ".git/**",
+                                   "**/__pycache__/**",
+                                   "__pycache__",
+                                   "*.pyc",
+                                   "*.pyo",
+                                   ".venv/**",
+                                   "venv/**",
+                                   "env/**",
+                                   "node_modules/**",
+                                   "build/**",
+                                   "dist/**",
+                                   ".dart_tool/**",
+                                   ".gradle/**",
+                                   ".idea/**",
+                                   ".vscode/**",
+                                   "*.egg-info",
+                                   ".mypy_cache/**",
+                                   ".pytest_cache/**",
+                                   "demo_workspace/**"
+                               ],
+                    "max_file_bytes":  1500000
+                },
+    "state_dir":  ".rare",
+    "providers":  {
+                      "order":  [
+                                    "ollama",
+                                    "openai_compatible",
+                                    "offline"
+                                ],
+                      "ollama":  {
+                                     "enabled":  true,
+                                     "base_url":  "http://127.0.0.1:11434",
+                                     "model":  "qwen2.5-coder:7b",
+                                     "auto_fallback":  true,
+                                     "model_preferences":  [
+                                                               "qwen2.5-coder:7b"
+                                                           ],
+                                     "timeout_seconds":  300,
+                                     "options":  {
+                                                     "temperature":  0.1
+                                                 }
+                                 },
+                      "openai_compatible":  {
+                                                "enabled":  false,
+                                                "base_url":  "http://127.0.0.1:8080/v1",
+                                                "model":  "local-model",
+                                                "api_key_env":  null,
+                                                "timeout_seconds":  300,
+                                                "temperature":  0.1
+                                            },
+                      "offline":  {
+                                      "enabled":  true
+                                  }
+                  },
+    "autonomy":  {
+                     "level":  2
+                 },
+    "permissions":  {
+                        "overrides":  {
+
+                                      },
+                        "trusted_actions":  [
+
+                                            ],
+                        "protected_paths":  [
+                                                "rare_recovery.py",
+                                                "rare_core/bootstrap/**",
+                                                ".rare/checkpoints/**"
+                                            ],
+                        "security_sensitive_paths":  [
+                                                         "rare.config.json",
+                                                         "rare_core/permissions/**",
+                                                         "rare_core/tools/executor.py",
+                                                         "rare_core/tools/builtin.py",
+                                                         "rare_core/tools/process.py",
+                                                         "rare_core/development/patch.py",
+                                                         "rare_core/audit/**",
+                                                         "rare_core/api/http_server.py"
+                                                     ]
+                    },
+    "repair":  {
+                   "max_attempts":  4,
+                   "max_same_failure":  2,
+                   "use_model":  true,
+                   "on_failure":  "rollback"
+               },
+    "validation":  {
+                       "timeout_seconds":  300,
+                       "checks":  [
+                                      {
+                                          "name":  "syntax",
+                                          "type":  "python_compile",
+                                          "paths":  [
+                                                        "rare_core",
+                                                        "capabilities",
+                                                        "tests"
+                                                    ],
+                                          "when":  "always"
+                                      },
+                                      {
+                                          "name":  "imports",
+                                          "type":  "python_import",
+                                          "when":  "always"
+                                      },
+                                      {
+                                          "name":  "affected-tests",
+                                          "type":  "affected_tests",
+                                          "when":  "always"
+                                      },
+                                      {
+                                          "name":  "core-tests",
+                                          "type":  "unittest",
+                                          "start_dir":  "tests",
+                                          "when":  "full"
+                                      },
+                                      {
+                                          "name":  "capability-tests",
+                                          "type":  "capability_tests",
+                                          "when":  "full"
+                                      }
+                                  ]
+                   },
+    "tools":  {
+                  "default_timeout_seconds":  120,
+                  "command_allowlist":  [
+                                            "python",
+                                            "python3",
+                                            "py",
+                                            "git",
+                                            "dart",
+                                            "flutter",
+                                            "node",
+                                            "npm",
+                                            "pytest",
+                                            "ruff",
+                                            "black",
+                                            "mypy",
+                                            "cargo",
+                                            "rustc",
+                                            "go",
+                                            "java",
+                                            "javac",
+                                            "gradle",
+                                            "gradlew",
+                                            "mvn",
+                                            "kotlinc",
+                                            "dotnet",
+                                            "msbuild",
+                                            "cmake",
+                                            "ctest",
+                                            "npx",
+                                            "pnpm",
+                                            "yarn",
+                                            "bun",
+                                            "php",
+                                            "composer",
+                                            "ruby",
+                                            "bundle",
+                                            "perl",
+                                            "powershell",
+                                            "pwsh",
+                                            "bash",
+                                            "swift",
+                                            "swiftc",
+                                            "lua",
+                                            "adb"
+                                        ]
+              },
+    "checkpoints":  {
+                        "before_change":  true,
+                        "keep":  40
+                    },
+    "logging":  {
+                    "level":  "INFO",
+                    "audit":  true
+                },
+    "security":  {
+                     "secret_env_vars":  [
+                                             "OPENAI_API_KEY",
+                                             "ANTHROPIC_API_KEY",
+                                             "HF_TOKEN",
+                                             "RARE_API_TOKEN",
+                                             "GITHUB_TOKEN"
+                                         ],
+                     "allow_network_tools":  true
+                 },
+    "capabilities":  {
+                         "dir":  "capabilities",
+                         "auto_activate":  true
+                     },
+    "api":  {
+                "host":  "127.0.0.1",
+                "port":  8765
+            },
+    "research":  {
+                     "timeout_seconds":  20,
+                     "max_bytes":  2000000
+                 }
+}
