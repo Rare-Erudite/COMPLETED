@@ -28,6 +28,16 @@ export interface ToolchainProbe {
   minMajor?: number;
   /** What the operator must install when this probe fails. */
   installHint: string;
+  /**
+   * Per-probe timeout override, in ms.
+   *
+   * JVM-based probes (`gradle --version`) start a JVM before printing anything,
+   * which routinely takes longer than a native binary's `--version`. With one
+   * shared 4 s budget the probe timed out on a loaded CI runner and reported
+   * `probe_failed` while a second probe of the same host reported `ready` — the
+   * two disagreed and the route test caught it. Slow probes get their own budget.
+   */
+  timeoutMs?: number;
 }
 
 export interface ToolchainCapability {
@@ -155,6 +165,8 @@ const PROBES: ToolchainProbe[] = [
     },
     installHint:
       'Android packaging needs a JDK plus the Android SDK (sdkmanager, build-tools, platform) and Gradle. None are required for web builds.',
+    // Gradle boots a JVM before printing its version.
+    timeoutMs: 20_000,
   },
   {
     id: 'docker',
@@ -177,7 +189,7 @@ function probe(toolchain: ToolchainProbe): Promise<ToolchainCapability> {
     execFile(
       toolchain.command,
       toolchain.args,
-      { timeout: PROBE_TIMEOUT_MS, maxBuffer: 1024 * 1024, windowsHide: true },
+      { timeout: toolchain.timeoutMs ?? PROBE_TIMEOUT_MS, maxBuffer: 1024 * 1024, windowsHide: true },
       (error, stdout, stderr) => {
         // `java -version` and some tools write version info to stderr.
         const output = `${stdout || ''}\n${stderr || ''}`.trim();
