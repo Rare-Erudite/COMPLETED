@@ -9,7 +9,7 @@ import { DocumentsService } from '../services/DocumentsService.js';
 import { DeepResearchEngine } from '../services/DeepResearchEngine.js';
 import { OwnerSearchIndexRegistry } from '../content/SearchIndex.js';
 import { processUrl, describeResult } from '../content/ContentEngine.js';
-import { scaffoldProject, PROJECT_TEMPLATES, type ProjectTemplate } from '../builder/ProjectScaffolder.js';
+import { scaffoldProject, PROJECT_TEMPLATES, PROJECT_MANIFEST, readProjectManifest, type ProjectTemplate } from '../builder/ProjectScaffolder.js';
 
 const execFileAsync = promisify(execFile);
 import { resolveWritableAppRoot } from '../storage/PersistentJsonStore.js';
@@ -696,14 +696,61 @@ export class ToolExecutor {
             throw new Error(`No project named "${project}" exists under projects/.`);
           }
           // Only allowlisted binaries may run, and only from the project folder.
-          // The command is chosen by the server from the stage, never supplied
-          // by the caller, so this cannot be turned into arbitrary execution.
-          const stageCommands: Record<string, { command: string; args: string[] }> = {
-            build: { command: 'npm', args: ['run', 'build'] },
-            test: { command: 'npm', args: ['test'] },
-            run: { command: 'npm', args: ['start'] },
+          // The command is chosen by the server from the project's own manifest,
+          // never supplied by the caller, so this cannot be turned into arbitrary
+          // execution. Each stack has its own build/test/run command: a Python
+          // project must not be run through `npm run build`.
+          const manifest = readProjectManifest(projectRoot);
+          const STAGE_COMMANDS: Record<ProjectTemplate, Record<string, { command: string; args: string[] } | null>> = {
+            'node-cli': {
+              build: { command: 'node', args: ['--check', 'src/index.js'] },
+              test: { command: 'npm', args: ['test'] },
+              run: { command: 'npm', args: ['start'] },
+            },
+            'node-api': {
+              build: { command: 'node', args: ['--check', 'server.js'] },
+              test: { command: 'npm', args: ['test'] },
+              run: { command: 'npm', args: ['start'] },
+            },
+            'static-web': {
+              build: null,
+              test: null,
+              run: null,
+            },
+            'python-cli': {
+              build: { command: 'python3', args: ['-m', 'py_compile', 'main.py'] },
+              test: { command: 'python3', args: ['-m', 'unittest', '-v'] },
+              run: { command: 'python3', args: ['main.py'] },
+            },
+            'react-vite': {
+              build: { command: 'npm', args: ['run', 'build'] },
+              test: null,
+              run: { command: 'npm', args: ['run', 'dev'] },
+            },
           };
-          const chosen = stageCommands[stage];
+          const template = manifest?.template;
+          if (!template) {
+            throw new Error(
+              `Project "${project}" has no ${PROJECT_MANIFEST} manifest, so its stack is unknown. Re-scaffold it to record the stack.`,
+            );
+          }
+          const chosen = STAGE_COMMANDS[template][stage];
+          if (!chosen) {
+            // A stack with no such stage is reported as "not applicable", not as
+            // a success and not as a failure.
+            output = {
+              project,
+              stage,
+              template,
+              applicable: false,
+              success: true,
+              exitCode: 0,
+              stdout: '',
+              stderr: '',
+              note: `The ${template} stack has no ${stage} stage.`,
+            };
+            break;
+          }
           if (!COMMAND_ALLOWLIST.has(chosen.command)) {
             throw new Error(`Command "${chosen.command}" is not in the security allowlist.`);
           }
@@ -724,6 +771,8 @@ export class ToolExecutor {
             output = {
               project,
               stage,
+              template,
+              applicable: true,
               command: `${chosen.command} ${chosen.args.join(' ')}`,
               success: true,
               exitCode: 0,
@@ -734,6 +783,8 @@ export class ToolExecutor {
             output = {
               project,
               stage,
+              template,
+              applicable: true,
               command: `${chosen.command} ${chosen.args.join(' ')}`,
               success: false,
               exitCode: typeof err.code === 'number' ? err.code : 1,
@@ -873,10 +924,16 @@ export class ToolExecutor {
         }
       }
 
+      // A stage that ran and exited non-zero is a real failure. Reporting
+      // success:true here would let a broken build look green to the caller.
+      const stageFailed = output && typeof output === 'object' && output.success === false;
       return {
-        success: true,
+        success: !stageFailed,
         tool: name,
         output,
+        error: stageFailed
+          ? `The ${output.stage} stage for "${output.project}" exited with code ${output.exitCode}.`
+          : undefined,
         executionTimeMs: Date.now() - start,
       };
     } catch (err: any) {

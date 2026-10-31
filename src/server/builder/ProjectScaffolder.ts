@@ -27,6 +27,32 @@ export const PROJECT_TEMPLATES: ProjectTemplate[] = [
   'react-vite',
 ];
 
+/** Written into every scaffolded project so stages know which stack to run. */
+export const PROJECT_MANIFEST = '.rare-project.json';
+
+export interface ProjectManifest {
+  name: string;
+  template: ProjectTemplate;
+  objective: string;
+  createdAt: string;
+  buildCommand: string | null;
+  testCommand: string | null;
+  runCommand: string | null;
+}
+
+/** Read a project's manifest, or null when it is absent/unreadable. */
+export function readProjectManifest(projectRoot: string): ProjectManifest | null {
+  try {
+    const raw = fs.readFileSync(path.join(projectRoot, PROJECT_MANIFEST), 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (!PROJECT_TEMPLATES.includes(parsed.template)) return null;
+    return parsed as ProjectManifest;
+  } catch {
+    return null;
+  }
+}
+
 export interface ScaffoldResult {
   name: string;
   template: ProjectTemplate;
@@ -315,6 +341,22 @@ export function scaffoldProject(
     fs.writeFileSync(full, content, 'utf-8');
     written.push(path.join(relativeRoot, rel));
   }
+
+  // Record the stack so the build/test stages run the command that actually
+  // applies to this project. Without this the runner assumed every project was
+  // an npm package and reported "Missing script: build" for a Python project.
+  const manifest = {
+    name: safeName,
+    template,
+    objective,
+    createdAt: new Date().toISOString(),
+    buildCommand: BUILD_COMMANDS[template],
+    testCommand: TEST_COMMANDS[template],
+    runCommand: RUN_COMMANDS[template],
+  };
+  const manifestPath = path.join(root, PROJECT_MANIFEST);
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n', 'utf-8');
+  written.push(path.join(relativeRoot, PROJECT_MANIFEST));
 
   return {
     name: safeName,

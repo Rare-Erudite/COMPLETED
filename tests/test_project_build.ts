@@ -91,4 +91,61 @@ export async function runProjectBuildTests() {
 
   fs.rmSync(toolTarget, { recursive: true, force: true });
   console.log('  \u2713 real build/test stages run and report actual exit codes');
+
+  // 7. Regression: every stack runs ITS OWN stage command. Previously the
+  // runner always used `npm run build` / `npm test`, so a Python project
+  // reported "Missing script: build" and a static site could not be tested.
+  for (const template of ['python-cli', 'node-api', 'node-cli'] as const) {
+    const name = `test-stage-${template}`;
+    const target = path.resolve(workspace, 'projects', name);
+    fs.rmSync(target, { recursive: true, force: true });
+    const scaffolded = await toolExecutor.execute('SCAFFOLD_PROJECT', {
+      name,
+      template,
+      objective: 'stage regression',
+    });
+    assert.equal(scaffolded.success, true, `${template} scaffolds`);
+
+    const manifestPath = path.join(target, '.rare-project.json');
+    assert.ok(fs.existsSync(manifestPath), `${template} records its stack in a manifest`);
+    assert.equal(
+      JSON.parse(fs.readFileSync(manifestPath, 'utf-8')).template,
+      template,
+      `${template} manifest names the right stack`,
+    );
+
+    const build = await toolExecutor.execute('RUN_PROJECT_STAGE', { project: name, stage: 'build' });
+    assert.equal(build.success, true, `${template} build stage succeeds`);
+    assert.equal(build.output.exitCode, 0, `${template} build exits 0`);
+    assert.doesNotMatch(
+      String(build.output.stderr || ''),
+      /Missing script/,
+      `${template} build does not fall back to an npm script it does not have`,
+    );
+
+    const test = await toolExecutor.execute('RUN_PROJECT_STAGE', { project: name, stage: 'test' });
+    assert.equal(test.success, true, `${template} test stage succeeds`);
+    assert.equal(test.output.exitCode, 0, `${template} test exits 0`);
+
+    fs.rmSync(target, { recursive: true, force: true });
+  }
+  console.log('  \u2713 each stack runs its own build/test command');
+
+  // 8. Regression: a non-zero stage exit must surface as tool failure, not as
+  // success:true with a failing exit code buried in the output.
+  const failName = 'test-stage-failure';
+  const failTarget = path.resolve(workspace, 'projects', failName);
+  fs.rmSync(failTarget, { recursive: true, force: true });
+  await toolExecutor.execute('SCAFFOLD_PROJECT', { name: failName, template: 'python-cli', objective: 'failure' });
+  fs.writeFileSync(
+    path.join(failTarget, 'test_main.py'),
+    'import unittest\n\n\nclass T(unittest.TestCase):\n    def test_x(self):\n        self.assertEqual(1, 2)\n',
+    'utf-8',
+  );
+  const failed = await toolExecutor.execute('RUN_PROJECT_STAGE', { project: failName, stage: 'test' });
+  assert.equal(failed.success, false, 'A non-zero stage exit is a tool failure');
+  assert.notEqual(failed.output.exitCode, 0, 'The real non-zero exit code is preserved');
+  assert.match(String(failed.error), /exited with code/, 'The failure names the exit code');
+  fs.rmSync(failTarget, { recursive: true, force: true });
+  console.log('  \u2713 a failing stage is never reported as success');
 }
