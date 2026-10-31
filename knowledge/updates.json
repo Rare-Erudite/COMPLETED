@@ -1,45 +1,25 @@
 [
   {
-    "id": "upd_100_stable",
+    "id": "upd_100_android",
     "version": "1.0.0",
-    "releaseDate": "2026-10-08T04:52:33.070Z",
+    "releaseDate": "2026-10-31T10:00:00.000Z",
     "channel": "public",
-    "title": "RARE Core Intelligence 1.0 General Release",
-    "description": "Official release of RARE with native offline cognitive engine, persistent cross-chat memory, VisionCraft image synthesis, and multi-agent builder.",
+    "title": "RARE 1.0.0 — Android release",
+    "description": "Signed release APK for RARE, built from New-Fixes-by-Erudite and pointed at the production backend.",
     "changelog": [
-      "Zero external API key requirement for general conversations and reasoning",
-      "Integrated 12 autonomous tool primitives with audit logging and sandbox safety",
-      "Persistent cross-chat memory and customizable appearance themes",
-      "Standalone APK package ready for Android installation and offline sharing",
-      "Universal PWA support with WebAPK launcher icon and offline cache"
+      "Signed release APK (v1+v2+v3) with a stable release key",
+      "Android client now targets the production backend",
+      "Reproducible APK build via scripts/build_apk.sh"
     ],
     "mandatory": false,
-    "packageUrl": "/api/download/apk",
-    "apkSize": "24.8 MB",
+    "packageUrl": "https://github.com/Rare-Erudite/COMPLETED/releases/download/v1.0.0-android/rare-v1.0.0-release.apk",
+    "platform": "android",
+    "artifactSizeBytes": 247387,
+    "apkSize": "0.24 MB",
+    "sha256": "322edd949c420ab2c4bb4fefa86d330eb41054870d92737ebeee0ea871c67ba6",
     "publishedBy": "RARE Core Engineering",
     "targetRoles": [
       "all"
-    ]
-  },
-  {
-    "id": "upd_110_dev_preview",
-    "version": "1.1.0-dev",
-    "releaseDate": "2026-10-10T00:52:33.070Z",
-    "channel": "developer",
-    "title": "Developer Preview: Autonomous Self-Development & Live OTA Push",
-    "description": "Developer-only early access release featuring privileged self-development engine telemetry, real-time OTA update deployment, and atomic rollback snapshots.",
-    "changelog": [
-      "Privileged Developer Space OTA push system: publish builds to Public or Developer channels",
-      "Self-development trajectory dataset inspection and automated verification loops",
-      "Fine-grained benchmark evaluation suite across 6 empirical cognitive vectors",
-      "Dual-channel distribution router ensuring unreleased features remain restricted to developers"
-    ],
-    "mandatory": false,
-    "packageUrl": "/api/download/apk",
-    "apkSize": "25.2 MB",
-    "publishedBy": "Self-Development Engine",
-    "targetRoles": [
-      "developer"
     ]
   }
 ]

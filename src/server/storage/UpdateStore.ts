@@ -113,6 +113,33 @@ export class UpdateStore {
     };
   }
 
+  /**
+   * Accept either a same-origin path served by this deployment
+   * (`/api/download/apk`) or an HTTPS GitHub Releases URL under the RARE
+   * repository. A relative path is resolved against the trusted repo, so a
+   * release published by a developer can point at the APK this app serves.
+   */
+  private static readonly TRUSTED_PREFIX = '/Rare-Erudite/COMPLETED/releases/download/';
+
+  private resolvePackageUrl(raw: string): string | null {
+    if (typeof raw !== 'string' || !raw.trim()) return null;
+    const value = raw.trim();
+    // Same-origin API path: only the app's own download endpoint is allowed.
+    if (value.startsWith('/')) {
+      return /^\/api\/download\/(apk|exe)(\/chunk)?$/.test(value) ? value : null;
+    }
+    try {
+      const url = new URL(value);
+      if (url.protocol !== 'https:') return null;
+      if (url.username || url.password) return null;
+      if (url.hostname !== 'github.com') return null;
+      if (!url.pathname.startsWith(UpdateStore.TRUSTED_PREFIX)) return null;
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+
   public publish(data: {
     version: string;
     channel: UpdateChannel;
@@ -126,14 +153,11 @@ export class UpdateStore {
     artifactSizeBytes: number;
     sha256: string;
   }): AppUpdate {
-    const packageUrl = new URL(data.packageUrl);
-    if (
-      packageUrl.protocol !== 'https:' ||
-      packageUrl.hostname !== 'github.com' ||
-      !packageUrl.pathname.startsWith('/Rare-Erudite/COMPLETED/releases/download/') ||
-      packageUrl.username || packageUrl.password
-    ) {
-      throw new Error('Release artifacts must use the configured RARE GitHub Releases repository over HTTPS.');
+    const packageUrl = this.resolvePackageUrl(data.packageUrl);
+    if (!packageUrl) {
+      throw new Error(
+        "Release artifacts must be either this deployment's /api/download/apk|exe endpoint or an HTTPS GitHub Releases URL under Rare-Erudite/COMPLETED.",
+      );
     }
     if (!Number.isSafeInteger(data.artifactSizeBytes) || data.artifactSizeBytes <= 0) {
       throw new Error('A release must include the verified artifact size in bytes.');
@@ -215,15 +239,20 @@ function isValidStoredUpdate(value: unknown): value is AppUpdate {
   if (!value || typeof value !== 'object') return false;
   const update = value as Partial<AppUpdate>;
   if (!update.packageUrl || !update.platform || !update.artifactSizeBytes || !update.sha256) return false;
+  if (!Number.isSafeInteger(update.artifactSizeBytes) || update.artifactSizeBytes <= 0) return false;
+  if (update.artifactSizeBytes > 512 * 1024 * 1024) return false;
+  if (!/^[a-f0-9]{64}$/i.test(update.sha256)) return false;
+  if (!['web', 'android', 'windows'].includes(update.platform)) return false;
+  // Same-origin download path, or a trusted GitHub Releases URL.
+  if (update.packageUrl.startsWith('/')) {
+    return /^\/api\/download\/(apk|exe)(\/chunk)?$/.test(update.packageUrl);
+  }
   try {
     const url = new URL(update.packageUrl);
     return url.protocol === 'https:' &&
       url.hostname === 'github.com' &&
       url.pathname.startsWith('/Rare-Erudite/COMPLETED/releases/download/') &&
-      Number.isSafeInteger(update.artifactSizeBytes) &&
-      update.artifactSizeBytes <= 512 * 1024 * 1024 &&
-      /^[a-f0-9]{64}$/i.test(update.sha256) &&
-      ['web', 'android', 'windows'].includes(update.platform);
+      !url.username && !url.password;
   } catch {
     return false;
   }
