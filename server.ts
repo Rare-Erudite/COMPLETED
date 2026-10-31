@@ -6454,6 +6454,11 @@ async function startServer() {
   }
 }
 
+// Both forms are exported on purpose. The default export is what the local
+// entry point and the existing tests use; the named `app` is what the Vercel
+// serverless entry point (api/index.ts) imports. Exporting only the default
+// made the Vercel build fail with TS2614 "has no exported member 'app'".
+export { app };
 export default app;
 
 if (process.env.VERCEL === '1') {
