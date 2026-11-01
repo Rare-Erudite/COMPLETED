@@ -2,8 +2,15 @@ import fs from 'fs';
 import path from 'path';
 import type { PersistentJsonStore } from './PersistentJsonStore.js';
 
-import { resolveWritableAppRoot } from './PersistentJsonStore.js';
+import { resolveWritableAppRoot, resolveAppRoot } from './PersistentJsonStore.js';
 const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAppRoot());
+
+// The release catalogue ships WITH the deployment, so it must be read from the
+// deployment tree. On Vercel the writable root is os.tmpdir(), which is empty
+// on a cold start — reading from there made the store seed with no releases at
+// all, so clients were never offered an update. Writes still go to the writable
+// root; only the seed is read from the bundle.
+const SEED_FILE = path.join(path.resolve(resolveAppRoot()), 'knowledge', 'updates.json');
 const UPDATES_FILE = path.join(PROJECT_ROOT, 'knowledge', 'updates.json');
 
 export type UpdateChannel = 'public' | 'developer';
@@ -72,8 +79,20 @@ export class UpdateStore {
     try {
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      if (fs.existsSync(this.filePath)) {
-        const raw = fs.readFileSync(this.filePath, 'utf-8');
+      // Prefer the writable copy (it may hold developer-published releases),
+      // but fall back to the catalogue shipped with the deployment so a cold
+      // start on an ephemeral filesystem still knows about the current release.
+      // The bundled catalogue is only a fallback for the DEFAULT store. A store
+      // opened on an explicit path (tests, alternate roots) must see exactly
+      // what that file contains, never the shipped seed as well.
+      const isDefaultStore = path.resolve(this.filePath) === path.resolve(UPDATES_FILE);
+      const source = fs.existsSync(this.filePath)
+        ? this.filePath
+        : isDefaultStore && fs.existsSync(SEED_FILE)
+          ? SEED_FILE
+          : null;
+      if (source) {
+        const raw = fs.readFileSync(source, 'utf-8');
         const parsed = JSON.parse(raw);
         this.updates = Array.isArray(parsed) ? parsed.filter(isValidStoredUpdate) : [];
       }
