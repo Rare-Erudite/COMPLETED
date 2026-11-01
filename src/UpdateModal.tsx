@@ -13,6 +13,22 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { ThemeConfig } from './theme';
+import { getBackendUrl } from './api';
+
+/**
+ * Origin used to resolve a same-origin package path (e.g. "/api/download/apk")
+ * advertised by the update feed. Falls back to the current page origin, which
+ * is already the RARE backend for the deployed web app.
+ */
+function getBackendOrigin(): string {
+  try {
+    const backend = getBackendUrl();
+    if (backend) return new URL(backend).origin;
+  } catch {
+    // ignore — fall through to the page origin
+  }
+  return window.location.origin;
+}
 
 export interface AppUpdate {
   id: string;
@@ -66,8 +82,21 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
       if (!update.packageUrl || !update.artifactSizeBytes || !update.sha256) {
         throw new Error('This release is missing its verified download metadata.');
       }
-      const artifactUrl = new URL(update.packageUrl);
-      if (artifactUrl.protocol !== 'https:' || artifactUrl.hostname !== 'github.com' ||
+      // A release may point at this deployment's own download endpoint
+      // ("/api/download/apk"), which is relative. Resolve it against the
+      // backend origin before validating, otherwise `new URL()` throws and
+      // every same-origin update fails with a misleading "outside the trusted
+      // repository" error even though the server explicitly allows it.
+      const isSameOriginPath = update.packageUrl.startsWith('/');
+      const artifactUrl = new URL(
+        update.packageUrl,
+        isSameOriginPath ? getBackendOrigin() : undefined,
+      );
+      if (isSameOriginPath) {
+        if (!/\/api\/download\/(apk|exe)(\/chunk)?$/.test(artifactUrl.pathname)) {
+          throw new Error('This release points at an endpoint that is not a RARE package download.');
+        }
+      } else if (artifactUrl.protocol !== 'https:' || artifactUrl.hostname !== 'github.com' ||
           !artifactUrl.pathname.startsWith('/Rare-Erudite/COMPLETED/releases/download/')) {
         throw new Error('This release points outside the trusted RARE GitHub Releases repository.');
       }
@@ -97,8 +126,15 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
       if (actualHash !== update.sha256.toLowerCase()) throw new Error('The downloaded file failed its SHA-256 integrity check.');
       const blobUrl = URL.createObjectURL(new Blob([artifact]));
       const link = document.createElement('a');
+      // The package path is often an endpoint ("/api/download/apk"), whose last
+      // segment is not a usable filename. Always save as a proper .apk/.exe so
+      // Android's package installer recognises the file.
+      const isAndroid = update.platform === 'android';
+      const suffix = isAndroid ? 'apk' : 'exe';
+      const lastSegment = decodeURIComponent(artifactUrl.pathname.split('/').pop() || '');
+      const linkName = /\.[a-z0-9]{2,4}$/i.test(lastSegment) ? lastSegment : `RARE-${update.version}.${suffix}`;
       link.href = blobUrl;
-      link.download = decodeURIComponent(artifactUrl.pathname.split('/').pop() || `rare-${update.version}`);
+      link.download = linkName;
       document.body.appendChild(link);
       link.click();
       link.remove();
