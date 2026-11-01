@@ -4,7 +4,7 @@
     "version": "1.1.0",
     "releaseDate": "2026-11-01T01:20:00.000Z",
     "channel": "public",
-    "title": "RARE 1.1.0 \u2014 Android release",
+    "title": "RARE 1.1.0 — Android release",
     "description": "Signed release APK built from the permanent RARE release key and pointed at the production backend.",
     "changelog": [
       "Served APK is now the newest signed build, not a stale committed binary",
@@ -18,6 +18,30 @@
     "artifactSizeBytes": 411308,
     "apkSize": "0.39 MB",
     "sha256": "447928df2447bb96bb7f089e56129e9dfedfe26773d2170685719fa397f93997",
+    "publishedBy": "RARE Core Engineering",
+    "targetRoles": [
+      "all"
+    ]
+  },
+  {
+    "id": "upd_111_android",
+    "version": "1.1.1",
+    "releaseDate": "2026-11-01T09:45:00.000Z",
+    "channel": "public",
+    "title": "RARE 1.1.1 — in-app updater and Android fixes",
+    "description": "Adds the native package-installer bridge so in-app updates actually apply, and fixes the update path end to end.",
+    "changelog": [
+      "In-app updates now hand the verified APK to Android's installer instead of only saving a file",
+      "Added REQUEST_INSTALL_PACKAGES so the app can apply its own updates",
+      "Update dialog reports the real install result reported by Android",
+      "Signed v1+v2+v3 with the permanent release certificate"
+    ],
+    "mandatory": false,
+    "packageUrl": "/api/download/apk",
+    "platform": "android",
+    "artifactSizeBytes": 427774,
+    "apkSize": "0.41 MB",
+    "sha256": "6c055044fb7bf15d7c41930b7730ea0644a38dee25b6e6a1e37e30b5aa7dfde6",
     "publishedBy": "RARE Core Engineering",
     "targetRoles": [
       "all"

@@ -111,6 +111,13 @@ cat << EOF > "$BUILD_DIR/AndroidManifest.xml"
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!--
+      Required for the in-app updater. Without this declaration the
+      PackageInstaller session is created but the system refuses to commit it,
+      so an in-app update silently fails. It also lets Android show the
+      "Install unknown apps" toggle for RARE itself.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
@@ -154,7 +161,13 @@ cat << 'EOF' > "$BUILD_DIR/src/com/rare/ai/intelligence/MainActivity.java"
 package com.rare.ai.intelligence;
 
 import android.app.Activity;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.IntentSender;
+import android.content.pm.PackageInstaller;
 import android.content.pm.PackageManager;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
@@ -170,6 +183,7 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.ConsoleMessage;
+import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -187,6 +201,9 @@ import android.widget.TextView;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -197,6 +214,8 @@ public class MainActivity extends Activity {
     private static final String APP_SCHEME_HOST = "https://rare.local";
     private static final int FILE_CHOOSER_REQUEST_CODE = 1001;
     private static final int SYSTEM_PERMISSIONS_REQUEST_CODE = 2001;
+    private static final int INSTALL_SESSION_REQUEST_CODE = 3001;
+    private static final String ACTION_INSTALL_RESULT = "com.rare.ai.intelligence.INSTALL_RESULT";
 
     private WebView mWebView;
     private FrameLayout mRootLayout;
@@ -224,12 +243,19 @@ public class MainActivity extends Activity {
         mRootLayout.setBackgroundColor(Color.parseColor("#03040A"));
 
         setupWebView();
+        // Expose the native package installer so an in-app update can actually be
+        // applied. The web layer downloads and SHA-256-verifies the APK itself;
+        // this bridge only streams the verified bytes into a PackageInstaller
+        // session and hands control to Android's own confirmation dialog.
+        mWebView.addJavascriptInterface(new InstallerBridge(), "RareInstaller");
         mRootLayout.addView(mWebView);
 
         setupSplashScreen();
         mRootLayout.addView(mSplashLayout);
 
         setContentView(mRootLayout);
+
+        registerInstallResultReceiver();
 
         // Load entry point under virtual secure domain
         mWebView.loadUrl(APP_SCHEME_HOST + "/index.html");
@@ -241,6 +267,183 @@ public class MainActivity extends Activity {
                 revealWebView();
             }
         }, 5000);
+    }
+
+    /**
+     * JavaScript bridge for the in-app updater.
+     *
+     * The web layer has already downloaded the release and checked its SHA-256
+     * against the published manifest. It then passes the verified bytes here.
+     * This class only moves those bytes into a PackageInstaller session; it
+     * never decides whether an update is legitimate.
+     *
+     * Note on Android's rules: a normal sideloaded app can NEVER install
+     * silently. The session commit opens the system confirmation dialog and the
+     * user must accept it. This bridge deliberately does not attempt to bypass
+     * that.
+     */
+    private class InstallerBridge {
+        /** True when this device/build allows RARE to request package installs. */
+        @JavascriptInterface
+        public boolean canInstall() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                return getPackageManager().canRequestPackageInstalls();
+            }
+            return true;
+        }
+
+        /** Version name/code of the build that is currently installed. */
+        @JavascriptInterface
+        public String installedVersionName() {
+            try {
+                return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        @JavascriptInterface
+        public int installedVersionCode() {
+            try {
+                return getPackageManager().getPackageInfo(getPackageName(), 0).versionCode;
+            } catch (Exception e) {
+                return 0;
+            }
+        }
+
+        /**
+         * Open the system "Install unknown apps" screen for RARE so the user can
+         * grant the one permission Android requires for self-updates.
+         */
+        @JavascriptInterface
+        public void openInstallPermissionSettings() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+            try {
+                Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+            } catch (Exception e) {
+                Log.e(TAG, "Unable to open install-permission settings", e);
+            }
+        }
+
+        /**
+         * Stream a base64-encoded, already-verified APK into an install session.
+         * Runs off the UI thread; the commit is dispatched back to it.
+         *
+         * @return "started" on success, otherwise an error token the caller
+         *         can surface verbatim instead of a generic failure.
+         */
+        @JavascriptInterface
+        public String installVerifiedApk(final String base64Apk) {
+            if (base64Apk == null || base64Apk.length() == 0) return "error:empty-payload";
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return "error:unsupported-sdk";
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    && !getPackageManager().canRequestPackageInstalls()) {
+                // Caller should route the user to openInstallPermissionSettings().
+                return "error:install-permission-required";
+            }
+
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    PackageInstaller.Session session = null;
+                    try {
+                        byte[] apk;
+                        try {
+                            apk = android.util.Base64.decode(base64Apk, android.util.Base64.DEFAULT);
+                        } catch (IllegalArgumentException badEncoding) {
+                            Log.e(TAG, "APK payload is not valid base64", badEncoding);
+                            return;
+                        }
+
+                        PackageInstaller installer = getPackageManager().getPackageInstaller();
+                        PackageInstaller.SessionParams params =
+                                new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+                        // Android 12+ requires an explicit byte count up front.
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            params.setAppPackageName(getPackageName());
+                            params.setSize(apk.length);
+                        }
+
+                        int sessionId = installer.createSession(params);
+                        session = installer.openSession(sessionId);
+                        OutputStream out = session.openWrite("rare-update.apk", 0, apk.length);
+                        try {
+                            out.write(apk);
+                            session.fsync(out);
+                        } finally {
+                            try { out.close(); } catch (IOException ignored) {}
+                        }
+
+                        Intent resultIntent = new Intent(ACTION_INSTALL_RESULT).setPackage(getPackageName());
+                        PendingIntent pending = PendingIntent.getBroadcast(
+                                MainActivity.this,
+                                INSTALL_SESSION_REQUEST_CODE,
+                                resultIntent,
+                                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+                        session.commit(pending.getIntentSender());
+                        Log.i(TAG, "Install session " + sessionId + " committed (" + apk.length + " bytes)");
+                    } catch (Exception e) {
+                        Log.e(TAG, "Failed to stage the update for installation", e);
+                    } finally {
+                        if (session != null) {
+                            try { session.close(); } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            }).start();
+
+            return "started";
+        }
+    }
+
+    /** Registers the callback BroadcastReceiver used by the install session. */
+    private void registerInstallResultReceiver() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return;
+        IntentFilter filter = new IntentFilter(ACTION_INSTALL_RESULT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(mInstallResultReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(mInstallResultReceiver, filter);
+        }
+    }
+
+    private final BroadcastReceiver mInstallResultReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!ACTION_INSTALL_RESULT.equals(intent.getAction())) return;
+            int status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+            String message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+            // Log the real status so adb logcat always shows the true outcome.
+            if (status == PackageInstaller.STATUS_SUCCESS) {
+                Log.i(TAG, "Update installed successfully");
+            } else {
+                Log.e(TAG, "Update install failed: status=" + status + " message=" + message);
+            }
+            // Tell the web layer so it can show the genuine result. Values are
+            // JSON-escaped to keep the injected call well-formed.
+            String safeMessage = message == null ? "" : message.replace("\\", "\\\\").replace("'", "\\'").replace("\n", " ");
+            final String js = "window.dispatchEvent(new CustomEvent('rare:install-result',{detail:{ok:"
+                    + (status == PackageInstaller.STATUS_SUCCESS ? "true" : "false")
+                    + ",status:" + status + ",message:'" + safeMessage + "'}}));";
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                @Override
+                public void run() {
+                    if (mWebView != null) mWebView.evaluateJavascript(js, null);
+                }
+            });
+        }
+    };
+
+    @Override
+    protected void onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try { unregisterReceiver(mInstallResultReceiver); } catch (IllegalArgumentException ignored) {}
+        }
+        super.onDestroy();
     }
 
     private void revealWebView() {

@@ -30,6 +30,44 @@ function getBackendOrigin(): string {
   return window.location.origin;
 }
 
+/**
+ * Native installer bridge exposed by the RARE Android shell
+ * (see scripts/build_apk.sh -> MainActivity.InstallerBridge).
+ *
+ * Present only inside the Android app. In a normal browser `window.RareInstaller`
+ * is undefined and the update falls back to saving the verified file for the
+ * user to open manually.
+ */
+interface RareInstallerBridge {
+  canInstall(): boolean;
+  installedVersionName(): string;
+  installedVersionCode(): number;
+  openInstallPermissionSettings(): void;
+  /** Streams verified APK bytes into a system PackageInstaller session. */
+  installVerifiedApk(base64Apk: string): string;
+}
+
+function getNativeInstaller(): RareInstallerBridge | null {
+  const bridge = (window as unknown as { RareInstaller?: RareInstallerBridge }).RareInstaller;
+  return bridge && typeof bridge.installVerifiedApk === 'function' ? bridge : null;
+}
+
+/**
+ * Convert bytes to base64 in chunks. A single String.fromCharCode(...bytes)
+ * call overflows the argument limit for a multi-hundred-KB APK.
+ */
+function toBase64(bytes: Uint8Array): string {
+  const CHUNK = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(
+      null,
+      bytes.subarray(i, i + CHUNK) as unknown as number[],
+    );
+  }
+  return btoa(binary);
+}
+
 export interface AppUpdate {
   id: string;
   version: string;
@@ -68,6 +106,29 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   const [completed, setCompleted] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [needsInstallPermission, setNeedsInstallPermission] = useState(false);
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState(false);
+  const [installOutcome, setInstallOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+
+  // Listen for the genuine result reported by Android's PackageInstaller.
+  React.useEffect(() => {
+    const onResult = (event: Event) => {
+      const detail = (event as CustomEvent<{ ok: boolean; status: number; message: string }>).detail;
+      setAwaitingConfirmation(false);
+      if (detail?.ok) {
+        setInstallOutcome({ ok: true, message: 'Update installed. Reopen RARE to use the new version.' });
+      } else {
+        setInstallOutcome({
+          ok: false,
+          message: detail?.message
+            ? `Android rejected the update: ${detail.message}`
+            : 'Android did not apply the update.',
+        });
+      }
+    };
+    window.addEventListener('rare:install-result', onResult as EventListener);
+    return () => window.removeEventListener('rare:install-result', onResult as EventListener);
+  }, []);
 
   if (!isOpen || !update) return null;
 
@@ -78,6 +139,9 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
     setProgressStep(0);
     setDownloadError(null);
     setCompleted(false);
+    setNeedsInstallPermission(false);
+    setAwaitingConfirmation(false);
+    setInstallOutcome(null);
     try {
       if (!update.packageUrl || !update.artifactSizeBytes || !update.sha256) {
         throw new Error('This release is missing its verified download metadata.');
@@ -124,6 +188,29 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
       const digest = await crypto.subtle.digest('SHA-256', artifact);
       const actualHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
       if (actualHash !== update.sha256.toLowerCase()) throw new Error('The downloaded file failed its SHA-256 integrity check.');
+
+      // Inside the Android app, hand the verified bytes to the native
+      // PackageInstaller so the update can actually be applied. Downloading the
+      // file is not an update: on Android the user must still approve the
+      // system install dialog, which this triggers.
+      const nativeInstaller = update.platform === 'android' ? getNativeInstaller() : null;
+      if (nativeInstaller) {
+        if (!nativeInstaller.canInstall()) {
+          // RARE is not yet allowed to install packages on this device.
+          setNeedsInstallPermission(true);
+          throw new Error(
+            'RARE needs permission to install updates. Tap "Allow installs" and try again.',
+          );
+        }
+        const result = nativeInstaller.installVerifiedApk(toBase64(artifact));
+        if (result !== 'started') {
+          throw new Error(`The update could not be handed to Android (${result}).`);
+        }
+        setProgressStep(100);
+        setAwaitingConfirmation(true);
+        return;
+      }
+
       const blobUrl = URL.createObjectURL(new Blob([artifact]));
       const link = document.createElement('a');
       // The package path is often an endpoint ("/api/download/apk"), whose last
@@ -270,6 +357,65 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
             </div>
           )}
 
+          {/* Install permission prompt (Android only) */}
+          {needsInstallPermission && (
+            <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/40 space-y-2 animate-in fade-in">
+              <div className="flex items-center space-x-1.5 font-bold text-xs text-amber-300">
+                <Shield className="w-4 h-4" />
+                <span>Allow RARE to install updates</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Android requires you to allow this once. The system screen will open for RARE —
+                enable <span className="font-semibold">Allow from this source</span>, then come back.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  const bridge = getNativeInstaller();
+                  if (bridge) bridge.openInstallPermissionSettings();
+                }}
+                className="w-full px-3 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-[11px] font-semibold transition"
+              >
+                Open install settings
+              </button>
+            </div>
+          )}
+
+          {/* Awaiting the system confirmation dialog */}
+          {awaitingConfirmation && (
+            <div className="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/40 space-y-1 animate-in fade-in">
+              <div className="flex items-center space-x-1.5 font-bold text-xs text-indigo-300">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Waiting for your confirmation</span>
+              </div>
+              <p className="text-[11px] text-slate-300">
+                Android has opened its install dialog. Tap <span className="font-semibold">Install</span> to
+                finish the update. Any RARE data on this device is preserved.
+              </p>
+            </div>
+          )}
+
+          {/* Genuine install outcome reported by Android */}
+          {installOutcome && (
+            <div
+              className={`p-3.5 rounded-xl border space-y-1 animate-in fade-in ${
+                installOutcome.ok
+                  ? 'bg-emerald-950/40 border-emerald-500/40'
+                  : 'bg-rose-950/40 border-rose-500/40'
+              }`}
+            >
+              <div
+                className={`flex items-center space-x-1.5 font-bold text-xs ${
+                  installOutcome.ok ? 'text-emerald-300' : 'text-rose-300'
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{installOutcome.ok ? 'Update installed' : 'Update not installed'}</span>
+              </div>
+              <p className="text-[11px] text-slate-300">{installOutcome.message}</p>
+            </div>
+          )}
+
           {/* Completed Banner */}
           {completed && (
             <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 space-y-1 animate-in fade-in">
@@ -278,7 +424,8 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 <span>Download verified for v{update.version}</span>
               </div>
               <p className="text-[11px] text-slate-300">
-                The file was saved to your device. Installation or activation is a separate platform step and has not been confirmed here.
+                Your browser saved the verified package. Installation is a separate step Android
+                controls — open the file from your Downloads to finish.
               </p>
             </div>
           )}
@@ -324,7 +471,13 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
                 } text-xs flex items-center justify-center space-x-2 shadow-lg transition active:scale-[0.98] disabled:opacity-50`}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${updating ? 'animate-spin' : ''}`} />
-                <span>{updating ? (verifying ? 'Verifying…' : 'Downloading…') : 'Download & Verify'}</span>
+                <span>
+                  {updating
+                    ? (verifying ? 'Verifying…' : 'Downloading…')
+                    : (update.platform === 'android' && getNativeInstaller()
+                        ? 'Download, Verify & Install'
+                        : 'Download & Verify')}
+                </span>
               </button>
             )}
           </div>
