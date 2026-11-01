@@ -39,7 +39,33 @@ export class UpdateStore {
   public async initializePersistence(persistence: PersistentJsonStore): Promise<void> {
     this.persistence = persistence;
     const persisted = await persistence.getOrSeed('updates', this.updates);
-    this.updates = Array.isArray(persisted) ? persisted.filter(isValidStoredUpdate) : [];
+    const stored = Array.isArray(persisted) ? persisted.filter(isValidStoredUpdate) : [];
+
+    // A persisted release record can be older than the build actually shipped
+    // with this deployment. getOrSeed() never overwrites an existing row, so a
+    // stale record would keep advertising an old version forever and clients
+    // would never be offered the current APK. Prefer whichever side is newer.
+    const seeded = this.updates.filter(isValidStoredUpdate);
+    const newest = (list: AppUpdate[]): AppUpdate | null =>
+      list.length === 0
+        ? null
+        : list.reduce((a, b) =>
+            this.isVersionNewer(b.version, a.version) ? b : a,
+          );
+
+    const storedNewest = newest(stored);
+    const seededNewest = newest(seeded);
+
+    if (
+      seededNewest &&
+      (!storedNewest || this.isVersionNewer(seededNewest.version, storedNewest.version))
+    ) {
+      this.updates = seeded;
+      this.persist();
+      return;
+    }
+
+    this.updates = stored;
   }
 
   private init() {
