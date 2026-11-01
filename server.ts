@@ -1663,7 +1663,30 @@ function resolveApkFilePath(): string | null {
       }
     }
   }
-  return best ? best.file : null;
+  if (!best) return null;
+
+  // A file named like an APK is not necessarily one: a mis-wired route once
+  // served the source tarball under an .apk download name, and Android rejects
+  // it with the generic "App wasn't installed". Refuse anything that is not a
+  // genuine ZIP/APK rather than handing the user a broken download.
+  try {
+    const fd = fs.openSync(best.file, 'r');
+    try {
+      const magic = Buffer.alloc(4);
+      fs.readSync(fd, magic, 0, 4, 0);
+      if (magic[0] !== 0x50 || magic[1] !== 0x4b) {
+        console.error(`[apk] refusing to serve ${best.file}: not a ZIP/APK archive`);
+        return null;
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (err) {
+    console.error('[apk] unable to validate candidate APK:', (err as Error)?.message);
+    return null;
+  }
+
+  return best.file;
 }
 
 // APK Metadata & Chunked Streaming Endpoints (Guarantees zero proxy payload limit errors)

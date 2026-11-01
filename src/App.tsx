@@ -1942,16 +1942,16 @@ function CollaborativeBuildWorkspaceView({ t }: { t: ThemeConfig }) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <a
-                    href="/api/download/source"
-                    download="rare_app_win64.exe"
+                    href="/api/download/exe"
+                    download="RARE-v1.0.0-windows-x64.exe"
                     className={`px-3 py-1.5 rounded-lg ${t.accentBg} text-white text-xs font-medium flex items-center space-x-1.5 shadow-sm hover:opacity-90`}
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Download Windows EXE</span>
                   </a>
                   <a
-                    href="/api/download/source"
-                    download="rare_app_mobile.apk"
+                    href="/api/download/apk"
+                    download="RARE-release.apk"
                     className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center space-x-1.5 shadow-sm transition"
                   >
                     <Smartphone className="w-3.5 h-3.5" />
@@ -1959,7 +1959,7 @@ function CollaborativeBuildWorkspaceView({ t }: { t: ThemeConfig }) {
                   </a>
                   <a
                     href="/api/download/source"
-                    download="rare_project_bundle.zip"
+                    download="RARE-source.tar.gz"
                     className={`px-3 py-1.5 rounded-lg ${t.cardSub} border ${t.cardBorder} text-xs font-medium flex items-center space-x-1.5 transition`}
                   >
                     <Package className="w-3.5 h-3.5" />

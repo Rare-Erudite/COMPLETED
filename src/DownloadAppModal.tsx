@@ -124,22 +124,22 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
       setIsDownloadingApk(true);
       const blob = await fetchSignedApkBlob((msg) => setDownloadSuccessMessage(msg));
 
-      setDownloadSuccessMessage('Saving RARE-v1.0.0-release.apk to your phone...');
+      setDownloadSuccessMessage('Saving RARE-release.apk to your phone...');
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'RARE-v1.0.0-release.apk';
+      a.download = 'RARE-release.apk';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
 
       setTimeout(() => window.URL.revokeObjectURL(url), 10000);
-      setDownloadSuccessMessage('APK downloaded successfully! Tap RARE-v1.0.0-release.apk in your Downloads folder to install.');
+      setDownloadSuccessMessage('APK downloaded successfully! Tap RARE-release.apk in your Downloads folder to install.');
       setTimeout(() => setDownloadSuccessMessage(null), 8000);
     } catch {
       const a = document.createElement('a');
       a.href = directApkUrl;
-      a.download = 'RARE-v1.0.0-release.apk';
+      a.download = 'RARE-release.apk';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -156,7 +156,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
       setIsSharingApk(true);
       const blob = await fetchSignedApkBlob((msg) => setShareSuccessMessage(msg));
 
-      const apkFile = new File([blob], 'RARE-v1.0.0-release.apk', {
+      const apkFile = new File([blob], 'RARE-release.apk', {
         type: 'application/vnd.android.package-archive',
         lastModified: Date.now(),
       });
@@ -177,7 +177,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'RARE-v1.0.0-release.apk';
+        a.download = 'RARE-release.apk';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -190,7 +190,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
         setShowXenderGuide(true);
-        setShareSuccessMessage('APK downloaded! Open Xender -> Files -> Downloads -> select RARE-v1.0.0-release.apk to send.');
+        setShareSuccessMessage('APK downloaded! Open Xender -> Files -> Downloads -> select RARE-release.apk to send.');
         setTimeout(() => setShareSuccessMessage(null), 8000);
       } else {
         setShareSuccessMessage(null);
@@ -201,7 +201,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
   };
 
   const handleCopyXenderGuide = () => {
-    const text = `How to share RARE Android App via Xender:\n1. Download RARE-v1.0.0-release.apk\n2. Open Xender on your phone\n3. Go to Files > Downloads folder\n4. Select 'RARE-v1.0.0-release.apk' and tap Send\n5. Your friend scans your QR code and taps Install!`;
+    const text = `How to share RARE Android App via Xender:\n1. Download RARE-release.apk\n2. Open Xender on your phone\n3. Go to Files > Downloads folder\n4. Select 'RARE-release.apk' and tap Send\n5. Your friend scans your QR code and taps Install!`;
     navigator.clipboard.writeText(text);
     setCopiedXenderInstructions(true);
     setTimeout(() => setCopiedXenderInstructions(false), 3000);
@@ -278,7 +278,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
                     </span>
                   </div>
                   <p className="text-[11px] text-emerald-200/90 mt-0.5">
-                    Complete Android package (<code className="font-mono text-emerald-300 font-semibold">RARE-v1.0.0-release.apk</code>)
+                    Complete Android package (<code className="font-mono text-emerald-300 font-semibold">RARE-release.apk</code>)
                   </p>
                 </div>
               </div>
@@ -370,7 +370,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
                   <span>How to install the APK directly on Android:</span>
                 </div>
                 <ol className="list-decimal list-inside space-y-1.5 pl-1 text-slate-300">
-                  <li>Tap <strong>Download APK (.apk)</strong> above. The file <span className="font-mono text-emerald-300">RARE-v1.0.0-release.apk</span> will be saved to your phone's <strong>Downloads</strong> folder.</li>
+                  <li>Tap <strong>Download APK (.apk)</strong> above. The file <span className="font-mono text-emerald-300">RARE-release.apk</span> will be saved to your phone's <strong>Downloads</strong> folder.</li>
                   <li>Pull down your phone notification bar or open your <strong>Files / Downloads</strong> app.</li>
                   <li>Tap the APK file. If Android displays a security prompt, tap <strong>Settings</strong> and switch on <strong>"Allow from this source"</strong>.</li>
                   <li>Tap <strong>Install</strong>. Android will complete the installation in seconds!</li>
@@ -399,7 +399,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
                   <li>Tap <strong>Download APK (.apk)</strong> above so the file is stored in your phone storage.</li>
                   <li>Open the <strong>Xender</strong> app on your Android phone.</li>
                   <li>In Xender, tap the <strong>Files</strong> tab (or tap <strong>Apps</strong>, then <strong>Internal Storage</strong>) and open your <strong>Downloads</strong> folder.</li>
-                  <li>Tap and select <strong className="font-mono text-emerald-300">RARE-v1.0.0-release.apk</strong>, then tap the green <strong>Send</strong> button.</li>
+                  <li>Tap and select <strong className="font-mono text-emerald-300">RARE-release.apk</strong>, then tap the green <strong>Send</strong> button.</li>
                   <li>Have your friend open Xender, tap <strong>Receive</strong>, and scan your QR code.</li>
                   <li>The file transfers in 1-2 seconds with zero mobile internet used!</li>
                   <li>Your friend taps the received APK and taps <strong>Install</strong>. They now have the full RARE app on their phone!</li>
