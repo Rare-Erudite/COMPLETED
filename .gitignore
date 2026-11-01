@@ -30,3 +30,10 @@ server-build/
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Only the CURRENT release APK ships (Vercel serves it from /api/download/apk).
+# Older builds must be deleted, not left behind: a stale binary gets served
+# instead of the real release and carries a different signing certificate.
+public/rare-v1.0.0-release.apk
+exports/rare-v1.0.0-release.apk
+dist/rare-v1.0.0-release.apk

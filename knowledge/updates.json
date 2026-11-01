@@ -1,22 +1,23 @@
 [
   {
-    "id": "upd_100_android",
-    "version": "1.0.0",
-    "releaseDate": "2026-10-31T10:00:00.000Z",
+    "id": "upd_110_android",
+    "version": "1.1.0",
+    "releaseDate": "2026-11-01T01:20:00.000Z",
     "channel": "public",
-    "title": "RARE 1.0.0 — Android release",
-    "description": "Signed release APK for RARE, built from New-Fixes-by-Erudite and pointed at the production backend.",
+    "title": "RARE 1.1.0 \u2014 Android release",
+    "description": "Signed release APK built from the permanent RARE release key and pointed at the production backend.",
     "changelog": [
-      "Signed release APK (v1+v2+v3) with a stable release key",
-      "Android client now targets the production backend",
-      "Reproducible APK build via scripts/build_apk.sh"
+      "Served APK is now the newest signed build, not a stale committed binary",
+      "versionCode raised so this installs over any earlier RARE build",
+      "Signed v1+v2+v3 with the permanent release certificate",
+      "Android client targets the production backend"
     ],
     "mandatory": false,
-    "packageUrl": "https://github.com/Rare-Erudite/COMPLETED/releases/download/v1.0.0-android/rare-v1.0.0-release.apk",
+    "packageUrl": "/api/download/apk",
     "platform": "android",
-    "artifactSizeBytes": 247387,
-    "apkSize": "0.24 MB",
-    "sha256": "322edd949c420ab2c4bb4fefa86d330eb41054870d92737ebeee0ea871c67ba6",
+    "artifactSizeBytes": 411308,
+    "apkSize": "0.39 MB",
+    "sha256": "447928df2447bb96bb7f089e56129e9dfedfe26773d2170685719fa397f93997",
     "publishedBy": "RARE Core Engineering",
     "targetRoles": [
       "all"

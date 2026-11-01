@@ -1616,15 +1616,54 @@ app.get('/api/download/bundle', (req, res) => {
   res.status(404).json({ error: { message: 'Bundle not found' } });
 });
 
+// Resolve the newest release APK actually present on disk.
+//
+// The previous implementation hardcoded `rare-v1.0.0-release.apk`, so a stale
+// binary committed to the repo kept being served long after a newer signed
+// build existed. That shipped an APK signed with a DIFFERENT certificate than
+// the permanent release key, which Android rejects on install with
+// INSTALL_FAILED_UPDATE_INCOMPATIBLE (and which can never update the real app).
+//
+// Selection is now by highest semantic version, so publishing a new build is
+// enough to make it the download — no code change required.
 function resolveApkFilePath(): string | null {
-  const candidates = [
-    path.resolve(PROJECT_ROOT, 'exports', 'rare-v1.0.0-release.apk'),
-    path.resolve(process.cwd(), 'exports', 'rare-v1.0.0-release.apk'),
-    path.resolve(PROJECT_ROOT, 'public', 'rare-v1.0.0-release.apk'),
-    path.resolve(PROJECT_ROOT, 'dist', 'rare-v1.0.0-release.apk'),
-    '/exports/rare-v1.0.0-release.apk',
+  const dirs = [
+    path.resolve(PROJECT_ROOT, 'exports'),
+    path.resolve(process.cwd(), 'exports'),
+    path.resolve(PROJECT_ROOT, 'public'),
+    path.resolve(PROJECT_ROOT, 'dist'),
+    '/exports',
   ];
-  return candidates.find((p) => fs.existsSync(p)) || null;
+
+  const versionOf = (file: string): number[] => {
+    const m = /rare-v(\d+)\.(\d+)\.(\d+)-release\.apk$/.exec(file);
+    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [-1, -1, -1];
+  };
+  const isNewer = (a: number[], b: number[]): boolean => {
+    for (let i = 0; i < 3; i++) {
+      if (a[i] !== b[i]) return a[i] > b[i];
+    }
+    return false;
+  };
+
+  let best: { file: string; version: number[] } | null = null;
+  for (const dir of dirs) {
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!/^rare-v\d+\.\d+\.\d+-release\.apk$/.test(entry)) continue;
+      const full = path.join(dir, entry);
+      const version = versionOf(entry);
+      if (!best || isNewer(version, best.version)) {
+        best = { file: full, version };
+      }
+    }
+  }
+  return best ? best.file : null;
 }
 
 // APK Metadata & Chunked Streaming Endpoints (Guarantees zero proxy payload limit errors)
@@ -1639,7 +1678,7 @@ app.get('/api/download/apk/info', (_req, res) => {
     ok: true,
     size: stats.size,
     chunkSize: 2 * 1024 * 1024, // 2 MB chunks (safe across all Cloud Run & reverse proxies)
-    filename: 'RARE-v1.0.0-release.apk',
+    filename: path.basename(targetFile).replace(/^rare-/, 'RARE-'),
   });
 });
 
@@ -1685,7 +1724,10 @@ app.get('/api/download/apk', (req, res) => {
   if (targetFile) {
     const stats = fs.statSync(targetFile);
     res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    res.setHeader('Content-Disposition', 'attachment; filename="RARE-v1.0.0-release.apk"');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${path.basename(targetFile).replace(/^rare-/, 'RARE-')}"`
+    );
     res.setHeader('Content-Length', String(stats.size));
     res.setHeader('Cache-Control', 'no-cache');
     const stream = fs.createReadStream(targetFile);
