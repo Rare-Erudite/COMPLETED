@@ -141,8 +141,8 @@ jobs:
   android-browser:
     name: Android 13 Chrome browser smoke (no APK)
     # Linux runners for this public repo do not expose /dev/kvm. This standard
-    # macOS Intel runner provides Hypervisor acceleration for the Android AVD.
-    runs-on: macos-15-intel
+    # Apple Silicon runner uses native ARM64 system images for the Android AVD.
+    runs-on: macos-15
     timeout-minutes: 45
 
     steps:
@@ -183,7 +183,7 @@ jobs:
         with:
           api-level: 33
           target: google_apis_playstore
-          arch: x86_64
+          arch: arm64-v8a
           profile: pixel_6
           script: |
             set -euo pipefail
