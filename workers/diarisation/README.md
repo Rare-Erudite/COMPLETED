@@ -50,7 +50,7 @@ Accepting those terms is an optimisation, not a requirement.
 
 ## Honest failure
 
-If `HF_TOKEN` is missing, the model cannot be fetched, or inference fails, the
+If `WORKER_TOKEN` is missing, inference is disabled and `/diarize` returns a typed 503. If `HF_TOKEN` is missing and no ungated model is available, the model cannot be fetched. If inference fails, the
 worker reports `failed` with the real error and `/diarize` returns 503. It never
 returns invented speaker labels.
 

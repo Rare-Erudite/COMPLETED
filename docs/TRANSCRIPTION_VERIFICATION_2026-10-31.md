@@ -194,7 +194,7 @@ was ownership isolation working correctly.
 **The live deployment still runs the old code.** Both fixes are committed and
 pushed, but they are not deployed, because:
 
-- the Vercel token supplied (`vcp_89PY…`) is rejected by the API with
+- the Vercel token supplied at that time was rejected by the API with
   `invalidToken: true`, and by the CLI with "token is not valid";
 - the project has no Git integration (`VERCEL_GIT_COMMIT_REF` is empty), so a
   push does not trigger a build.

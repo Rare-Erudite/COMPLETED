@@ -1,0 +1,47 @@
+name: Check Android signing certificate
+
+on:
+  push:
+    tags:
+      - 'rare-signing-audit-*'
+
+permissions:
+  contents: read
+
+jobs:
+  fingerprint:
+    name: Print certificate fingerprint only
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+
+    steps:
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify configured signer without exposing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          if [[ -z "${KEYSTORE_BASE64:-}" || -z "${KEYSTORE_PASSWORD:-}" || -z "${KEY_ALIAS:-}" ]]; then
+            echo "::error::One or more Android signing secrets are unavailable."
+            exit 1
+          fi
+          umask 077
+          keystore="$RUNNER_TEMP/rare-signing-audit.keystore"
+          error_file="$RUNNER_TEMP/rare-signing-audit.error"
+          trap 'rm -f "$keystore" "$error_file"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          export STORE_PASS="$KEYSTORE_PASSWORD"
+          fingerprint="$(keytool -exportcert -keystore "$keystore" -alias "$KEY_ALIAS" -storepass:env STORE_PASS 2>"$error_file" | openssl dgst -sha256 -binary | od -An -vtx1 | tr -d ' \n' | tr '[:lower:]' '[:upper:]')" || {
+            echo "::error::The configured Android signing certificate could not be read. No credential values were logged."
+            exit 1
+          }
+          echo "Configured Android certificate SHA-256: $fingerprint"

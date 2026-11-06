@@ -266,6 +266,10 @@ export async function runAuthenticationSecurityTests() {
     method: 'POST', headers: userAHeaders, body: JSON.stringify({}),
   });
   assert.strictEqual(ordinaryEvaluationRes.status, 403, 'Ordinary users must not run developer evaluation operations');
+  const ordinaryHarmlessRepairRes = await fetch(`${baseUrl()}/api/intelligence/repair/harmless-test`, {
+    method: 'POST', headers: userAHeaders,
+  });
+  assert.strictEqual(ordinaryHarmlessRepairRes.status, 403, 'Ordinary users must not run developer self-repair demonstrations');
 
   const guestSessionRes = await fetch(`${baseUrl()}/api/user/guest-session`, { method: 'POST' });
   assert.strictEqual(guestSessionRes.status, 200, 'Guest sessions remain available as a limited product feature');

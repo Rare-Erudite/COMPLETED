@@ -24,7 +24,7 @@ echo "=== Backend for this APK: $RARE_BACKEND_URL ==="
 # future release uninstallable over the last. Both values are overridable and
 # default to a monotonically increasing value derived from the build date
 # (YYMMDDnn), which is always greater than any previous calendar day.
-APP_VERSION_NAME="${RARE_APP_VERSION_NAME:-1.0.0}"
+APP_VERSION_NAME="${RARE_APP_VERSION_NAME:-1.1.2}"
 if [ -n "$RARE_APP_VERSION_CODE" ]; then
   APP_VERSION_CODE="$RARE_APP_VERSION_CODE"
 else
@@ -797,22 +797,69 @@ EOF
 
 # Toolchain locations. ANDROID_HOME may point at a full SDK (recommended); the
 # Debian-packaged build-tools are used as a fallback for aapt/zipalign/apksigner.
-ANDROID_HOME="${ANDROID_HOME:-/usr/lib/android-sdk}"
-ANDROID_JAR="${ANDROID_JAR:-$ANDROID_HOME/platforms/android-34/android.jar}"
+ANDROID_HOME="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/lib/android-sdk}}"
+if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+  ANDROID_HOME="$(cygpath -u "$ANDROID_HOME")"
+fi
+ANDROID_PLATFORM="${ANDROID_COMPILE_SDK:-}"
+if [ -z "$ANDROID_PLATFORM" ]; then
+  for candidate in "$ANDROID_HOME"/platforms/android-*; do
+    [ -f "$candidate/android.jar" ] || continue
+    api="${candidate##*android-}"
+    case "$api" in *[!0-9]*|'') continue ;; esac
+    if [ -z "${ANDROID_PLATFORM:-}" ] || [ "$api" -gt "$ANDROID_PLATFORM" ]; then
+      ANDROID_PLATFORM="$api"
+    fi
+  done
+fi
+if [ -z "$ANDROID_PLATFORM" ]; then
+  echo "ERROR: no installed Android platform found under $ANDROID_HOME/platforms." >&2
+  exit 1
+fi
+ANDROID_JAR="${ANDROID_JAR:-$ANDROID_HOME/platforms/android-$ANDROID_PLATFORM/android.jar}"
 if [ ! -f "$ANDROID_JAR" ]; then
   echo "ERROR: android.jar not found at $ANDROID_JAR" >&2
   echo "       Install the Android SDK platform (sdkmanager 'platforms;android-34') or set ANDROID_JAR." >&2
   exit 1
 fi
-D8="${D8:-$ANDROID_HOME/build-tools/34.0.0/d8}"
-if [ ! -x "$D8" ]; then
+ANDROID_BUILD_TOOLS="${ANDROID_BUILD_TOOLS:-}"
+if [ -z "$ANDROID_BUILD_TOOLS" ]; then
+  for candidate in "$ANDROID_HOME"/build-tools/*; do
+    [ -d "$candidate" ] || continue
+    version="${candidate##*/}"
+    if [ -z "$ANDROID_BUILD_TOOLS" ] || [ "$(printf '%s\n%s\n' "$version" "${ANDROID_BUILD_TOOLS##*/}" | sort -V | tail -1)" = "$version" ]; then
+      ANDROID_BUILD_TOOLS="$candidate"
+    fi
+  done
+fi
+if [ -z "$ANDROID_BUILD_TOOLS" ]; then
+  echo "ERROR: no installed Android build-tools found under $ANDROID_HOME/build-tools." >&2
+  exit 1
+fi
+export PATH="$ANDROID_BUILD_TOOLS:$PATH"
+if [ -z "${D8:-}" ]; then
+  if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]] && [ -f "$ANDROID_BUILD_TOOLS/lib/d8.jar" ]; then
+    D8="$ANDROID_BUILD_TOOLS/lib/d8.jar"
+  else
+    D8="$ANDROID_BUILD_TOOLS/d8"
+  fi
+fi
+if [ ! -x "$D8" ] && [ ! -f "$D8" ]; then
   D8="$(command -v d8 || true)"
 fi
-if [ -z "$D8" ] || [ ! -x "$D8" ]; then
-  echo "ERROR: d8 (Dalvik compiler) not found. Install Android build-tools 34.0.0." >&2
+if [ -z "$D8" ] || { [ ! -x "$D8" ] && [ ! -f "$D8" ]; }; then
+  echo "ERROR: d8 (Dalvik compiler) not found in $ANDROID_BUILD_TOOLS." >&2
   exit 1
 fi
 echo "=== Toolchain: android.jar=$ANDROID_JAR d8=$D8 ==="
+
+# The Android SDK ships .exe tools on Windows and .bat launchers for Java
+# tools. Git Bash does not resolve PATHEXT entries, so dispatch those explicitly.
+if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* ]]; then
+  aapt() { "$ANDROID_BUILD_TOOLS/aapt.exe" "$@"; }
+  zipalign() { "$ANDROID_BUILD_TOOLS/zipalign.exe" "$@"; }
+  apksigner() { java -jar "$ANDROID_BUILD_TOOLS/lib/apksigner.jar" "$@"; }
+fi
 
 echo "=== [5/8] Generating R.java with AAPT ==="
 aapt package -m -J "$BUILD_DIR/src" \
@@ -845,8 +892,18 @@ fi
 echo "=== [7/8] Converting Bytecode to Dalvik classes.dex ==="
 # d8 is the current Dalvik compiler; dalvik-exchange/dx are long removed from
 # the Android SDK, so the previous script could not run on a modern toolchain.
-"$D8" --min-api 21 --output "$BUILD_DIR/bin" \
-  $(find "$BUILD_DIR/bin/classes" -name '*.class')
+if [[ "$D8" == *.jar ]]; then
+  JAVA="${JAVA:-$(command -v java || true)}"
+  if [ -z "$JAVA" ]; then
+    echo "ERROR: java is required to run $D8." >&2
+    exit 1
+  fi
+  "$JAVA" -cp "$D8" com.android.tools.r8.D8 --lib "$ANDROID_JAR" --min-api 21 --output "$BUILD_DIR/bin" \
+    $(find "$BUILD_DIR/bin/classes" -name '*.class')
+else
+  "$D8" --lib "$ANDROID_JAR" --min-api 21 --output "$BUILD_DIR/bin" \
+    $(find "$BUILD_DIR/bin/classes" -name '*.class')
+fi
 
 echo "=== [8/8] Packaging, Aligning & Signing Standalone Release APK ==="
 aapt package -f \
@@ -890,7 +947,7 @@ if [ -z "$STORE_PASS" ]; then
   exit 1
 fi
 
-apksigner sign --ks "$KEYSTORE" --ks-pass "pass:$STORE_PASS" --key-pass "pass:$KEY_PASS" \
+apksigner sign --ks "$KEYSTORE" --ks-pass "env:RARE_ANDROID_STORE_PASS" --key-pass "env:RARE_ANDROID_KEY_PASS" \
   --ks-key-alias "$KEY_ALIAS" --out "$BUILD_DIR/bin/rare-v${APP_VERSION_NAME}-release.apk" "$BUILD_DIR/bin/aligned.apk"
 
 echo "=== Verifying APK Signature Schemes ==="

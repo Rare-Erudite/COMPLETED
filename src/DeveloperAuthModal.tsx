@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Lock,
   Mail,
@@ -15,6 +15,7 @@ import {
 import { ThemeConfig } from './theme';
 import {
   getStoredSessionToken,
+  safeFetch,
   safePost,
   storeUserSessionToken,
 } from './api';
@@ -39,7 +40,7 @@ export function DeveloperAuthModal({
 
   // Recovery / Access Request State
   const [viewMode, setViewMode] = useState<'unlock' | 'request_access' | 'change_password'>('unlock');
-  
+
   // Request access form
   const [requesterName, setRequesterName] = useState('');
   const [requesterEmail, setRequesterEmail] = useState('');
@@ -47,6 +48,13 @@ export function DeveloperAuthModal({
   const [requestSubmitted, setRequestSubmitted] = useState(false);
   const [requestDetails, setRequestDetails] = useState<any>(null);
   const [copiedShareLink, setCopiedShareLink] = useState(false);
+  const [ownerEmail, setOwnerEmail] = useState('the app owner');
+
+  useEffect(() => {
+    safeFetch<{ developerContactEmail?: string }>('/api/status').then((status) => {
+      if (status?.developerContactEmail) setOwnerEmail(status.developerContactEmail);
+    });
+  }, []);
 
   // Change password form
   const [currentMasterKey, setCurrentMasterKey] = useState('');
@@ -194,7 +202,7 @@ export function DeveloperAuthModal({
               {viewMode === 'unlock'
                 ? 'Privileged self-development security barrier'
                 : viewMode === 'request_access'
-                ? 'Request Access from Owner (rarelivescore@gmail.com)'
+                ? `Request Access from Owner (${ownerEmail})`
                 : 'Protected Developer Passkey Change'}
             </p>
           </div>
@@ -227,7 +235,7 @@ export function DeveloperAuthModal({
                   placeholder="Enter passkey..."
                   className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-xl px-3 py-2.5 pr-10 text-xs focus:outline-none`}
                 />
-                
+
                 {/* Persistent Eye Toggle Button */}
                 <button
                   type="button"
@@ -301,7 +309,7 @@ export function DeveloperAuthModal({
           </form>
         )}
 
-        {/* View Mode 2: Request Access from Owner (rarelivescore@gmail.com) */}
+        {/* View Mode 2: Request Access from Owner */}
         {viewMode === 'request_access' && (
           <div className="space-y-4">
             {!requestSubmitted ? (
@@ -312,7 +320,7 @@ export function DeveloperAuthModal({
                     <span>Strictly Guarded Access Request</span>
                   </div>
                   <p className="text-[11px] text-slate-300">
-                    Access requests are dispatched directly to the App Owner at <span className="font-mono text-indigo-200 font-semibold">rarelivescore@gmail.com</span> (like Google Docs edit permission requests). Once approved, the owner will send you the developer password via WhatsApp or email.
+                    This request will be recorded for the App Owner at <span className="font-mono text-indigo-200 font-semibold">{ownerEmail}</span>. The owner can then contact you using the details you provide.
                   </p>
                 </div>
 
@@ -375,7 +383,7 @@ export function DeveloperAuthModal({
                     className={`px-5 py-2 rounded-xl ${t.accentBg} ${t.accentBgHover} text-white text-xs font-semibold flex items-center space-x-1.5 shadow-md disabled:opacity-50`}
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>{loading ? 'Sending Request...' : 'Send Request to Gmail'}</span>
+                    <span>{loading ? 'Recording Request...' : 'Send Access Request'}</span>
                   </button>
                 </div>
               </form>
@@ -385,10 +393,10 @@ export function DeveloperAuthModal({
                 <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs space-y-2">
                   <div className="flex items-center space-x-2 font-bold text-sm text-emerald-400">
                     <CheckCircle2 className="w-5 h-5" />
-                    <span>Access Request Dispatched!</span>
+                    <span>Access Request Recorded</span>
                   </div>
                   <p className="text-slate-300">
-                    Notification dispatched to Owner at <span className="font-semibold text-white">rarelivescore@gmail.com</span>.
+                    Request recorded for Owner at <span className="font-semibold text-white">{requestDetails?.ownerEmail || ownerEmail}</span>.
                   </p>
                   <div className="text-[11px] text-slate-400 font-mono bg-black/40 p-2.5 rounded-lg border border-slate-800">
                     Request ID: {requestDetails?.requestId || 'req_live'}

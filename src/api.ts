@@ -1030,6 +1030,16 @@ export async function safeFetch<T>(
         updateConnectionState(false, `HTTP ${res.status}`);
 
         // An HTTP denial or missing endpoint is not an offline fallback signal.
+        // Preserve a structured server error so forms can show actionable
+        // messages such as PASSWORD_RESET_REQUIRED instead of a blank state.
+        const errorContentType = res.headers.get('content-type') || '';
+        if (/\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(errorContentType)) {
+          try {
+            return (await res.json()) as T;
+          } catch {
+            return null;
+          }
+        }
         return null;
       }
 

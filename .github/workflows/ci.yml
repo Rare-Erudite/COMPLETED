@@ -73,6 +73,14 @@ jobs:
           RARE_SKIP_DEV_BUNDLER: 'true'
         run: npm test
 
+      - name: Install Playwright browser engines
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Run Chromium, Firefox, WebKit, and mobile viewport checks
+        env:
+          RARE_E2E_ENGINES: chromium,firefox,webkit
+        run: npm run test:e2e
+
       - name: Upload build output
         if: always()
         uses: actions/upload-artifact@v4
@@ -84,11 +92,10 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-  android:
-    name: Android APK
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: verify
+  windows:
+    name: Windows typecheck, build and browser verification
+    runs-on: windows-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -100,102 +107,89 @@ jobs:
           node-version: '20.19.0'
           cache: npm
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      # The runner image already ships the Android SDK. `setup-android@v3`
-      # failed here with "Failed to find package 'tools'" because the modern
-      # cmdline-tools no longer publish a package by that name, so we use the
-      # preinstalled SDK and only install the platform/build-tools we need.
-      - name: Configure Android SDK
+      - name: Install dependencies
+        shell: pwsh
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}" >> "$GITHUB_ENV"
-          SDK="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
-          echo "Using SDK at $SDK"
-          ls "$SDK" || true
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
-          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
-          # build_apk.sh calls aapt/aapt2/d8/zipalign by bare name, so the
-          # build-tools directory has to be on PATH.
-          echo "$SDK/build-tools/34.0.0" >> "$GITHUB_PATH"
-          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-          echo "Android SDK ready."
+          $ErrorActionPreference = 'Stop'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            npm ci --no-audit --no-fund
+            if ($LASTEXITCODE -eq 0) { break }
+            if ($attempt -eq 3) { throw 'npm ci failed after three attempts.' }
+            Start-Sleep -Seconds (20 * $attempt)
+          }
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Build web and server bundles
+        run: npm run build
+
+      - name: Run the full test suite
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+          RARE_SKIP_DEV_BUNDLER: 'true'
+        run: npm test
+
+      - name: Install Playwright Chromium and Firefox
+        run: npx playwright install chromium firefox
+
+      - name: Run Chrome, Firefox, and mobile viewport checks
+        env:
+          RARE_E2E_ENGINES: chromium,firefox
+        run: npm run test:e2e
+
+  android-browser:
+    name: Android 13 Chrome browser smoke (no APK)
+    # Hosted runners do not expose nested virtualization. Configure a trusted
+    # self-hosted Linux runner with KVM and set RARE_ANDROID_EMULATOR_RUNNER=true.
+    if: vars.RARE_ANDROID_EMULATOR_RUNNER == 'true' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, linux, x64, android-emulator]
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.0'
+          cache: npm
 
       - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Start local RARE server for the emulator
+        env:
+          NODE_ENV: development
+          RARE_ALLOW_LOCAL_STORAGE_FALLBACK: 'true'
+          RARE_ALLOWED_ORIGINS: http://10.0.2.2:3000
+          RARE_APP_ROOT: ${{ runner.temp }}/rare-android-browser-data
+          PORT: '3000'
         run: |
-          for attempt in 1 2 3; do
-            echo "::group::npm ci attempt $attempt"
-            if npm ci --no-audit --no-fund; then
-              echo "::endgroup::"
-              echo "Dependencies installed on attempt $attempt."
+          mkdir -p "$RARE_APP_ROOT"
+          nohup npm run dev > "$RUNNER_TEMP/rare-android-browser-server.log" 2>&1 &
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null; then
+              echo "Local RARE server is ready for the emulator."
               exit 0
             fi
-            echo "::endgroup::"
-            if [ "$attempt" -lt 3 ]; then
-              echo "::warning::npm ci failed on attempt $attempt (transient registry/CDN fault). Retrying in $((attempt * 20))s."
-              sleep $((attempt * 20))
-            fi
+            sleep 2
           done
-          echo "::error::npm ci failed after 3 attempts. This is a real dependency failure, not a flake."
+          cat "$RUNNER_TEMP/rare-android-browser-server.log"
           exit 1
 
-      - name: Restore signing keystore
-        id: keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 is not configured. A release APK cannot be produced without the permanent signing key, and an APK signed by a new key can never update an installed RARE app."
-            echo "have_keystore=false" >> "$GITHUB_OUTPUT"
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/keystore"
-          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore/release.keystore"
-          test -s "$RUNNER_TEMP/keystore/release.keystore" || { echo "::error::The decoded keystore is empty."; exit 1; }
-          echo "have_keystore=true" >> "$GITHUB_OUTPUT"
-
-      - name: Build and sign the release APK
-        id: apk
-        env:
-          RARE_BACKEND_URL: https://rareproject.vercel.app
-          RARE_ANDROID_KEYSTORE: ${{ runner.temp }}/keystore/release.keystore
-          RARE_ANDROID_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          RARE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          RARE_ANDROID_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          # build_apk.sh refuses to mint a throwaway signing key, because an APK
-          # signed by a new key can never update an installed one. There is no
-          # correct APK to produce without the secret, so this fails rather than
-          # reporting a green run with no artifact.
-          bash scripts/build_apk.sh
-          echo "built=true" >> "$GITHUB_OUTPUT"
-
-      - name: Verify the APK signature and metadata
-        run: |
-          APK="exports/rare-v${RARE_APP_VERSION_NAME:-1.0.0}-release.apk"
-          test -f "$APK" || { echo "::error::APK was not produced at $APK"; exit 1; }
-          ls -l "$APK"
-          sha256sum "$APK"
-          SDK="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
-          echo "--- signature ---"
-          "$SDK/build-tools/34.0.0/apksigner" verify --verbose --print-certs "$APK"
-          echo "--- package metadata ---"
-          "$SDK/build-tools/34.0.0/aapt" dump badging "$APK" | grep -E "^package:|^application-label:|sdkVersion|targetSdkVersion"
-          # A release APK must not permit cleartext traffic.
-          if "$SDK/build-tools/34.0.0/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -q "usesCleartextTraffic.*0xffffffff"; then
-            echo "::error::The release APK permits cleartext HTTP traffic."
-            exit 1
-          fi
-          echo "Cleartext traffic is disabled."
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Open RARE in Android 13 Chrome and verify its layout
+        uses: reactivecircus/android-emulator-runner@v2
         with:
-          name: rare-apk
-          path: exports/rare-v*-release.apk
-          retention-days: 14
-          if-no-files-found: error
+          api-level: 33
+          target: google_apis_playstore
+          arch: x86_64
+          profile: pixel_6
+          disable-linux-hw-accel: false
+          script: |
+            set -euo pipefail
+            adb shell pm path com.android.chrome
+            adb shell monkey -p com.android.chrome 1
+            adb forward tcp:9222 localabstract:chrome_devtools_remote
+            node scripts/android_browser_smoke.mjs

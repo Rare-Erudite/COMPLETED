@@ -69,6 +69,7 @@ import {
 import { themes, ThemeKey, ThemeConfig } from './theme';
 import { DocumentsWorkspaceView } from './components/DocumentsWorkspaceView';
 import { ResearchWorkspaceView } from './components/ResearchWorkspaceView';
+import { AssistantStudioView } from './components/AssistantStudioView';
 
 import {
   safeFetch,
@@ -344,17 +345,15 @@ export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'default' | 'google' | 'outlook' | 'switch'>('default');
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-    const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     try {
       const saved = localStorage.getItem('rare_user_account');
-
-      if (!saved || !getStoredSessionToken()) {
-        localStorage.removeItem('rare_user_account');
-        return null;
-      }
-
-      return JSON.parse(saved);
+      // Restore the displayed account first. The session-validation effect
+      // below confirms it with the server; a token readiness race must not
+      // delete the saved account before that request can run.
+      return saved ? JSON.parse(saved) : null;
     } catch {
+      try { localStorage.removeItem('rare_user_account'); } catch {}
       return null;
     }
   });
@@ -368,7 +367,7 @@ export default function App() {
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<AppUpdate | null>(null);
   const [clientVersion, setClientVersion] = useState<string>(() => {
-    return localStorage.getItem('rare_client_version') || '1.0.0';
+    return __RARE_VERSION__;
   });
 
   const [connectionStatus, setConnectionStatus] = useState<BackendConnectionState>({
@@ -387,7 +386,13 @@ useEffect(() => {
   let cancelled = false;
 
   const validateSavedSession = async () => {
-    if (!getStoredSessionToken()) {
+    let hasSavedAccount = false;
+    try {
+      hasSavedAccount = Boolean(localStorage.getItem('rare_user_account'));
+    } catch {
+      // The server check below can still validate an HttpOnly cookie.
+    }
+    if (!getStoredSessionToken() && !hasSavedAccount) {
       return;
     }
 
@@ -498,7 +503,7 @@ useEffect(() => {
 
   const handleApplyUpdate = (newVersion: string) => {
     setClientVersion(newVersion);
-    localStorage.setItem('rare_client_version', newVersion);
+    localStorage.removeItem('rare_client_version');
     setAvailableUpdate(null);
   };
 
@@ -763,6 +768,7 @@ useEffect(() => {
   };
 
   const workspaceNavItems = [
+    { id: 'assistant', label: 'Assistant', icon: Mic, badge: 'Voice & actions' },
     { id: 'documents', label: 'Documents', icon: FileText, badge: 'Any format' },
     { id: 'research', label: 'Research', icon: Compass, badge: 'Deep' },
     { id: 'projects', label: 'Projects', icon: Package, badge: 'APK • EXE • Web' },
@@ -1315,7 +1321,7 @@ useEffect(() => {
             <button
               onClick={() => setDownloadModalOpen(true)}
               className="px-2.5 sm:px-3 py-1 rounded-full text-xs bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25 active:scale-95 flex items-center space-x-1.5 transition shadow-xs cursor-pointer"
-              title="Download Real Android APK, install to phone, or share via Xender"
+              title="Download the Android APK or share the file"
               aria-label="Download Android APK and install to phone"
             >
               <Smartphone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -1371,6 +1377,9 @@ useEffect(() => {
               onNavigate={setActiveTab}
             />
           )}
+          {activeTab === 'assistant' && (
+            <AssistantStudioView onNavigate={setActiveTab} assistantName={assistantName} />
+          )}
           {activeTab === 'documents' && <DocumentsWorkspaceView t={t} />}
           {activeTab === 'research' && <ResearchWorkspaceView t={t} onNavigate={setActiveTab} />}
           {activeTab === 'projects' && <CollaborativeBuildWorkspaceView t={t} />}
@@ -1409,7 +1418,7 @@ useEffect(() => {
         </div>
       </main>
 
-      {/* Download & Offline Install / Xender Share Modal */}
+      {/* Download, install, and APK sharing */}
       <DownloadAppModal
         t={t}
         isOpen={downloadModalOpen}
@@ -1942,14 +1951,6 @@ function CollaborativeBuildWorkspaceView({ t }: { t: ThemeConfig }) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <a
-                    href="/api/download/exe"
-                    download="RARE-v1.0.0-windows-x64.exe"
-                    className={`px-3 py-1.5 rounded-lg ${t.accentBg} text-white text-xs font-medium flex items-center space-x-1.5 shadow-sm hover:opacity-90`}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download Windows EXE</span>
-                  </a>
-                  <a
                     href="/api/download/apk"
                     download="RARE-release.apk"
                     className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center space-x-1.5 shadow-sm transition"
@@ -1963,7 +1964,7 @@ function CollaborativeBuildWorkspaceView({ t }: { t: ThemeConfig }) {
                     className={`px-3 py-1.5 rounded-lg ${t.cardSub} border ${t.cardBorder} text-xs font-medium flex items-center space-x-1.5 transition`}
                   >
                     <Package className="w-3.5 h-3.5" />
-                    <span>Full Source ZIP</span>
+                    <span>Project Source Snapshot</span>
                   </a>
                 </div>
               </div>
@@ -2636,12 +2637,21 @@ function PluginsDirectoryView({
   onNavigate?: (tab: string) => void;
 }) {
   const [plugins, setPlugins] = useState<PluginDef[]>([]);
+  const [pluginsLoading, setPluginsLoading] = useState(true);
+  const [pluginsAvailable, setPluginsAvailable] = useState(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string>('all');
 
   const loadPlugins = async () => {
+    setPluginsLoading(true);
     const data = await safeFetch<PluginDef[]>('/api/plugins');
-    if (data) setPlugins(data);
+    if (Array.isArray(data)) {
+      setPlugins(data);
+      setPluginsAvailable(true);
+    } else {
+      setPluginsAvailable(false);
+    }
+    setPluginsLoading(false);
   };
 
   useEffect(() => {
@@ -2680,7 +2690,13 @@ function PluginsDirectoryView({
         </div>
         <div className="text-xs font-mono px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center space-x-1.5">
           <CheckCircle2 className="w-3.5 h-3.5" />
-          <span>{plugins.filter((p) => p.installed).length}/{plugins.length} Plugins Active</span>
+          <span>
+            {pluginsLoading
+              ? 'Checking plugin status…'
+              : pluginsAvailable
+                ? `${plugins.filter((p) => p.installed).length}/${plugins.length} Plugins Active`
+                : 'Plugin status unavailable'}
+          </span>
         </div>
       </div>
 
@@ -4654,7 +4670,6 @@ function LiveVoiceView({
     setTranscript((prev) => [...prev, userEntry]);
 
     try {
-      
       const data = await safePost<any>('/api/voice/chat', {
         speech: cleaned,
         recentMessages: transcript.slice(-10).map((message) => ({
@@ -5809,7 +5824,9 @@ function CleanSettingsWorkspaceView({
             </div>
             <div className="p-2 rounded-lg bg-white/5 border border-white/5">
               <div className="font-bold text-purple-400">3. Tool Execution</div>
-              <div className="text-slate-400 text-[9px] mt-0.5">12 Primitives</div>
+              <div className="text-slate-400 text-[9px] mt-0.5">
+                {Array.isArray(intelStatus?.tools) ? `${intelStatus.tools.length} registered` : 'Registry not loaded'}
+              </div>
             </div>
             <div className="p-2 rounded-lg bg-white/5 border border-white/5">
               <div className="font-bold text-amber-400">4. Self-Diagnosis</div>
@@ -5817,7 +5834,11 @@ function CleanSettingsWorkspaceView({
             </div>
             <div className="p-2 rounded-lg bg-white/5 border border-white/5">
               <div className="font-bold text-emerald-400">5. Self-Repair</div>
-              <div className="text-slate-400 text-[9px] mt-0.5">Verified Success</div>
+              <div className="text-slate-400 text-[9px] mt-0.5">
+                {Array.isArray(intelStatus?.verified_trajectories)
+                  ? `${intelStatus.verified_trajectories.filter((item: any) => item?.status === 'VERIFIED_SUCCESS').length} verified runs`
+                  : 'History not loaded'}
+              </div>
             </div>
           </div>
         </div>
@@ -5888,7 +5909,7 @@ function CleanSettingsWorkspaceView({
             className={`px-3.5 py-2 rounded-xl ${t.cardSub} border ${t.cardBorder} hover:border-white/20 text-xs font-semibold flex items-center space-x-1.5 transition`}
           >
             <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-            <span>{showToolsList ? 'Hide Tools' : 'Autonomous Tools (12 Primitives)'}</span>
+            <span>{showToolsList ? 'Hide Tools' : `Autonomous Tools (${Array.isArray(intelStatus?.tools) ? intelStatus.tools.length : 'not loaded'})`}</span>
             {showToolsList ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
         </div>
@@ -5898,7 +5919,9 @@ function CleanSettingsWorkspaceView({
           <div className={`p-4 rounded-xl ${t.cardSub} border border-emerald-500/30 space-y-2.5`}>
             <div className="flex items-center space-x-2 text-xs font-bold text-emerald-400">
               <CheckCircle2 className="w-4 h-4" />
-              <span>Benchmark Verification Results (All Vectors Passed)</span>
+              <span>
+                Benchmark Results ({evalResults.filter((bm: any) => String(bm.status).toUpperCase() === 'PASS').length}/{evalResults.length} passed)
+              </span>
             </div>
             <div className="space-y-1.5">
               {evalResults.map((bm: any, idx: number) => (
@@ -5909,7 +5932,9 @@ function CleanSettingsWorkspaceView({
                   </div>
                   <div className="flex items-center space-x-2">
                     <span className="font-mono font-bold text-emerald-400">{bm.score}%</span>
-                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[9px] font-bold">PASS</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${String(bm.status).toUpperCase() === 'PASS' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                      {String(bm.status || 'UNKNOWN').toUpperCase()}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -5992,7 +6017,7 @@ function CleanSettingsWorkspaceView({
               className={`px-3.5 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer`}
             >
               <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Install & Share via Xender</span>
+              <span>Install & Share APK</span>
             </button>
           </div>
         </div>

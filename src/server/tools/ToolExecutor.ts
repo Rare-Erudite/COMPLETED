@@ -14,6 +14,10 @@ import { scaffoldProject, PROJECT_TEMPLATES, PROJECT_MANIFEST, readProjectManife
 const execFileAsync = promisify(execFile);
 import { resolveWritableAppRoot } from '../storage/PersistentJsonStore.js';
 const PROJECT_ROOT = path.resolve(process.env.RARE_APP_ROOT || resolveWritableAppRoot());
+// The `python3` Windows Store execution alias often exists on PATH but is not
+// runnable in service child processes. Use the installed `python.exe` there;
+// Unix hosts conventionally expose the same runtime as `python3`.
+const PYTHON_COMMAND = process.platform === 'win32' ? 'python' : 'python3';
 
 // Allowlist from rare.config.json
 const COMMAND_ALLOWLIST = new Set([
@@ -718,9 +722,9 @@ export class ToolExecutor {
               run: null,
             },
             'python-cli': {
-              build: { command: 'python3', args: ['-m', 'py_compile', 'main.py'] },
-              test: { command: 'python3', args: ['-m', 'unittest', '-v'] },
-              run: { command: 'python3', args: ['main.py'] },
+              build: { command: PYTHON_COMMAND, args: ['-m', 'py_compile', 'main.py'] },
+              test: { command: PYTHON_COMMAND, args: ['-m', 'unittest', '-v'] },
+              run: { command: PYTHON_COMMAND, args: ['main.py'] },
             },
             'react-vite': {
               build: { command: 'npm', args: ['run', 'build'] },
@@ -755,7 +759,23 @@ export class ToolExecutor {
             throw new Error(`Command "${chosen.command}" is not in the security allowlist.`);
           }
           try {
-            const res = await execFileAsync(chosen.command, chosen.args, {
+            // Windows exposes npm through npm.cmd/npm.ps1 shims, which cannot
+            // be launched reliably with execFile (shell execution is disabled
+            // deliberately). Invoke npm's JS CLI through the current Node
+            // executable so project test/build stages work on Windows too.
+            const npmCli = chosen.command === 'npm'
+              ? [
+                  process.env.npm_execpath,
+                  path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+                ].find((candidate) => candidate && fs.existsSync(candidate))
+              : undefined;
+            const command = npmCli ? process.execPath : chosen.command;
+            const args = npmCli ? [npmCli, ...chosen.args] : chosen.args;
+            if (chosen.command === 'npm' && process.platform === 'win32' && !npmCli) {
+              throw new Error('Could not locate npm-cli.js for a shell-free Windows project stage.');
+            }
+
+            const res = await execFileAsync(command, args, {
               cwd: projectRoot,
               timeout: 120000,
               maxBuffer: 2 * 1024 * 1024,

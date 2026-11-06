@@ -1,39 +1,55 @@
+# Dependencies
 node_modules/
-build/
-dist/
+
+# Build output
 /public/assets/
 /public/index.html
 /public/manifest.webmanifest
 /public/sw.js
 /public/workbox-*.js
 /public/registerSW.js
-coverage/
-.DS_Store
-*.log
-data/models_cache/
-.env*
-!.env.example
+/dist/
 
 # Build output — never commit; `npm start` rebuilds it.
 server-build/
 .vercel
+playwright-report/
+test-results/
 
-# Local verification harnesses and generated audio (not shipped)
-.verify/
-.env.rare-verify
-
-# Android release signing material — never commit
+# Runtime state — NEVER commit. This directory holds the file-backed fallback
+# store, which contains every user account (including password hashes) and all
+# session records. It was committed once and became publicly downloadable from
+# a public repository; that is a credential exposure, not a build artifact.
+.rare/state/
 .rare/android/
-*.keystore
-*.jks
+# Full source snapshots written by the checkpoint tool. Unbounded growth, and
+# they duplicate the entire tree on every checkpoint.
+.rare/checkpoints/
 
-# Python bytecode
-__pycache__/
-*.pyc
+# Runtime memory/trajectory stores. These are written by the running server and
+# by the test suite, so they change on every run. Tracking them meant `npm test`
+# left the working tree dirty and a test run could overwrite real local memory.
+# The seed data lives in code (SEED_MEMORIES / SEED_TRAJECTORIES), not here.
+knowledge/memories.json
+knowledge/trajectories.json
+knowledge/conversations.json
 
-# Only the CURRENT release APK ships (Vercel serves it from /api/download/apk).
-# Older builds must be deleted, not left behind: a stale binary gets served
-# instead of the real release and carries a different signing certificate.
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Old release artifacts
 public/rare-v1.0.0-release.apk
-exports/rare-v1.0.0-release.apk
-dist/rare-v1.0.0-release.apk

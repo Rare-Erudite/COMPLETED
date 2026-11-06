@@ -17,8 +17,10 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 
 const baseUrl = (): string => process.env.RARE_TEST_BASE_URL || 'http://127.0.0.1:3000';
+const require = createRequire(import.meta.url);
 
 /**
  * Resolve ffmpeg the same way the server does: prefer the binary bundled in
