@@ -1,6 +1,6 @@
 name: Final Android release verification
 
-on:
+'on':
   workflow_dispatch:
     inputs:
       release_sha:
@@ -22,6 +22,7 @@ concurrency:
 
 jobs:
   verify-and-package:
+    if: github.event_name == 'workflow_dispatch'
     name: Gate, build once, and verify update compatibility
     runs-on: ubuntu-latest
     environment: rare-final-release
