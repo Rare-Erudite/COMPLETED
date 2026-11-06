@@ -8,6 +8,9 @@
 
 import fs from 'fs';
 import path from 'path';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 /**
  * Levenshtein word error rate, used to score a transcript against the exact
@@ -197,10 +200,17 @@ async function buildAudio(seconds: number): Promise<string> {
   const path = await import('path');
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'rare-test-audio-'));
   const output = path.join(directory, 'audio.mp3');
+  let ffmpegPath = 'ffmpeg';
+  try {
+    const bundled = require('@ffmpeg-installer/ffmpeg').path as string;
+    if (bundled && fs.existsSync(bundled)) ffmpegPath = bundled;
+  } catch {
+    // The application can still use a system ffmpeg on minimal installations.
+  }
   // A spoken-word stand-in: a modulated tone keeps ffmpeg's VAD path exercised
   // without shipping a voice recording into the repo.
   execFileSync(
-    'ffmpeg',
+    ffmpegPath,
     ['-y', '-f', 'lavfi', '-i', `sine=frequency=320:duration=${seconds}`, '-ar', '16000', '-ac', '1', '-b:a', '32k', output],
     { stdio: 'ignore' },
   );
