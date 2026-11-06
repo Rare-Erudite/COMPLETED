@@ -8,9 +8,9 @@
 
 ## Current result
 
-Local source recovery and regression verification are complete for the current implementation checkpoint. Typecheck, production web/server build, the full automated suite, and desktop/mobile browser checks pass. A duplicate server initialization found by browser testing was fixed. The prior ordinary-CI Android packaging job has now been removed locally; the final-release workflow remains to be added after release-identity checks are resolved.
+Local source recovery and regression verification are complete for the current implementation checkpoint. Typecheck, production web/server build, the full automated suite, and desktop/mobile browser checks pass. A duplicate server initialization found by browser testing was fixed. The ordinary-CI Android packaging job has been removed. A separate tag-triggered release workflow now blocks on the source, completion, security, CI, and signer checks; the tag-only trigger change is staged locally and has not yet been pushed.
 
-The full release objective is **not complete**. Current feature source is at `5e96b5b32db0aeb369e033d7c5f784d390ab8249`; the branch and remote agree. Run #42 is still in progress on that exact SHA (Windows passed; Ubuntu was installing FFmpeg when checked). Normal CI previously included APK signing and was corrected locally to remove that job. No release APK was built by run #42 because the Actions run contains only Ubuntu and Windows jobs. The published 1.1.0 and 1.1.1 APKs were verified with `apksigner` and both use SHA-256 certificate `c550fd6549d7bbdf2201f9578efb143128f925cf7f8830ddffd349f4995bc57b`. This differs from the new key fingerprint recorded in the branch (`92:85:…:75:2F:92`). Only the newer local keystore was found; original key recovery and any safe rotation path remain unproven. APK packaging is blocked.
+The full release objective is **not complete**. Current feature source is at `9e31a6f43cfe413f285c5112cb2a300e1a21eaab`; the branch and remote agree. Run #42 on `5e96b5b32db0aeb369e033d7c5f784d390ab8249` was canceled at 15:35 UTC after a newer development push. Windows passed; Ubuntu stopped during FFmpeg installation; the queued Android APK job was canceled before running any steps. Run [#42244520578](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42244520578) on `9e31a6f43cfe413f285c5112cb2a300e1a21eaab` passed both Ubuntu and Windows typecheck, build, full tests, and desktop/mobile browser checks. The tag-only release trigger correction and matching records are now the pending local changes. The published 1.1.0 and 1.1.1 APKs were verified with `apksigner` and both use SHA-256 certificate `c550fd6549d7bbdf2201f9578efb143128f925cf7f8830ddffd349f4995bc57b`. This differs from the new key fingerprint recorded in the branch (`92:85:…:75:2F:92`). Only the newer local keystore was found; original key recovery and any safe rotation path remain unproven. APK packaging is blocked.
 
 ## Checklist
 
@@ -23,8 +23,8 @@ The full release objective is **not complete**. Current feature source is at `5e
 - [x] Add real-browser coverage for local registration, session persistence, workspace navigation, and mobile layout.
 - [x] Fix duplicate server initialization found during browser verification.
 - [x] Add Windows CI and browser verification.
-- [x] Remove APK packaging from ordinary CI; verify run #42 has no Android job.
-- [x] Add a manually triggered final-release workflow with frozen-source, completed-gate, exact-SHA CI, and original-certificate checks; it is not run while those gates remain blocked.
+- [x] Remove APK packaging from ordinary CI; the queued Android job in run #42 was canceled before any steps, and the new workflow has no Android packaging job.
+- [x] Add an explicitly tag-triggered final-release workflow with frozen-source, completed-gate, exact-SHA CI, and original-certificate checks; it is not run while those gates remain blocked.
 - [x] Generate the permanent Android signing identity, record its SHA-256 certificate fingerprint, and configure encrypted GitHub Actions secrets.
 - [ ] Commit and push the CI correction and updated release evidence; inspect the resulting GitHub jobs.
 - [ ] Recover the original signing key or prove a supported, compatible rotation path; do not build an APK until resolved.

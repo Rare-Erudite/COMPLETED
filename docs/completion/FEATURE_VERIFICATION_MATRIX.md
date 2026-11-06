@@ -29,9 +29,12 @@ Statuses describe evidence for the current local implementation checkpoint. Loca
 
 | Area | Status | Evidence / remaining work |
 |---|---|---|
-| Repository/remote | PASS | Clean New-Fixes-by-Erudite at 5e96b5b32db0aeb369e033d7c5f784d390ab8249; fetched remote matches. main and origin/main both remain 64cd88a54b1c031dabb2edb3ba5832a39ec17b61. Recovery commits and bundle verified. |
-| Run #42 | IN PROGRESS | Exact head SHA 5e96b5b32db0aeb369e033d7c5f784d390ab8249; Windows job passed, Ubuntu FFmpeg installation still running at inspection. No Android job was present. [Run #42](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42239482331). |
-| Ordinary CI APK behavior | FIXED LOCALLY | APK-producing Android job removed from .github/workflows/ci.yml; pending run #42 has no Android job and cannot package. Change not yet committed/pushed. |
-| Published Android identity | BLOCKED | pksigner verified both 1.1.0 and 1.1.1 APKs use c550fd6549d7bbdf2201f9578efb143128f925cf7f8830ddffd349f4995bc57b. This differs from the branch's recorded 92:85:…:75:2F:92 key. Original key/rotation has not been proven. |
+| Repository/remote | PASS | Branch/remote tip `9e31a6f43cfe413f285c5112cb2a300e1a21eaab` before the pending tag-trigger documentation commit. `main` and `origin/main` remain `64cd88a54b1c031dabb2edb3ba5832a39ec17b61`. Recovery bundle verified. |
+| Run #42 | CANCELLED | Exact SHA `5e96b5b32db0aeb369e033d7c5f784d390ab8249`; Windows passed, Ubuntu canceled during FFmpeg install, and the queued APK job was canceled before any step. [Run #42](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42239482331). |
+| Ordinary CI APK behavior | FIXED | `.github/workflows/ci.yml` has no APK packaging job; run #42 queued one but it was canceled before any step. |
+| Published Android identity | BLOCKED | apksigner verified both 1.1.0 and 1.1.1 APKs use c550fd6549d7bbdf2201f9578efb143128f925cf7f8830ddffd349f4995bc57b. This differs from the branch's recorded 92:85:…:75:2F:92 key. Original key/rotation has not been proven. |
 
-| Final release workflow | CONFIGURED, NOT RUN | .github/workflows/release-apk.yml is manual-only, requires a rare-final frozen tag and exact successful CI, rejects incomplete completion/security records, verifies the published signing certificate before building, builds once, and uploads only after emulator update checks pass. No artifact is available because the identity and completion gates are blocked. |
+| Final release workflow | CONFIGURED, NOT RUN | `.github/workflows/release-apk.yml` is being changed to trigger only on deliberate `rare-final-v*` tags; the current local version gates source/readiness/CI and signer, builds once, and uploads only after emulator update checks. |
+
+| Release workflow push behavior | CORRECTED LOCALLY | Earlier branch push produced a failed zero-job run with no APK. Trigger is now restricted to an explicit `rare-final-v*` tag; release gates still fail closed. Updated trigger is pending push. |
+are-final-v* tag; release gates still fail closed. Updated trigger has not yet run remotely. |

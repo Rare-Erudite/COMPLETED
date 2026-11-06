@@ -28,9 +28,15 @@
 | Check | Outcome | Evidence / limit |
 |---|---|---|
 | Local repository recovery | PASS | Clean feature branch at 5e96b5b32db0aeb369e033d7c5f784d390ab8249; local and remote feature tips match after fetch. main equals remote 64cd88a54b1c031dabb2edb3ba5832a39ec17b61. Bundle verification succeeded and includes complete history. |
-| GitHub Actions run #42 | IN PROGRESS at inspection | Exact SHA 5e96b5b32db0aeb369e033d7c5f784d390ab8249. Windows typecheck/build/full tests/browser checks passed. Ubuntu remained at FFmpeg install. Only two jobs (Ubuntu, Windows) existed; no APK-producing job. [Run #42](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42239482331). |
-| Published APK signature verification | PASS | Downloaded official 1.1.0 and 1.1.1 assets to a temporary directory and ran Android SDK 36 pksigner verify --verbose --print-certs. Both report SHA-256 c550fd6549d7bbdf2201f9578efb143128f925cf7f8830ddffd349f4995bc57b; both have valid v1/v2/v3 signatures. |
+| GitHub Actions run #42 | CANCELLED | Exact SHA `5e96b5b32db0aeb369e033d7c5f784d390ab8249`. Windows typecheck/build/full tests/browser checks passed. Ubuntu was canceled during FFmpeg install; the queued APK job was canceled before any step. No APK was produced. [Run #42](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42239482331). |
+| Published APK signature verification | PASS | Downloaded official 1.1.0 and 1.1.1 assets to a temporary directory and ran Android SDK 36 apksigner verify --verbose --print-certs. Both report SHA-256 c550fd6549d7bbdf2201f9578efb143128f925cf7f8830ddffd349f4995bc57b; both have valid v1/v2/v3 signatures. |
 | Release key comparison | BLOCKED | Repository and scanned Codex Documents contained only .rare/android/rare-release.keystore; its recorded branch fingerprint is 92:85:…:75:2F:92, incompatible with published releases. No original-key backup found in the scanned locations. Secret names were inspected only; secret values were not read. |
-| Ordinary CI correction | DONE LOCALLY | Removed the APK signing/build/emulator job from ci.yml. No commit or push yet. |
+| Ordinary CI correction | PUSHED | APK signing/build/emulator job removed from `ci.yml` in commit `2ff57af`; current follow-up tag-trigger refinement is local pending push. |
 
-| Final-release workflow YAML | PASS (static parse) | Manually triggered workflow parses; it requires frozen-source and readiness markers, exact-SHA CI, and the original published certificate before APK creation. Its API 21, 33, and 36 emulator stages are configured but not run. No APK was built. |
+| Final-release workflow YAML | PASS (static parse) | Tag-triggered `rare-final-v*` workflow parses and is guarded by source/readiness/exact-SHA CI/original-signer checks. Emulator stages API 21, 33, and 36 are configured but not run. |
+
+| Run #42 final status | CANCELLED | Windows job passed. Ubuntu job was canceled while installing FFmpeg. Its queued Android APK job started with zero steps and was canceled before package operations. No APK was produced. [Run #42](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42239482331). |
+| Push-triggered release workflow attempt | FAILED, NO JOBS | Prior `workflow_dispatch` version produced zero-job failures on pushes `2ff57af` and `9e31a6f`; no APK steps ran. The workflow is now tag-triggered only, pending remote validation. |
+ |
+
+| Development CI run 42244520578 | PASS | Exact commit 9e31a6f43cfe413f285c5112cb2a300e1a21eaab; Ubuntu and Windows typecheck, production build, complete test suite, and desktop/mobile browser checks passed. It contains no APK job. [Run](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42244520578). |
