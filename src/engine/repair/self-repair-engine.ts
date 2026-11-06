@@ -259,6 +259,8 @@ export class SelfRepairEngine {
     // Use an isolated, unique system-temp directory so this demonstration can
     // never overwrite or remove user project files under the application tree.
     const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rare-repair-test-'));
+    let checkpointId: string | undefined;
+    try {
 
     const testFile = path.join(testDir, 'harmless-syntax-fault.ts');
     const auditLog: string[] = [];
@@ -291,7 +293,7 @@ export class SelfRepairEngine {
 
     auditLog.push('3. [REPAIR]: Triggering autonomous self-repair engine...');
     // Create checkpoint of test file
-    const checkpointId = 'cp_test_' + Date.now();
+    checkpointId = 'cp_test_' + Date.now();
     this.memoryStore.saveCheckpoint({
       id: checkpointId,
       name: 'Pre-test-repair snapshot',
@@ -316,11 +318,6 @@ export class SelfRepairEngine {
 
     const verified = bracesAfter === 0;
     auditLog.push(`   Verification outcome: Brace balance = ${bracesAfter} (PASS: ${verified})`);
-
-    // Clean up only the unique directory created for this run.
-    if (fs.existsSync(testFile)) fs.unlinkSync(testFile);
-    if (fs.existsSync(testDir)) fs.rmdirSync(testDir);
-    this.memoryStore.deleteCheckpoint(checkpointId);
 
     const repairResult: SelfRepairResult = {
       repairId: 'rep_test_' + Date.now(),
@@ -351,5 +348,11 @@ export class SelfRepairEngine {
       repairResult,
       auditLog,
     };
+    } finally {
+      // Clean up only the unique directory and checkpoint created for this run,
+      // including when fixture creation or independent verification throws.
+      fs.rmSync(testDir, { recursive: true, force: true });
+      if (checkpointId) this.memoryStore.deleteCheckpoint(checkpointId);
+    }
   }
 }
