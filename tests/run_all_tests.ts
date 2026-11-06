@@ -94,7 +94,15 @@ async function main() {
   const baseUrl = `http://127.0.0.1:${port}`;
   console.log(`[runner] Starting test server on ${baseUrl}`);
 
-  const child = spawn('npx', ['tsx', 'server.ts'], {
+  // Resolve tsx from this checkout and launch it with the current Node runtime.
+  // Spawning `npx` is not portable on Windows: npm exposes npx.ps1 to PowerShell,
+  // while child_process.spawn (without a shell) cannot execute that shim.
+  const tsxCli = path.join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  if (!existsSync(tsxCli)) {
+    throw new Error(`The local tsx runner is missing at ${tsxCli}. Install the locked dependencies first.`);
+  }
+
+  const child = spawn(process.execPath, [tsxCli, 'server.ts'], {
     env: {
       ...process.env,
       PORT: String(port),
