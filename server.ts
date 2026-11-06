@@ -2445,6 +2445,30 @@ app.post('/api/intelligence/repair', async (req, res) => {
   });
 });
 
+// Harmless, isolated self-repair verification. Kept developer-only because it
+// writes a temporary fixture and records a privileged repair result.
+app.post('/api/intelligence/repair/harmless-test', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) {
+    return res.status(403).json({ error: { message: 'Developer authorization required.' } });
+  }
+
+  try {
+    const result = await engine.repair.testHarmlessFaultSelfRepair();
+    auditLog.unshift({
+      id: `aud_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      actor: 'developer',
+      action: 'harmless_self_repair_test',
+      kind: 'dev_privileged',
+      details: `Harmless self-repair test ${result.success ? 'passed' : 'failed'} (${result.repairResult.repairId}).`,
+    });
+    return res.status(result.success ? 200 : 500).json(result);
+  } catch (error) {
+    console.error('[SelfRepair] Harmless verification failed:', error);
+    return res.status(500).json({ error: { message: 'Harmless self-repair verification failed.' } });
+  }
+});
+
 app.get('/api/intelligence/trajectories', async (req, res) => {
   if (!(await isDeveloperSessionAuthorized(req))) return res.status(403).json({ error: { message: 'Developer authorization required.' } });
   res.json(trajectoryStore.getAll());

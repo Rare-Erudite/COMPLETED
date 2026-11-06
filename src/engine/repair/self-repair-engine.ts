@@ -6,6 +6,7 @@
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import {
   DiagnosticFinding,
@@ -255,10 +256,9 @@ export class SelfRepairEngine {
     repairResult: SelfRepairResult;
     auditLog: string[];
   }> {
-    const testDir = path.resolve(process.cwd(), 'data', 'test-repair-sandbox');
-    if (!fs.existsSync(testDir)) {
-      fs.mkdirSync(testDir, { recursive: true });
-    }
+    // Use an isolated, unique system-temp directory so this demonstration can
+    // never overwrite or remove user project files under the application tree.
+    const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rare-repair-test-'));
 
     const testFile = path.join(testDir, 'harmless-syntax-fault.ts');
     const auditLog: string[] = [];
@@ -317,7 +317,7 @@ export class SelfRepairEngine {
     const verified = bracesAfter === 0;
     auditLog.push(`   Verification outcome: Brace balance = ${bracesAfter} (PASS: ${verified})`);
 
-    // Clean up test fixture
+    // Clean up only the unique directory created for this run.
     if (fs.existsSync(testFile)) fs.unlinkSync(testFile);
     if (fs.existsSync(testDir)) fs.rmdirSync(testDir);
     this.memoryStore.deleteCheckpoint(checkpointId);

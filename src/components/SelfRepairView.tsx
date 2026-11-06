@@ -34,8 +34,18 @@ export function SelfRepairView() {
 
   const runHarmlessFaultTest = async () => {
     setRunningHarmless(true);
-    setError('The harmless fault simulation is not implemented on the server and was not run.');
-    setRunningHarmless(false);
+    setError(null);
+    setHarmlessResult(null);
+    try {
+      const res = await apiFetch('/api/intelligence/repair/harmless-test', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error?.message || 'Harmless self-repair verification failed.');
+      setHarmlessResult(data);
+    } catch (err: any) {
+      setError(err.message || 'Harmless self-repair verification failed.');
+    } finally {
+      setRunningHarmless(false);
+    }
   };
 
   return (
@@ -87,8 +97,8 @@ export function SelfRepairView() {
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               <span>Harmless Fault Self-Repair Demonstration Result</span>
             </h3>
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">
-              PASS
+            <span className={`text-xs font-mono px-2 py-0.5 rounded border ${harmlessResult.success ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-red-950 text-red-300 border-red-800'}`}>
+              {harmlessResult.success ? 'PASS' : 'FAIL'}
             </span>
           </div>
           <pre className="text-xs font-mono bg-slate-950 text-slate-300 p-4 rounded-lg border border-slate-800 overflow-x-auto max-h-64">
