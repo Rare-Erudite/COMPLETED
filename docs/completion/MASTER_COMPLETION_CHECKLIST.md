@@ -8,9 +8,9 @@
 
 ## Current result
 
-Local source recovery and regression verification are complete for the current implementation checkpoint. Typecheck, production web/server build, the full automated suite, and desktop/mobile browser checks pass. A duplicate server initialization found by browser testing was fixed. The 1.1.2 Android release workflow now provisions a permanent signing identity, builds a fresh candidate, and is configured to install it on Android 13 before rebuilding and updating it with the same key and a higher version code.
+Local source recovery and regression verification are complete for the current implementation checkpoint. Typecheck, production web/server build, the full automated suite, and desktop/mobile browser checks pass. A duplicate server initialization found by browser testing was fixed. The prior ordinary-CI Android packaging job has now been removed locally; the final-release workflow remains to be added after release-identity checks are resolved.
 
-The full release objective is **not complete**. The current source changes still need a verified commit, push, and actual GitHub Actions run. The fresh APK, emulator result, release metadata, full provider/database checks, deployed worker, production verification, merge, and deployment are outstanding. Do not represent local tests as proof of those gates.
+The full release objective is **not complete**. Current feature source is at `5e96b5b32db0aeb369e033d7c5f784d390ab8249`; the branch and remote agree. Run #42 is still in progress on that exact SHA (Windows passed; Ubuntu was installing FFmpeg when checked). Normal CI previously included APK signing and was corrected locally to remove that job. No release APK was built by run #42 because the Actions run contains only Ubuntu and Windows jobs. The published 1.1.0 and 1.1.1 APKs were verified with `apksigner` and both use SHA-256 certificate `c550fd6549d7bbdf2201f9578efb143128f925cf7f8830ddffd349f4995bc57b`. This differs from the new key fingerprint recorded in the branch (`92:85:…:75:2F:92`). Only the newer local keystore was found; original key recovery and any safe rotation path remain unproven. APK packaging is blocked.
 
 ## Checklist
 
@@ -22,10 +22,12 @@ The full release objective is **not complete**. The current source changes still
 - [x] Pass the full `npm test` suite on Windows, including Documents, Research, Project & Build, and media probes.
 - [x] Add real-browser coverage for local registration, session persistence, workspace navigation, and mobile layout.
 - [x] Fix duplicate server initialization found during browser verification.
-- [x] Add Windows CI and browser verification; add Android 13 candidate/update verification to CI.
+- [x] Add Windows CI and browser verification.
+- [x] Remove APK packaging from ordinary CI; verify run #42 has no Android job.
+- [x] Add a manually triggered final-release workflow with frozen-source, completed-gate, exact-SHA CI, and original-certificate checks; it is not run while those gates remain blocked.
 - [x] Generate the permanent Android signing identity, record its SHA-256 certificate fingerprint, and configure encrypted GitHub Actions secrets.
-- [ ] Commit and push only the locally verified feature-branch changes; inspect the resulting GitHub jobs.
-- [ ] Produce and inspect the fresh 1.1.2 APK; install candidate and higher-code final build on Android 13.
+- [ ] Commit and push the CI correction and updated release evidence; inspect the resulting GitHub jobs.
+- [ ] Recover the original signing key or prove a supported, compatible rotation path; do not build an APK until resolved.
 - [ ] Verify live Supabase/PostgreSQL ownership and RLS, real OAuth/provider flows, and production connectivity without sending uncontrolled messages.
 - [ ] Run a real diarisation model or record its service as blocked; no model inference has passed.
 - [ ] Complete exhaustive screen/route/control review and physical Android 13 checks.
