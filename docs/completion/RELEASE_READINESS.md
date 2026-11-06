@@ -4,7 +4,7 @@
 
 | Gate | Status | Evidence / blocker |
 |---|---|---|
-| Development branch | PARTIAL | Local branch active; source restored and changes remain uncommitted. |
+| Development branch | PARTIAL | Local branch active at `9bd823f`; source restored and checkpoint committed locally, not pushed. |
 | Fresh remote comparison | BLOCKED | GitHub authentication invalid; remote branches could not be fetched. |
 | Full typecheck/build after final edits | NOT VERIFIED | Earlier baseline checks passed, then dependency installation failed and removed `node_modules`. |
 | Full automated suite | FAIL / NOT COMPLETE | Partial runs found Windows launch issues; fixes need a complete rerun. |

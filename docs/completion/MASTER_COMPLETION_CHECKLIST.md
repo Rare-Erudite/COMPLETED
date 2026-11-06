@@ -10,7 +10,7 @@
 
 ## Current result
 
-The release objective is **not complete**. The local development branch contained literal placeholder files in `server.ts`, `src/App.tsx`, authentication/UI modules, `src/api.ts`, `package.json`, and Vite configuration. Those files were restored from the intact local `main` snapshot. Documented branch fixes were reapplied where recoverable, and Windows test/build-stage defects were repaired. Changes remain uncommitted on `New-Fixes-by-Erudite`.
+The release objective is **not complete**. The local development branch contained literal placeholder files in `server.ts`, `src/App.tsx`, authentication/UI modules, `src/api.ts`, `package.json`, and Vite configuration. Those files were restored from the intact local `main` snapshot. Documented branch fixes were reapplied where recoverable, and Windows test/build-stage defects were repaired. The recovery is saved locally in commit `9bd823f` on `New-Fixes-by-Erudite`; it has not been pushed.
 
 ## Checklist
 
