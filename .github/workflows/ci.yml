@@ -73,10 +73,12 @@ jobs:
           RARE_SKIP_DEV_BUNDLER: 'true'
         run: npm test
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright browser engines
+        run: npx playwright install --with-deps chromium firefox webkit
 
-      - name: Run desktop and mobile browser checks
+      - name: Run Chromium, Firefox, WebKit, and mobile viewport checks
+        env:
+          RARE_E2E_ENGINES: chromium,firefox,webkit
         run: npm run test:e2e
 
       - name: Upload build output
@@ -128,8 +130,62 @@ jobs:
           RARE_SKIP_DEV_BUNDLER: 'true'
         run: npm test
 
-      - name: Install Playwright Chromium
-        run: npx playwright install chromium
+      - name: Install Playwright Chromium and Firefox
+        run: npx playwright install chromium firefox
 
-      - name: Run desktop and mobile browser checks
+      - name: Run Chrome, Firefox, and mobile viewport checks
+        env:
+          RARE_E2E_ENGINES: chromium,firefox
         run: npm run test:e2e
+
+  android-browser:
+    name: Android 13 Chrome browser smoke (no APK)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.0'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Start local RARE server for the emulator
+        env:
+          NODE_ENV: development
+          RARE_ALLOW_LOCAL_STORAGE_FALLBACK: 'true'
+          RARE_ALLOWED_ORIGINS: http://10.0.2.2:3000
+          RARE_APP_ROOT: ${{ runner.temp }}/rare-android-browser-data
+          PORT: '3000'
+        run: |
+          mkdir -p "$RARE_APP_ROOT"
+          nohup npm run dev > "$RUNNER_TEMP/rare-android-browser-server.log" 2>&1 &
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent http://127.0.0.1:3000/api/health >/dev/null; then
+              echo "Local RARE server is ready for the emulator."
+              exit 0
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/rare-android-browser-server.log"
+          exit 1
+
+      - name: Open RARE in Android 13 Chrome and verify its layout
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis_playstore
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            set -euo pipefail
+            adb shell pm path com.android.chrome
+            adb shell monkey -p com.android.chrome 1
+            adb forward tcp:9222 localabstract:chrome_devtools_remote
+            node scripts/android_browser_smoke.mjs

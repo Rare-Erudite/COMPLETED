@@ -23,6 +23,7 @@ The full release objective is **not complete**. The current committed checkpoint
 - [x] Add release asset resolver tests; require the official APK asset and matching checksum before making downloads/update metadata available.
 - [x] Remove unsupported Windows executable and standalone package claims; remove old incompatible APK/EXE binaries from current source distribution.
 - [x] Pass desktop/mobile Chromium E2E on the current local source (3 passed, 1 intentionally skipped).
+- [x] Configure ordinary CI for Firefox/WebKit on Ubuntu, Firefox/Chrome on Windows, and an Android 13 Chrome browser smoke against the local development server without APK packaging.
 - [x] Add real-browser coverage for local registration, session persistence, workspace navigation, and mobile layout.
 - [x] Fix duplicate server initialization found during browser verification.
 - [x] Add Windows CI and browser verification.
@@ -30,6 +31,7 @@ The full release objective is **not complete**. The current committed checkpoint
 - [ ] Validate the final workflow against a deliberately frozen, successfully deployed production commit; do not trigger it before every application gate passes.
 - [x] Replace the unrecoverable legacy signer as owner-authorized; generate one RSA-4096 key, verify a DPAPI-protected owner backup, update GitHub secrets, and confirm its fingerprint with a no-artifact workflow.
 - [x] Commit and push the release-workflow correction; source CI passes on the exact implementation commit and ordinary pushes no longer start release jobs.
+- [x] Push the APK delivery and stale-binary correction; exact-SHA source CI passed on `aefc54c23ce7ec49c983a9e1f499195248ee2914` in run [#42264720816](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42264720816).
 - [x] Document the one-time clean-install transition for older APK installs; this replacement signer cannot update them in place.
 - [ ] Verify live Supabase/PostgreSQL ownership and RLS, real OAuth/provider flows, and production connectivity without sending uncontrolled messages.
 - [ ] Deploy and verify real diarisation inference or keep service unavailable; worker auth is fixed, but no model inference/deployment has passed.

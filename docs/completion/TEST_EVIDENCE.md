@@ -48,7 +48,9 @@
 | `npm test` | PASS | Full Windows suite passed; includes new tests for release tag, asset URL, and checksum pairing. Real diarisation inference remains skipped because model access is unavailable. |
 | `npm run test:e2e` | PASS (3 passed, 1 skipped) | Chromium signup/session workflow plus phone-sized layout checks passed. The mobile variant of the desktop registration scenario is intentionally skipped; its mobile-specific smoke test passed. |
 | Release download path | PASS (unit scope) | Resolver rejects a wrong checksum filename and non-official asset URLs; no final GitHub APK release exists yet, so live asset delivery remains unverified. |
-| Current-source remote CI | PENDING | The local release-asset/update and download-screen changes are newer than `a26821d`; they need push and CI on the exact resulting SHA. |
+| Current-source remote CI | PASS on `aefc54c` | The release-asset/update and download-screen changes were pushed and passed exact-SHA CI. Expanded Firefox/WebKit/Android browser coverage is a later local change and needs its own run. |
+| Exact-SHA remote CI run 42264720816 | PASS | Commit `aefc54c23ce7ec49c983a9e1f499195248ee2914` passed Ubuntu and Windows typecheck/build/full suite and Chromium desktop/mobile browser checks. [Run](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42264720816). |
+| Expanded browser and Android-browser CI | CONFIGURED, NOT RUN | CI source is being expanded to Ubuntu Chromium/Firefox/WebKit, Windows Chrome/Firefox, and an Android 13 Chrome browser smoke using the local development server. The Android job does not package an APK. A new exact-SHA run is required. |
 
 ## Diarisation worker authentication review
 
