@@ -25,6 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: rare-final-release
     timeout-minutes: 150
+    outputs:
+      version_name: ${{ steps.release-gate.outputs.version_name }}
+      release_sha: ${{ steps.release-gate.outputs.release_sha }}
     env:
       RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
@@ -146,6 +149,38 @@ jobs:
           sha256sum "$apk"
           stat --format='APK size: %s bytes' "$apk"
 
+      - name: Retain APK for emulator verification and publishing
+        uses: actions/upload-artifact@v4
+        with:
+          name: rare-final-apk-${{ steps.release-gate.outputs.version_name }}
+          path: exports/rare-v${{ steps.release-gate.outputs.version_name }}-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  emulator-and-publish:
+    name: Clean-install on Android 21, 33, and 36, then publish
+    needs: verify-and-package
+    runs-on: macos-15-intel
+    environment: rare-final-release
+    timeout-minutes: 150
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+      VERSION_NAME: ${{ needs.verify-and-package.outputs.version_name }}
+      RELEASE_SHA: ${{ needs.verify-and-package.outputs.release_sha }}
+
+    steps:
+      - name: Check out the frozen source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify-and-package.outputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Download the one verified APK
+        uses: actions/download-artifact@v4
+        with:
+          name: rare-final-apk-${{ needs.verify-and-package.outputs.version_name }}
+          path: exports
+
       - name: Clean-install and smoke test on minimum API 21
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -155,7 +190,8 @@ jobs:
           profile: Nexus 5
           script: |
             set -euo pipefail
-            apk="exports/rare-v${RELEASE_TAG#rare-final-v}-release.apk"
+            apk="exports/rare-v${VERSION_NAME}-release.apk"
+            test -s "$apk"
             adb install "$apk"
             adb shell am start -W -n com.rare.ai.intelligence/.MainActivity
             sleep 5
@@ -170,7 +206,7 @@ jobs:
           profile: pixel_6
           script: |
             set -euo pipefail
-            apk="exports/rare-v${RELEASE_TAG#rare-final-v}-release.apk"
+            apk="exports/rare-v${VERSION_NAME}-release.apk"
             adb install "$apk"
             adb shell am start -W -n com.rare.ai.intelligence/.MainActivity
             sleep 5
@@ -185,30 +221,27 @@ jobs:
           profile: pixel_tablet
           script: |
             set -euo pipefail
-            apk="exports/rare-v${RELEASE_TAG#rare-final-v}-release.apk"
+            apk="exports/rare-v${VERSION_NAME}-release.apk"
             adb install "$apk"
             adb shell am start -W -n com.rare.ai.intelligence/.MainActivity
             sleep 5
             adb shell pidof com.rare.ai.intelligence
 
       - name: Create, verify, and publish the final GitHub Release
-        if: success()
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_SHA: ${{ steps.release-gate.outputs.release_sha }}
-          VERSION_NAME: ${{ steps.release-gate.outputs.version_name }}
         run: |
           set -euo pipefail
           apk="exports/rare-v${VERSION_NAME}-release.apk"
           checksum_file="$RUNNER_TEMP/rare-v${VERSION_NAME}-release.apk.sha256"
-          sha256sum "$apk" | sed "s#  .*#  rare-v${VERSION_NAME}-release.apk#" > "$checksum_file"
+          shasum -a 256 "$apk" | sed "s#  .*#  rare-v${VERSION_NAME}-release.apk#" > "$checksum_file"
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
           RARE $VERSION_NAME final Android release
 
           - Production source: $RELEASE_SHA
           - Package: com.rare.ai.intelligence
           - Backend: https://rareproject.vercel.app
-          - Signing certificate SHA-256: 37be10e99449fbc5f90331965905e8d2ccd31a446301eafa20620f11badee1df
+          - Signing certificate SHA-256: 37be10e99449fbc5f90331965905e8d2ccd31a446301EAFA20620F11BADEE1DF
           - SHA-256 checksum: see the attached .sha256 file
 
           This release uses a replacement signing identity. Existing installs signed by earlier RARE releases cannot update in place. Before uninstalling the old app, sign in and confirm cloud sync or export any data that exists only on that device. Uninstall the old app, then install this APK.
@@ -216,16 +249,7 @@ jobs:
           gh release create "$RELEASE_TAG" "$apk" "$checksum_file" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "RARE $VERSION_NAME" --notes-file "$RUNNER_TEMP/release-notes.md"
           mkdir -p "$RUNNER_TEMP/release-download-check"
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "rare-v${VERSION_NAME}-release.apk" --pattern "rare-v${VERSION_NAME}-release.apk.sha256" --dir "$RUNNER_TEMP/release-download-check"
-          (cd "$RUNNER_TEMP/release-download-check" && sha256sum --check "rare-v${VERSION_NAME}-release.apk.sha256")
+          (cd "$RUNNER_TEMP/release-download-check" && shasum -a 256 -c "rare-v${VERSION_NAME}-release.apk.sha256")
           release_id="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId)"
           gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" -X PATCH -F draft=false -F make_latest=true --jq '{draft,html_url}'
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,url,assets --jq '{isDraft,url,assets:[.assets[].name]}'
-
-      - name: Retain verified APK as a workflow artifact
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rare-final-apk-${{ steps.release-gate.outputs.version_name }}
-          path: exports/rare-v${{ steps.release-gate.outputs.version_name }}-release.apk
-          if-no-files-found: error
-          retention-days: 14
