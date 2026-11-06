@@ -14,6 +14,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import {
   resolveMediaBinaries,
   probeMedia,
@@ -21,6 +23,7 @@ import {
 } from '../src/server/content/MediaProcessor.js';
 
 const require = createRequire(import.meta.url);
+const execFileAsync = promisify(execFile);
 
 export async function runMediaBinaryTests() {
   console.log('--- Testing media binary resolution ---');
@@ -33,8 +36,9 @@ export async function runMediaBinaryTests() {
   // Stage non-executable copies, exactly as an --ignore-scripts install leaves
   // them, and point the resolver at those.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rare-media-test-'));
-  const ffmpeg = path.join(dir, 'ffmpeg');
-  const ffprobe = path.join(dir, 'ffprobe');
+  const binaryExtension = process.platform === 'win32' ? '.exe' : '';
+  const ffmpeg = path.join(dir, `ffmpeg${binaryExtension}`);
+  const ffprobe = path.join(dir, `ffprobe${binaryExtension}`);
   fs.copyFileSync(ffmpegSrc, ffmpeg);
   fs.copyFileSync(ffprobeSrc, ffprobe);
   fs.chmodSync(ffmpeg, 0o644);
@@ -50,8 +54,13 @@ export async function runMediaBinaryTests() {
     const resolved = await resolveMediaBinaries();
     assert.ok(resolved, 'the resolver finds a usable ffmpeg/ffprobe pair');
     for (const bin of [resolved!.ffmpeg, resolved!.ffprobe]) {
-      const mode = fs.statSync(bin).mode;
-      assert.ok((mode & 0o111) !== 0, `resolved binary is executable: ${bin}`);
+      if (process.platform === 'win32') {
+        const result = await execFileAsync(bin, ['-version'], { timeout: 15_000 });
+        assert.match(`${result.stdout}\n${result.stderr}`, /ff(?:mpeg|probe) version/i, `resolved binary executes: ${bin}`);
+      } else {
+        const mode = fs.statSync(bin).mode;
+        assert.ok((mode & 0o111) !== 0, `resolved binary is executable: ${bin}`);
+      }
     }
 
     // Real audio must probe to real metadata, not a fabricated result.

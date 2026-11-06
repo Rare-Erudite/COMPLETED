@@ -1,36 +1,24 @@
 # Test evidence
 
-## Commands and outcomes
+## Current local verification
 
 | Check | Outcome | Scope and limit |
 |---|---|---|
-| `gh auth status` | BLOCKED | Configured GitHub account token was reported invalid. |
-| `npm ci --no-audit --no-fund` | FAIL | Registry read reset with `ECONNRESET`; npm removed the incomplete dependency tree. |
-| `npm ci --offline --no-audit --no-fund` | FAIL | Cache miss for `onnxruntime-node@1.30.0`. |
-| `npm run lint` | PASS (earlier snapshot only) | TypeScript check passed after restoring the original sources and before the final UI/API changes. Not rerun after dependencies were removed. |
-| `npm run build` | PASS (earlier snapshot only) | Vite built 1,672 modules; client and server bundles completed. This was before the final edits and does not verify the final source. |
-| Full `npm test` attempt 1 | FAIL | Test runner could not spawn `npx` on Windows (`ENOENT`). The runner was changed to launch the local TSX CLI using `process.execPath`. |
-| Full `npm test` attempt 2 | FAIL | Toolchain route compared independent processes and observed differing Python probe states. The check was changed to validate the API response contract and honesty invariants. |
-| Full `npm test` attempt 3 | FAIL | Project & Build found npm shim launch failure and then Windows `python3.exe` Store alias failure. Both code paths were corrected, but dependencies were concurrently removed by the failed install before a final rerun. |
+| Git recovery | PASS | Both recovery commits remain ancestors of `New-Fixes-by-Erudite`; `main` was not modified. Verified bundle contains the local refs/history. |
+| `npm ci --no-audit --no-fund --fetch-retries=3 ...` | PASS | Lockfile install completed after retrying a transient ONNX runtime CDN reset. Registry TLS verification remained enabled. |
+| `npm run lint` | PASS | Current TypeScript source typechecks. |
+| `npm run build` | PASS | Current Vite web build and server bundle complete. Vite reports a large JavaScript chunk warning. |
+| `npm test` | PASS | Full runner ended with `ALL AUTOMATED VERIFICATION TESTS PASSED SUCCESSFULLY`; includes auth/security, ownership, documents, research, project/build, update store, Windows media executables, and serverless SPA fallback. |
+| `npm run test:e2e` | PASS | Desktop local signup/session reload/workspace/settings path passes; desktop and mobile viewport/account-entry checks pass. One duplicate signup path is intentionally skipped on mobile; mobile gets its own smoke test. |
+| CI YAML parse | PASS | Workflow parses locally. This is not a substitute for an actual Actions run. |
+| Windows APK packaging path | PARTIAL PASS | Android 36/JBR 25 built fresh web assets, Java, DEX, resources, and an aligned APK; the test intentionally stopped at signing with an invalid local-only password. No signed artifact was produced. CI must prove real signing. |
+| `bash -n scripts/build_apk.sh` | PASS | APK shell syntax parses under Git Bash. |
+| Android SDK manager API 33 install | FAIL | Android CLI could not establish a loopback connection under the installed JDK runtime; no local API 33 image was installed. CI now provisions Android 13. |
 
-## Test groups observed passing before the suite stopped
+## Test limits
 
-- Backend URL and health checks.
-- Standalone conversation/research routing.
-- Authentication and verification-code security.
-- Durable state, document safety, and sourced research.
-- Google/Microsoft OAuth validation.
-- Model provider and offline intelligence.
-- RARE intelligence bridge.
-- Tool primitive/security boundaries.
-- Memory lifecycle.
-- Self-development/checkpointing.
-- Toolchain discovery and authenticated toolchain route after the test assertion was corrected.
-- Assistant command interpretation.
-- Initial Project & Build scaffolding and Node CLI stages after npm invocation was corrected.
-
-These are partial-suite observations, not a full green run. Test-generated checkpoint snapshots and the generated Python fixture project were cleaned up; the pre-existing checkpoint registry was restored.
-
-## Not run or not completed
-
-The complete test suite, final post-edit typecheck/build, browser E2E, emulator, physical-device, production, and signed APK verification remain incomplete. No test count or coverage percentage is claimed.
+- The real pyannote model test was skipped because pyannote/HF credentials are not configured; the service's unavailable response and no-guessing behavior passed.
+- No live email, SMS, WhatsApp, Google/Microsoft OAuth, Supabase database/RLS, Gemini, or production login was tested. Local browser registration uses an isolated local fallback store only.
+- The E2E registration test verifies one ordinary test account. Multi-role and production cross-user authorization remain broader release checks, though existing document ownership tests pass.
+- No APK has yet been built, signed, installed, or updated by the new CI workflow. No emulator, physical device, or production deployment result is claimed until the Actions run completes.
+- Full repository-history secret scanning and exhaustive per-route authorization review are still outstanding.

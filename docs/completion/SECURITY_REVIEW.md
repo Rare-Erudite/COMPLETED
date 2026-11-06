@@ -1,16 +1,17 @@
 # Security review checkpoint
 
-## Findings and checks
+## Checks completed
 
-- The current development branch had core source files replaced by placeholder markers. They were restored from the intact local `main` snapshot before further changes.
-- Existing code contains session-cookie/CSRF checks, server-side developer-session gates, owner-scoped persistence, and database migrations. Only partial automated auth/security tests ran; this is not a complete security certification.
-- The developer access request UI previously claimed email dispatch. The response and UI were changed to say the request was recorded; an email delivery provider was not verified.
-- The developer contact address is now read from `/api/status` by the client, with server configuration through `RARE_OWNER_EMAIL`.
-- The APK downloader now verifies a server-provided SHA-256 when Web Crypto is available. This is an integrity check, not proof of Android signing identity.
-- No final history-wide secret scan or live Supabase RLS test was completed. No claim of a clean secret history is made.
-- The owner supplied several live-looking service credentials in the chat. Their values are intentionally omitted from this report and were not written to source or deployment configuration. Rotate/revoke them before use because they were exposed in the conversation.
+- The damaged feature tip contained placeholder replacements; the working branch was restored from the intact local `main` snapshot while preserving recovery commits and ancestry.
+- Existing code has session-cookie/CSRF checks, server-side developer-session gates, owner-scoped storage, and database migrations. The complete automated security/authentication and document-ownership tests pass locally. This is not a full security certification.
+- Local browser registration uses an isolated temporary file-backed store. It does not send email/SMS, call OAuth, or touch Supabase.
+- The app's client version now comes from the build constant; prior localStorage cannot spoof an older or newer installed version.
+- Browser checks exposed and fixed duplicate server initialization in the local entrypoint; one initialization promise is now shared with exported readiness.
+- APK downloads retain SHA-256 verification. This check complements Android signing; it does not prove a trusted signer by itself.
+- A permanent Android signing identity has been created. Its fingerprint is recorded in `docs/ANDROID_BUILD.md`; signing values are held in encrypted GitHub Actions secrets, not source.
+- The credentials posted in the conversation are omitted from this report and were not used. Rotate them before use. One earlier verification note contained a redacted token prefix and should not be interpreted as a usable credential.
 - The independent `RARE-INTELLIGENCE-MODEL` repository was not modified.
 
-## Still requiring verification
+## Remaining review
 
-Cookie/session lifecycle and recovery, authorization on all routes, cross-user isolation, RLS and grants, CORS/origin policy for native clients, rate limits, upload/path validation, worker authentication, secret scanning of repository history, APK certificate identity, and production failure behavior must all be rechecked after dependencies and credentials are available.
+History-wide secret scanning; complete route-by-route authorization/data-flow review; live Supabase grants/RLS and cross-user tests; OAuth/session/recovery lifecycle with controlled accounts; CORS/origin policy for native clients; rate limits and upload/path validation; worker authentication; real provider behavior; production failure behavior; and actual signed APK/emulator/device evidence remain outstanding.

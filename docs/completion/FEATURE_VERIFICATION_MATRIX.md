@@ -1,27 +1,26 @@
 # Feature verification matrix
 
-Statuses below describe evidence from this session. **Not verified** means the complete current branch state has not been validated after the final edits.
+Statuses describe evidence for the current local implementation checkpoint. Local tests do not prove live production configuration.
 
 | Area | Status | Evidence / remaining work |
 |---|---|---|
-| Repository and branch | PASS (local only) | Clean `main` at `64cd88a`; switched to existing `New-Fixes-by-Erudite` at `c3ec69e`. Remote refs could not be refreshed. |
-| Core source integrity | PASS (repaired locally) | Removed literal placeholder contents by restoring source from local `main`; markers are no longer present in tracked source. Reapplied selected branch changes. |
-| Registration, login, logout, sessions | PARTIAL | Existing auth/security suite passed in a partial run before later edits; complete rerun is pending. Persistence initialization was corrected locally. |
-| Password recovery and reset | NOT VERIFIED | Existing routes/UI inspected; no full workflow run after restoration. |
-| Google/Microsoft OAuth | PARTIAL | Existing OAuth validation tests passed in a partial run; live provider configuration not tested. |
-| Chat and provider selection | NOT VERIFIED | Source inspected; full chat pipeline suite was not reached in the final partial test runs. No live model credentials were used. |
-| Memory | PARTIAL | Memory lifecycle suite passed in a partial run; production persistence not verified. |
-| Documents, PDF, DOCX, audio | NOT VERIFIED | Existing services and tests found; final full content/document suites were not completed. |
-| Research | PARTIAL | Durable-state/research tests passed in a partial run; live source retrieval was not verified during this run. |
-| Project & Build | FAIL then repaired, rerun pending | Tests exposed Windows `npm` and Python Store-alias failures; shell-free npm CLI and Windows `python.exe` selection were added. No full rerun after dependency loss. |
-| Developer Command Center | PARTIAL | Server-side developer authorization exists; developer workflow and current UI were not fully exercised. |
-| Assistant and voice | PARTIAL | `AssistantStudioView` was wired into app navigation. Browser voice capabilities are runtime-dependent; device actions remain unverified. |
-| Wake word / background listening | NOT VERIFIED / platform limited | No claim of background wake-word support; no native device test. |
-| Diarisation | NOT VERIFIED | Worker and service code exist; no real model inference was run. |
-| Android native operations | NOT VERIFIED | Existing APK artifacts and build script exist. No clean release build, signing verification, install, or device test was completed. |
-| Windows support | PARTIAL | Windows-specific test runner and project-stage launches were repaired; no packaged app or end-user workflow was tested. |
-| Plugin status UI | PASS (implementation only) | UI now distinguishes loading, unavailable, and returned status; final browser verification is pending. |
-| API inventory | PARTIAL | Static scan found 117 Express route registrations. No exhaustive per-route authorization/data-flow review is complete. |
-| Supabase/PostgreSQL and RLS | NOT VERIFIED | Schema and migration files were inspected. No live database interaction or full RLS audit was performed in this session. |
-| Vercel production | NOT VERIFIED | No deployment or production smoke test was attempted. |
-| CI | NOT VERIFIED | Workflow exists locally; GitHub token invalid prevented run/dispatch or remote verification. |
+| Repository and branch | PASS (local) | Recovered branch ancestry and verified backup; `main` untouched. Push/CI result pending. |
+| Core source integrity | PASS | Restored full implementations; marker scan found no credential-like values or placeholder replacements in source. History-wide scanning remains. |
+| Email registration/login/session | PARTIAL | Full automated auth security tests pass; E2E local registration and reload persistence pass. Live email verification/recovery/reset not exercised. |
+| Google/Microsoft OAuth | PARTIAL | OAuth validation tests pass. Real provider credentials/callbacks are not configured or tested. |
+| Phone/SMS/WhatsApp | NOT VERIFIED | No uncontrolled messages sent; real provider configuration and lifecycle remain unverified. |
+| Chat/provider selection | PARTIAL | Offline/provider fallback and chat pipeline tests pass; live Gemini/provider credentials were not used. |
+| Memory | PARTIAL | Memory lifecycle automated tests pass; user-facing breadth and live persistence not fully reviewed. |
+| Documents | PASS (automated local scope) | PDF/DOCX/XLSX parsing/export, restore/undo, media metadata, and ownership tests pass; production storage remains unverified. |
+| Research | PASS (automated local scope) | Provider honesty, URL retrieval, source handling, injection defenses, and report-scope tests pass; production provider configuration remains unverified. |
+| Project & Build | PASS (automated local scope) | Real scaffolding/build/test stages and failure reporting pass on Windows; exhaustive UI/stack coverage remains. |
+| Developer Command Center | PARTIAL | Server-side auth checks exist and API tests cover roles; full UI and live role lifecycle still need review. |
+| Assistant and voice | PARTIAL | Assistant navigation and service tests pass; native voice/background permissions require device checks. |
+| Self-development and checkpointing | PARTIAL | Checkpoint/self-development tests pass; exhaustive authorization, repair, and audit review remains. |
+| Browser UI | PASS (limited E2E) | Desktop signup/session/workspace/settings and mobile viewport smoke checks pass; not every screen/control is covered. |
+| Diarisation | PARTIAL / BLOCKED | Honest missing-provider behavior passes. Real model inference was skipped; worker deployment remains unverified. |
+| Android build/update | PENDING | Permanent key configured and CI candidate/update flow added; actual signed artifact and Android 13 result pending. |
+| Windows packaging | NOT VERIFIED | Windows source/type/build/browser CI added; no standalone Windows release was built. |
+| Supabase/PostgreSQL/RLS | NOT VERIFIED | No live database operation or complete grants/RLS audit. |
+| Vercel production | NOT VERIFIED | No deployment or live production smoke test. |
+| GitHub CI | PENDING | Workflow parses locally; commit/push and actual Ubuntu/Windows/Android run are pending. |

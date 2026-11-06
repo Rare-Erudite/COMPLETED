@@ -101,6 +101,12 @@ async function prepareBinary(binary: string): Promise<string | null> {
     return binary;
   }
 
+  // Windows does not expose POSIX execute bits through stat.mode. A bundled
+  // .exe is executable by its native file type, so preserve its extension and
+  // let the real -version probe below validate it instead of copying it to a
+  // filename Windows cannot resolve as an executable.
+  if (process.platform === 'win32' && /\.exe$/i.test(binary)) return binary;
+
   try {
     const stat = await fs.stat(binary);
     if ((stat.mode & 0o111) !== 0) return binary;

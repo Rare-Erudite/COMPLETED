@@ -367,7 +367,7 @@ export default function App() {
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<AppUpdate | null>(null);
   const [clientVersion, setClientVersion] = useState<string>(() => {
-    return localStorage.getItem('rare_client_version') || __RARE_VERSION__;
+    return __RARE_VERSION__;
   });
 
   const [connectionStatus, setConnectionStatus] = useState<BackendConnectionState>({
@@ -503,7 +503,7 @@ useEffect(() => {
 
   const handleApplyUpdate = (newVersion: string) => {
     setClientVersion(newVersion);
-    localStorage.setItem('rare_client_version', newVersion);
+    localStorage.removeItem('rare_client_version');
     setAvailableUpdate(null);
   };
 

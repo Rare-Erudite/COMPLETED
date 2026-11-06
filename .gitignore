@@ -13,12 +13,15 @@ node_modules/
 # Build output — never commit; `npm start` rebuilds it.
 server-build/
 .vercel
+playwright-report/
+test-results/
 
 # Runtime state — NEVER commit. This directory holds the file-backed fallback
 # store, which contains every user account (including password hashes) and all
 # session records. It was committed once and became publicly downloadable from
 # a public repository; that is a credential exposure, not a build artifact.
 .rare/state/
+.rare/android/
 # Full source snapshots written by the checkpoint tool. Unbounded growth, and
 # they duplicate the entire tree on every checkpoint.
 .rare/checkpoints/

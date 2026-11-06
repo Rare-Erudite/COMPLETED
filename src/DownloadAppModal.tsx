@@ -251,7 +251,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
                   Get {assistantName} on Your Phone
                 </h2>
                 <span className="text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                  APK v1.0.0
+                  APK v{__RARE_VERSION__}
                 </span>
               </div>
               <p className={`text-xs ${t.textMuted} mt-0.5`}>

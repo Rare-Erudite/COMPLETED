@@ -6555,7 +6555,8 @@ if (process.env.VERCEL === '1') {
     console.error('[RARE] Startup failed:', error?.message || error);
   });
 } else {
-  startServer().catch((error) => {
+  serverInitialization = startServer();
+  serverInitialization.catch((error) => {
     console.error('[RARE] Startup failed:', error?.message || error);
     process.exitCode = 1;
   });

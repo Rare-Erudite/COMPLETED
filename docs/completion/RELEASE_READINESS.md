@@ -1,19 +1,20 @@
 # Release readiness
 
-**Release gate: NOT PASSED. No merge, production deployment, or final APK build was performed.**
+**Release gate: NOT PASSED. No merge or production deployment has been performed.**
 
-| Gate | Status | Evidence / blocker |
+| Gate | Status | Evidence / remaining work |
 |---|---|---|
-| Development branch | PARTIAL | Local branch active at `9bd823f`; source restored and checkpoint committed locally, not pushed. |
-| Fresh remote comparison | BLOCKED | GitHub authentication invalid; remote branches could not be fetched. |
-| Full typecheck/build after final edits | NOT VERIFIED | Earlier baseline checks passed, then dependency installation failed and removed `node_modules`. |
-| Full automated suite | FAIL / NOT COMPLETE | Partial runs found Windows launch issues; fixes need a complete rerun. |
-| Security scan and live database/RLS | NOT VERIFIED | No complete final scan or live database checks. |
-| CI | NOT VERIFIED | No current GitHub Actions result available. |
-| Production deployment | NOT DONE | Release gate is not satisfied. |
-| Exact deployed commit | NOT VERIFIED | No deployment was made. |
-| Permanent APK signing | BLOCKED | Permanent keystore and signing credentials are not present in the local repository. |
-| Android install/update compatibility | NOT VERIFIED | No release APK was rebuilt, signature-checked, or installed in this run. |
-| Physical device checks | BLOCKED | No physical Android or Windows test device was connected. |
+| Recovery preservation | PASS | Verified recovery ancestry and Git bundle; `main` remains intact. |
+| Local dependencies/typecheck/build | PASS | Lockfile install, TypeScript check, web build, and server bundle pass on current source. |
+| Full automated suite | PASS (local) | Full Windows run completed successfully; one real diarisation model check is explicitly skipped. |
+| Browser E2E | PASS (local) | Desktop registration/session/workspace/settings flow and desktop/mobile responsive smoke checks pass. |
+| Server startup | PASS (local) | One shared initialization promise fixes the duplicate-listener startup error discovered by browser testing. |
+| Remote branch and CI | PENDING | Current local changes need a verified commit and push; inspect Ubuntu, Windows, and Android 13 jobs after push. |
+| Permanent Android signing | CONFIGURED | New stable key; SHA-256 certificate fingerprint `92:85:A1:E7:80:3E:D7:80:91:68:E9:51:AD:09:D2:C8:51:F3:AC:21:AF:04:04:48:96:B6:82:72:05:75:2F:92`; key directory is gitignored and signing material is stored in encrypted GitHub Actions secrets. |
+| Fresh Android APK | PENDING | CI is configured to build 1.1.2 from source, install a candidate on API 33, rebuild same source/key at a higher version code, and update without uninstalling. Await actual artifacts and results. |
+| Supabase/RLS and live auth/providers | NOT VERIFIED | No production credentials from chat were used. Exercise with rotated credentials and controlled test accounts before release. |
+| Diarisation worker | NOT VERIFIED | Real pyannote inference and deployment remain unverified. |
+| Physical Android device | NOT VERIFIED | No Android 13 phone is connected; do not claim device certification. |
+| Production deployment | NOT DONE | Wait for CI, fresh APK/emulator proof, live-service checks, security review, and branch reconciliation first. |
 
-Keep all changes on `New-Fixes-by-Erudite` until these gates pass. Do not merge or deploy this checkpoint as a release.
+Keep changes on `New-Fixes-by-Erudite`. Do not merge or deploy until every required release gate has evidence and the deployed commit is the final reviewed `main` commit.
