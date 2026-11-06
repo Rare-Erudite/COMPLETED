@@ -13,11 +13,13 @@ The CI workflow pins Android platform 34/build-tools 34.0.0 for reproducible pac
 
 ## Permanent signing identity
 
-One stable 3072-bit RSA signing identity has been generated for RARE. Its SHA-256 certificate fingerprint is:
+The published 1.1.0 and 1.1.1 APKs use a certificate that is no longer recoverable from the available secure backups or the previous Actions secret. The owner authorized a clean-install transition. RARE now has a replacement RSA-4096 release identity with certificate SHA-256:
 
-`92:85:A1:E7:80:3E:D7:80:91:68:E9:51:AD:09:D2:C8:51:F3:AC:21:AF:04:04:48:96:B6:82:72:05:75:2F:92`
+`37:BE:10:E9:94:49:FB:C5:F9:03:31:96:59:05:E8:D2:CC:D3:1A:44:63:01:EA:FA:20:62:0F:11:BA:DE:E1:DF`
 
-The local keystore is stored under the gitignored `.rare/android/` directory. CI receives the keystore, alias, and passwords from encrypted repository Actions secrets. Never place passwords in source, logs, or command-line literals. The script refuses to build without the configured keystore and password.
+The Actions secret was updated and verified by a fingerprint-only workflow. The encrypted PKCS#12 keystore and a DPAPI-protected password backup are stored outside the repository under the owner's Windows profile at `Documents\Codex\RARE-Signing-Backup`. The password can be restored while signed in to that Windows account. `restore-github-secrets.ps1` verifies the fingerprint before restoring the four Actions secrets; it does not print secret values.
+
+The old APKs have a different signer. Android will not install this replacement over those builds. Users must sync accounts and export any device-only data, uninstall the old app, then install the new APK. Cloud-backed accounts and records remain available only if the production database is configured, reachable, and verified.
 
 ## Backend and version
 
@@ -38,10 +40,10 @@ bash scripts/build_apk.sh
 
 Output: `exports/rare-v1.1.2-release.apk` (also copied to `public/` and `dist/`). Do not check local signing material into Git.
 
-## CI candidate and update check
+## Final release verification
 
-The Android Actions job builds a fresh candidate from the checked-out source, installs it on an API 33 emulator, rebuilds from the same source with the same keystore and a larger version code, then runs `adb install -r` without uninstalling the candidate. It verifies the installed version code changes. The final APK receives signature, package metadata, cleartext policy, size, and SHA-256 checks before artifact upload.
+Ordinary CI never packages APKs. The separate final workflow requires a frozen tag whose commit is the exact current `main` commit and whose production deployment status and `/api/health` response attest the same SHA. It checks production database health and the replacement signer, builds one APK, and performs clean installs on API 21, 33, and 36. After the emulator matrix passes, it creates a draft GitHub Release, downloads the assets back, verifies the SHA-256 file, then publishes the release. No in-place update from 1.1.1 is claimed or attempted.
 
 ## Current verification state
 
-The local Android 36/JBR 25 toolchain built fresh web assets, Java, DEX, resources, and an aligned APK. The local verification intentionally stopped at signing with an invalid password, so it produced no signed release artifact. The SDK manager failed while attempting to install API 33, and the laptop has no configured AVD or connected phone. The first actual signed build and emulator update result must be taken from the feature-branch Actions run; no APK has yet been delivered by this checkpoint.
+The replacement key was generated once, its DPAPI backup was restored and verified, and it successfully signed a temporary test JAR; no APK was built. The fingerprint-only Actions workflow confirmed the encrypted repository secret matches the replacement certificate. No final source tag exists, the application release gates are incomplete, and the emulator clean-install matrix has not run. Do not build or publish an APK until the final production source passes those gates.

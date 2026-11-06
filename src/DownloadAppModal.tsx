@@ -50,6 +50,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
   const [isSharingApk, setIsSharingApk] = useState(false);
   const [shareSuccessMessage, setShareSuccessMessage] = useState<string | null>(null);
   const [copiedXenderInstructions, setCopiedXenderInstructions] = useState(false);
+  const [apkFilename, setApkFilename] = useState('RARE-release.apk');
 
   if (!isOpen) return null;
 
@@ -63,6 +64,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
     if (infoRes.ok) {
       const info = await infoRes.json();
       if (info?.ok && info.size > 0) {
+        if (typeof info.filename === 'string' && /^RARE-v\d+\.\d+\.\d+-release\.apk$/.test(info.filename)) setApkFilename(info.filename);
         const totalSize: number = info.size;
         const chunkSize: number = info.chunkSize || 2 * 1024 * 1024;
         const totalChunks = Math.ceil(totalSize / chunkSize);
@@ -128,8 +130,6 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
 
   // Real APK File Download handler (Fetches blob to guarantee real .apk binary)
   const handleDownloadApk = async () => {
-    const backend = getBackendUrl();
-    const directApkUrl = backend ? `${backend}/api/download/apk` : '/api/download/apk';
     try {
       setIsDownloadingApk(true);
       const blob = await fetchSignedApkBlob((msg) => setDownloadSuccessMessage(msg));
@@ -138,7 +138,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'RARE-release.apk';
+      a.download = apkFilename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -146,15 +146,10 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
       setTimeout(() => window.URL.revokeObjectURL(url), 10000);
       setDownloadSuccessMessage('APK downloaded successfully! Tap RARE-release.apk in your Downloads folder to install.');
       setTimeout(() => setDownloadSuccessMessage(null), 8000);
-    } catch {
-      const a = document.createElement('a');
-      a.href = directApkUrl;
-      a.download = 'RARE-release.apk';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setDownloadSuccessMessage('Download started! Check your phone notification bar or Downloads folder.');
-      setTimeout(() => setDownloadSuccessMessage(null), 6000);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The verified APK release is unavailable.';
+      setDownloadSuccessMessage(message);
+      setTimeout(() => setDownloadSuccessMessage(null), 8000);
     } finally {
       setIsDownloadingApk(false);
     }
@@ -166,7 +161,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
       setIsSharingApk(true);
       const blob = await fetchSignedApkBlob((msg) => setShareSuccessMessage(msg));
 
-      const apkFile = new File([blob], 'RARE-release.apk', {
+      const apkFile = new File([blob], apkFilename, {
         type: 'application/vnd.android.package-archive',
         lastModified: Date.now(),
       });
@@ -187,7 +182,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'RARE-release.apk';
+        a.download = apkFilename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -199,8 +194,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
       }
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
-        setShowXenderGuide(true);
-        setShareSuccessMessage('APK download started. Find RARE-release.apk in Downloads to share it.');
+        setShareSuccessMessage(err instanceof Error ? err.message : 'The verified APK release is unavailable.');
         setTimeout(() => setShareSuccessMessage(null), 8000);
       } else {
         setShareSuccessMessage(null);
@@ -211,7 +205,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
   };
 
   const handleCopyXenderGuide = () => {
-    const text = `How to share the RARE Android app:\n1. Download RARE-release.apk\n2. Open your preferred file-sharing app\n3. Select RARE-release.apk from Downloads\n4. Send it to the nearby device\n5. Install the APK on that device`;
+    const text = `How to share the RARE Android app:\n1. Download ${apkFilename}\n2. Open your preferred file-sharing app\n3. Select ${apkFilename} from Downloads\n4. Send it to the nearby device\n5. Install the APK on that device`;
     navigator.clipboard.writeText(text);
     setCopiedXenderInstructions(true);
     setTimeout(() => setCopiedXenderInstructions(false), 3000);
@@ -284,24 +278,24 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
                   <div className="flex items-center space-x-2">
                     <span className="font-bold text-white text-sm">Download Android APK</span>
                     <span className="text-[9px] font-mono bg-emerald-400 text-slate-950 font-bold px-1.5 py-0.2 rounded">
-                      STANDALONE
+                      ANDROID PACKAGE
                     </span>
                   </div>
                   <p className="text-[11px] text-emerald-200/90 mt-0.5">
-                    Complete Android package (<code className="font-mono text-emerald-300 font-semibold">RARE-release.apk</code>)
+                    Signed Android install package for <code className="font-mono text-emerald-300 font-semibold">com.rare.ai.intelligence</code>
                   </p>
                 </div>
               </div>
               <div className="flex flex-col items-end text-right">
                 <span className="text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded font-semibold">
-                  48.3 MB • Full App, Brain & 6 Voices
+                  Version and size are shown after release publication
                 </span>
-                <span className="text-[9px] text-slate-400 mt-0.5">Signed v1+v2+v3 • 100% Standalone</span>
+                <span className="text-[9px] text-slate-400 mt-0.5">Release download includes a SHA-256 check</span>
               </div>
             </div>
 
             <p className="text-[11px] text-slate-300 leading-relaxed">
-              This is the Android APK package. Download it to install on this phone or share it through a compatible nearby-sharing app.
+              Download is available when a verified release is published. This app needs an internet connection for online services. Older RARE installs signed with the previous certificate must be uninstalled before installing the replacement-signed release; export any device-only data first.
             </p>
 
             {/* Action Buttons: Download APK and open the native share sheet */}
@@ -380,7 +374,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
                   <span>How to install the APK directly on Android:</span>
                 </div>
                 <ol className="list-decimal list-inside space-y-1.5 pl-1 text-slate-300">
-                  <li>Tap <strong>Download APK (.apk)</strong> above. The file <span className="font-mono text-emerald-300">RARE-release.apk</span> will be saved to your phone's <strong>Downloads</strong> folder.</li>
+                  <li>Tap <strong>Download APK (.apk)</strong> above. The release package will be saved to your phone's <strong>Downloads</strong> folder.</li>
                   <li>Pull down your phone notification bar or open your <strong>Files / Downloads</strong> app.</li>
                   <li>Tap the APK file. If Android displays a security prompt, tap <strong>Settings</strong> and switch on <strong>"Allow from this source"</strong>.</li>
                   <li>Tap <strong>Install</strong>. Android will complete the installation in seconds!</li>
@@ -408,8 +402,8 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
                 <ol className="list-decimal list-inside space-y-1.5 pl-1 text-slate-300">
                   <li>Tap <strong>Download APK (.apk)</strong> above so the file is stored in your phone storage.</li>
                   <li>Open a file-sharing app that supports nearby transfers.</li>
-                  <li>Select <strong>RARE-release.apk</strong> from your <strong>Downloads</strong> folder.</li>
-                  <li>Tap and select <strong className="font-mono text-emerald-300">RARE-release.apk</strong>, then tap the green <strong>Send</strong> button.</li>
+                  <li>Select the RARE release APK from your <strong>Downloads</strong> folder.</li>
+                  <li>Select the release package, then tap the green <strong>Send</strong> button.</li>
                   <li>Choose the nearby device and complete the transfer.</li>
                   <li>The file transfers in 1-2 seconds with zero mobile internet used!</li>
                   <li>Your friend taps the received APK and taps <strong>Install</strong>. They now have the full RARE app on their phone!</li>
@@ -504,17 +498,13 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
               <div>
                 <div className="flex items-center space-x-2 mb-1">
                   <Monitor className="w-4 h-4 text-sky-400" />
-                  <span className="font-semibold text-white">Windows Desktop</span>
+                  <span className="font-semibold text-white">Laptop and desktop</span>
                 </div>
-                <p className={`text-[11px] ${t.textDim}`}>Standalone x64 executable package (.exe)</p>
+                <p className={`text-[11px] ${t.textDim}`}>Use RARE in a browser, or install the website as an app where your browser supports it.</p>
               </div>
-              <a
-                href="/api/download/exe"
-                download="RARE-v1.0.0-windows-x64.exe"
-                className="py-2 px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-medium flex items-center justify-center space-x-1.5 transition text-xs"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Download Windows (.exe)</span>
+              <a href="/" className="py-2 px-3 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-medium flex items-center justify-center space-x-1.5 transition text-xs">
+                <Monitor className="w-3.5 h-3.5" />
+                <span>Open RARE</span>
               </a>
             </div>
 
@@ -523,9 +513,9 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
               <div>
                 <div className="flex items-center space-x-2 mb-1">
                   <Package className="w-4 h-4 text-purple-400" />
-                  <span className="font-semibold text-white">Full Source Archive</span>
+                  <span className="font-semibold text-white">Project source snapshot</span>
                 </div>
-                <p className={`text-[11px] ${t.textDim}`}>Complete project code, models, and tools (.tar.gz)</p>
+                <p className={`text-[11px] ${t.textDim}`}>Download the available source archive (.tar.gz)</p>
               </div>
               <a
                 href="/api/download/source"
@@ -543,7 +533,7 @@ export const DownloadAppModal: React.FC<DownloadAppModalProps> = ({
         <div className={`p-4 border-t ${t.cardBorder} flex items-center justify-between text-[11px] ${t.textDim}`}>
           <div className="flex items-center space-x-1.5">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>Verified Standalone Release • Package ID: com.rare.ai.intelligence</span>
+            <span>Android package ID: com.rare.ai.intelligence</span>
           </div>
           <button
             onClick={onClose}

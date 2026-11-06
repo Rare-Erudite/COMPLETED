@@ -10,7 +10,7 @@
 
 Local source recovery and regression verification are complete for the current implementation checkpoint. Typecheck, production web/server build, the full automated suite, and desktop/mobile browser checks pass. A duplicate server initialization found by browser testing was fixed. The ordinary-CI Android packaging job has been removed. The release workflow accepts manual dispatch or an explicit `rare-final-v*` tag and retains source, completion, security, CI, and signer gates. No APK has been produced by this work.
 
-The full release objective is **not complete**. Earlier branch pushes generated failed release workflow runs with zero jobs (latest: [#42250019086](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42250019086)); no APK steps ran. Inspection found empty `env:` blocks on all three emulator steps, which have been removed. Source CI [#42250587710](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42250587710) passed Ubuntu and Windows typecheck, build, full tests, and desktop/mobile browser checks on `e4bd90b3a73892c6a113c2c54de07ab56cc0cd84`. The corrected workflow is registered with manual dispatch and explicit frozen `rare-final-v*` tag activation; ordinary branch pushes do not run it. No final tag was created, and the signer/readiness gates remain blocking. The published 1.1.0 and 1.1.1 APKs were verified with `apksigner` and both use SHA-256 certificate `c550fd6549d7bbdf2201f9578efb143128f925cf7f8830ddffd349f4995bc57b`. This differs from the new key fingerprint recorded in the branch (`92:85:…:75:2F:92`). Only the newer local keystore was found; original key recovery and any safe rotation path remain unproven. APK packaging is blocked.
+The full release objective is **not complete**. The current committed checkpoint `a26821d` passed Ubuntu and Windows source CI in run [#42256481013](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42256481013). Later local changes now resolve APK downloads/update metadata from a checksum-verified official GitHub release, remove old unverified APK/EXE binaries and unsupported installer claims, and include focused regression tests; those changes still need an exact-SHA remote CI run. The final workflow requires the release tag to equal deployed `main`, a successful exact-SHA Production deployment, health commit attestation, healthy PostgreSQL, and all source/security/readiness checks. The old signer was not recoverable; the owner-authorized RSA-4096 replacement identity is SHA-256 `37be10e99449fbc5f90331965905e8d2ccd31a446301eafa20620f11badee1df`. Its Actions secrets and DPAPI backup were verified; a temporary JAR signed and verified successfully. No APK was built. Prior APKs require a clean-install transition.
 
 ## Checklist
 
@@ -20,16 +20,19 @@ The full release objective is **not complete**. Earlier branch pushes generated 
 - [x] Reinstall dependencies from the lockfile (`npm ci`).
 - [x] Pass `npm run lint` and `npm run build` after current code changes.
 - [x] Pass the full `npm test` suite on Windows, including Documents, Research, Project & Build, and media probes.
+- [x] Add release asset resolver tests; require the official APK asset and matching checksum before making downloads/update metadata available.
+- [x] Remove unsupported Windows executable and standalone package claims; remove old incompatible APK/EXE binaries from current source distribution.
+- [x] Pass desktop/mobile Chromium E2E on the current local source (3 passed, 1 intentionally skipped).
 - [x] Add real-browser coverage for local registration, session persistence, workspace navigation, and mobile layout.
 - [x] Fix duplicate server initialization found during browser verification.
 - [x] Add Windows CI and browser verification.
 - [x] Remove APK packaging from ordinary CI; the queued Android job in run #42 was canceled before any steps, and the new workflow has no Android packaging job.
-- [ ] Validate that GitHub accepts manual dispatch and explicit frozen-tag release runs; previous branch-push events produced failed zero-job runs with no APK steps.
-- [ ] Recover the published Android signing identity; the newly generated key fingerprint does not match the published APKs.
+- [ ] Validate the final workflow against a deliberately frozen, successfully deployed production commit; do not trigger it before every application gate passes.
+- [x] Replace the unrecoverable legacy signer as owner-authorized; generate one RSA-4096 key, verify a DPAPI-protected owner backup, update GitHub secrets, and confirm its fingerprint with a no-artifact workflow.
 - [x] Commit and push the release-workflow correction; source CI passes on the exact implementation commit and ordinary pushes no longer start release jobs.
-- [ ] Recover the original signing key or prove a supported, compatible rotation path; do not build an APK until resolved.
+- [x] Document the one-time clean-install transition for older APK installs; this replacement signer cannot update them in place.
 - [ ] Verify live Supabase/PostgreSQL ownership and RLS, real OAuth/provider flows, and production connectivity without sending uncontrolled messages.
-- [ ] Run a real diarisation model or record its service as blocked; worker auth is fixed, but no model inference/deployment has passed.
+- [ ] Deploy and verify real diarisation inference or keep service unavailable; worker auth is fixed, but no model inference/deployment has passed.
 - [ ] Complete exhaustive screen/route/control review and physical Android 13 checks.
 - [ ] Reconcile against current `main`, and only after every release gate passes, merge/deploy once and run production smoke checks.
 

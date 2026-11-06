@@ -10,6 +10,7 @@ import { MemoryStore, ConversationStore } from './src/server/storage/MemoryStore
 import { CheckpointStore } from './src/server/storage/CheckpointStore.js';
 import { TrajectoryStore } from './src/server/storage/TrajectoryStore.js';
 import { UpdateStore, UpdateChannel, AppUpdate } from './src/server/storage/UpdateStore.js';
+import { resolvePublishedApk, PublishedApk } from './src/server/storage/PublishedRelease.js';
 import { DurableStateStore } from './src/server/storage/DurableStateStore.js';
 import { PersistentJsonStore } from './src/server/storage/PersistentJsonStore.js';
 import { DocumentStore } from './src/server/storage/DocumentStore.js';
@@ -1543,6 +1544,7 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     name: 'RARE Server',
     timestamp: new Date().toISOString(),
+    commit_sha: process.env.VERCEL_GIT_COMMIT_SHA || null,
     uptimeSeconds: Math.floor(process.uptime()),
     release: '045',
     status: 'healthy',
@@ -1618,102 +1620,28 @@ app.get('/api/download/bundle', (req, res) => {
   res.status(404).json({ error: { message: 'Bundle not found' } });
 });
 
-// Resolve the newest release APK actually present on disk.
-//
-// The previous implementation hardcoded `rare-v1.0.0-release.apk`, so a stale
-// binary committed to the repo kept being served long after a newer signed
-// build existed. That shipped an APK signed with a DIFFERENT certificate than
-// the permanent release key, which Android rejects on install with
-// INSTALL_FAILED_UPDATE_INCOMPATIBLE (and which can never update the real app).
-//
-// Selection is now by highest semantic version, so publishing a new build is
-// enough to make it the download — no code change required.
-function resolveApkFilePath(): string | null {
-  const dirs = [
-    path.resolve(PROJECT_ROOT, 'exports'),
-    path.resolve(process.cwd(), 'exports'),
-    path.resolve(PROJECT_ROOT, 'public'),
-    path.resolve(PROJECT_ROOT, 'dist'),
-    '/exports',
-  ];
-
-  const versionOf = (file: string): number[] => {
-    const m = /rare-v(\d+)\.(\d+)\.(\d+)-release\.apk$/.exec(file);
-    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [-1, -1, -1];
-  };
-  const isNewer = (a: number[], b: number[]): boolean => {
-    for (let i = 0; i < 3; i++) {
-      if (a[i] !== b[i]) return a[i] > b[i];
-    }
-    return false;
-  };
-
-  let best: { file: string; version: number[] } | null = null;
-  for (const dir of dirs) {
-    let entries: string[];
-    try {
-      entries = fs.readdirSync(dir);
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (!/^rare-v\d+\.\d+\.\d+-release\.apk$/.test(entry)) continue;
-      const full = path.join(dir, entry);
-      const version = versionOf(entry);
-      if (!best || isNewer(version, best.version)) {
-        best = { file: full, version };
-      }
-    }
-  }
-  if (!best) return null;
-
-  // A file named like an APK is not necessarily one: a mis-wired route once
-  // served the source tarball under an .apk download name, and Android rejects
-  // it with the generic "App wasn't installed". Refuse anything that is not a
-  // genuine ZIP/APK rather than handing the user a broken download.
-  try {
-    const fd = fs.openSync(best.file, 'r');
-    try {
-      const magic = Buffer.alloc(4);
-      fs.readSync(fd, magic, 0, 4, 0);
-      if (magic[0] !== 0x50 || magic[1] !== 0x4b) {
-        console.error(`[apk] refusing to serve ${best.file}: not a ZIP/APK archive`);
-        return null;
-      }
-    } finally {
-      fs.closeSync(fd);
-    }
-  } catch (err) {
-    console.error('[apk] unable to validate candidate APK:', (err as Error)?.message);
-    return null;
-  }
-
-  return best.file;
-}
-
 // APK Metadata & Chunked Streaming Endpoints (Guarantees zero proxy payload limit errors)
-app.get('/api/download/apk/info', (_req, res) => {
-  const targetFile = resolveApkFilePath();
-  if (!targetFile) {
+app.get('/api/download/apk/info', async (_req, res) => {
+  const apk = await resolvePublishedApk();
+  if (!apk) {
     return res.status(404).json({ ok: false, error: 'APK deliverable not found' });
   }
-  const stats = fs.statSync(targetFile);
   res.setHeader('Cache-Control', 'no-store');
   res.json({
     ok: true,
-    size: stats.size,
+    size: apk.size,
     chunkSize: 2 * 1024 * 1024, // 2 MB chunks (safe across all Cloud Run & reverse proxies)
-    filename: path.basename(targetFile).replace(/^rare-/, 'RARE-'),
-    sha256: crypto.createHash('sha256').update(fs.readFileSync(targetFile)).digest('hex'),
+    filename: apk.filename.replace(/^rare-/, 'RARE-'),
+    sha256: apk.sha256,
+    version: apk.version,
   });
 });
 
-app.get('/api/download/apk/chunk', (req, res) => {
-  const targetFile = resolveApkFilePath();
-  if (!targetFile) {
+app.get('/api/download/apk/chunk', async (req, res) => {
+  const apk = await resolvePublishedApk();
+  if (!apk) {
     return res.status(404).json({ error: 'APK deliverable not found' });
   }
-  const stats = fs.statSync(targetFile);
   const parseOffset = (value: unknown): number | null => {
     const raw = Array.isArray(value) ? value[0] : value;
     if (raw === undefined) return null;
@@ -1724,66 +1652,85 @@ app.get('/api/download/apk/chunk', (req, res) => {
   const startOffset = parseOffset(req.query.start);
   const endOffset = parseOffset(req.query.end);
   const start = startOffset ?? 0;
-  const end = endOffset ?? Math.min(stats.size - 1, start + 2 * 1024 * 1024 - 1);
+  const end = endOffset ?? Math.min(apk.size - 1, start + 2 * 1024 * 1024 - 1);
   const length = end - start + 1;
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= stats.size || end < start || length > 2 * 1024 * 1024) {
-    res.setHeader('Content-Range', `bytes */${stats.size}`);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= apk.size || end < start || length > 2 * 1024 * 1024) {
+    res.setHeader('Content-Range', `bytes */${apk.size}`);
     return res.status(416).end();
   }
-  const buffer = Buffer.allocUnsafe(length);
-  const fd = fs.openSync(targetFile, 'r');
   try {
-    const bytesRead = fs.readSync(fd, buffer, 0, length, start);
+    const upstream = await fetch(apk.url, { headers: { Range: `bytes=${start}-${end}` }, signal: AbortSignal.timeout(20_000) });
+    if (upstream.status !== 206 || !upstream.body) return res.status(502).json({ error: 'Release asset did not honor the requested byte range.' });
     res.setHeader('Content-Type', 'application/octet-stream');
-    res.setHeader('Content-Length', String(bytesRead));
+    res.setHeader('Content-Length', String(length));
     res.setHeader('Cache-Control', 'no-store');
-    res.status(200).end(bytesRead === length ? buffer : buffer.subarray(0, bytesRead));
-  } finally {
-    fs.closeSync(fd);
+    res.status(200);
+    const reader = upstream.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!res.write(Buffer.from(value))) await new Promise<void>((resolve) => res.once('drain', resolve));
+      }
+      res.end();
+    } finally {
+      reader.releaseLock();
+    }
+  } catch {
+    if (!res.headersSent) res.status(502).json({ error: 'Release asset could not be streamed.' });
+    else res.destroy();
   }
 });
 
 // Download Packaged Android APK
-app.get('/api/download/apk', (req, res) => {
-  const targetFile = resolveApkFilePath();
-
-  if (targetFile) {
-    const stats = fs.statSync(targetFile);
-    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${path.basename(targetFile).replace(/^rare-/, 'RARE-')}"`
-    );
-    res.setHeader('Content-Length', String(stats.size));
-    res.setHeader('Cache-Control', 'no-cache');
-    const stream = fs.createReadStream(targetFile);
-    stream.pipe(res);
-    return;
-  }
-  res.status(404).json({ error: { message: 'APK deliverable not found' } });
+app.get('/api/download/apk', async (_req, res) => {
+  const apk = await resolvePublishedApk();
+  if (!apk) return res.status(404).json({ error: { message: 'No verified RARE APK release is currently published.' } });
+  res.setHeader('Cache-Control', 'no-store');
+  return res.redirect(302, apk.url);
 });
 
-// Download Windows Standalone EXE
-app.get('/api/download/exe', (req, res) => {
-  const candidates = [
-    path.resolve(PROJECT_ROOT, 'exports', 'rare-v1.0.0-windows-x64.exe'),
-    path.resolve(process.cwd(), 'exports', 'rare-v1.0.0-windows-x64.exe'),
-    '/exports/rare-v1.0.0-windows-x64.exe',
-  ];
-  const targetFile = candidates.find((p) => fs.existsSync(p));
-  if (targetFile) {
-    res.setHeader('Content-Type', 'application/vnd.microsoft.portable-executable');
-    res.setHeader('Content-Disposition', 'attachment; filename="RARE-v1.0.0-windows-x64.exe"');
-    res.setHeader('Cache-Control', 'no-cache');
-    return res.download(targetFile, 'RARE-v1.0.0-windows-x64.exe');
-  }
-  res.status(404).json({ error: { message: 'EXE deliverable not found' } });
+// RARE is delivered to laptops as a web app/PWA. No verified Windows installer
+// is published; keep this legacy URL explicit instead of returning an old file.
+app.get('/api/download/exe', (_req, res) => {
+  res.status(410).json({ error: { message: 'RARE does not currently publish a verified Windows installer. Use the web app or install it as a PWA where supported.' } });
 });
 
 // -----------------------------------------------------------------------------
 // Dual-Channel Over-The-Air (OTA) & System Updates API
 // Supports Public (all users) and Developer (restricted) channels
 // -----------------------------------------------------------------------------
+function compareReleaseVersions(left: string, right: string): number {
+  const parse = (value: string) => value.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const a = parse(left);
+  const b = parse(right);
+  for (let index = 0; index < Math.max(a.length, b.length); index++) {
+    const difference = (a[index] || 0) - (b[index] || 0);
+    if (difference) return Math.sign(difference);
+  }
+  return 0;
+}
+
+function asPublishedAndroidUpdate(apk: PublishedApk): AppUpdate {
+  return {
+    id: `rare_release_${apk.version}`,
+    version: apk.version,
+    releaseDate: apk.releaseDate,
+    channel: 'public',
+    title: `RARE ${apk.version} — Android release`,
+    description: 'Verified Android release downloaded from the official RARE GitHub release.',
+    changelog: ['Signed with the current RARE release identity.', 'SHA-256 checksum is verified before installation.'],
+    mandatory: false,
+    packageUrl: '/api/download/apk',
+    platform: 'android',
+    artifactSizeBytes: apk.size,
+    apkSize: `${(apk.size / (1024 * 1024)).toFixed(2)} MB`,
+    sha256: apk.sha256,
+    publishedBy: 'RARE Core Engineering',
+    targetRoles: ['all'],
+  };
+}
+
 app.get('/api/updates/check', async (req, res) => {
   const clientVersion = String(req.query.clientVersion || '1.0.0').trim();
   let requestedChannel = (
@@ -1796,10 +1743,24 @@ app.get('/api/updates/check', async (req, res) => {
     requestedChannel = 'public';
   }
 
-  const result = updateStore.checkForUpdate(
+  const currentUpdates = updateStore.getAll(requestedChannel).filter((update) => update.platform !== 'android');
+  const next = currentUpdates.find((update) => compareReleaseVersions(update.version, clientVersion) > 0);
+  const result: ReturnType<typeof updateStore.checkForUpdate> = {
+    hasUpdate: Boolean(next),
+    update: next || null,
     clientVersion,
-    requestedChannel
-  );
+    latestVersion: next?.version || clientVersion,
+    channel: requestedChannel,
+  };
+  if (requestedChannel === 'public') {
+    const apk = await resolvePublishedApk();
+    if (apk && compareReleaseVersions(apk.version, clientVersion) > 0 &&
+      (!result.update || compareReleaseVersions(apk.version, result.update.version) > 0)) {
+      result.hasUpdate = true;
+      result.update = asPublishedAndroidUpdate(apk);
+      result.latestVersion = apk.version;
+    }
+  }
 
   return res.json({
     ...result,
@@ -1818,7 +1779,11 @@ app.get('/api/updates/list', async (req, res) => {
     requestedChannel = 'public';
   }
 
-  const list = updateStore.getAll(requestedChannel);
+  const list = updateStore.getAll(requestedChannel).filter((update) => update.platform !== 'android');
+  if (requestedChannel === 'public') {
+    const apk = await resolvePublishedApk();
+    if (apk) list.push(asPublishedAndroidUpdate(apk));
+  }
 
   return res.json({
     channel: requestedChannel,

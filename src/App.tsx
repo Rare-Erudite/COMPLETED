@@ -1951,14 +1951,6 @@ function CollaborativeBuildWorkspaceView({ t }: { t: ThemeConfig }) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <a
-                    href="/api/download/exe"
-                    download="RARE-v1.0.0-windows-x64.exe"
-                    className={`px-3 py-1.5 rounded-lg ${t.accentBg} text-white text-xs font-medium flex items-center space-x-1.5 shadow-sm hover:opacity-90`}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download Windows EXE</span>
-                  </a>
-                  <a
                     href="/api/download/apk"
                     download="RARE-release.apk"
                     className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center space-x-1.5 shadow-sm transition"
@@ -1972,7 +1964,7 @@ function CollaborativeBuildWorkspaceView({ t }: { t: ThemeConfig }) {
                     className={`px-3 py-1.5 rounded-lg ${t.cardSub} border ${t.cardBorder} text-xs font-medium flex items-center space-x-1.5 transition`}
                   >
                     <Package className="w-3.5 h-3.5" />
-                    <span>Full Source ZIP</span>
+                    <span>Project Source Snapshot</span>
                   </a>
                 </div>
               </div>

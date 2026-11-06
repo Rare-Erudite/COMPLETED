@@ -15,6 +15,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import assert from 'node:assert/strict';
 import net from 'node:net';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
@@ -34,6 +35,7 @@ import { runToolchainRegistryTests, runToolchainRouteTests, runAssistantCommandT
 import { runProjectBuildTests } from './test_project_build.js';
 import { runMediaBinaryTests } from './test_media_binaries.js';
 import { runUpdateStoreTests } from './test_update_store.js';
+import { runPublishedReleaseTests } from './test_published_release.js';
 import { runKeepAliveTests } from './test_keepalive.js';
 import { runServerlessFrontendAvailabilityTests } from './test_serverless_frontend.js';
 import { runContentEngineTests } from './test_content_engine.js';
@@ -71,7 +73,12 @@ async function waitForServer(baseUrl: string, child: ChildProcess, timeoutMs = 9
     if (exited) throw new Error('The test server exited before it became reachable.');
     try {
       const response = await fetch(`${baseUrl}/api/health`, { signal: AbortSignal.timeout(2000) });
-      if (response.ok) return;
+      if (response.ok) {
+        const health = await response.json() as Record<string, unknown>;
+        assert.equal(health.ok, true, 'Health endpoint should identify a live server.');
+        assert.equal(health.commit_sha, 'rare-test-build-sha', 'Health endpoint should expose the Vercel build commit for release attestation.');
+        return;
+      }
     } catch {
       /* not up yet */
     }
@@ -121,6 +128,7 @@ async function main() {
       // checks it so a self-development cycle cannot spawn `npm test` from
       // inside `npm test` and recurse until the process is killed.
       RARE_TEST_RUNNING: 'true',
+      VERCEL_GIT_COMMIT_SHA: 'rare-test-build-sha',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -167,6 +175,8 @@ async function main() {
     await runMediaBinaryTests();
     console.log();
     await runUpdateStoreTests();
+    console.log();
+    await runPublishedReleaseTests();
     console.log();
     await runKeepAliveTests();
     console.log();
