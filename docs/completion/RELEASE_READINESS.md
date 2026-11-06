@@ -19,4 +19,4 @@
 
 Keep changes on `New-Fixes-by-Erudite`. Do not merge or deploy until every required release gate has evidence and the deployed commit is the final reviewed `main` commit.
 
-- Final APK workflow: `.github/workflows/release-apk.yml` is intended to be manual-only and accept an explicit frozen `rare-final-v*` tag. It gates completion/security/feature records, exact-source CI, and the original `c550fd…5bc57b` signer before one build. Earlier branch pushes reported failed zero-job runs; remote validation of the manual-only correction is pending. Emulator checks are configured for API 21, 33, and 36 but have not run.
+- Final APK workflow: `.github/workflows/release-apk.yml` accepts manual dispatch or an explicit frozen `rare-final-v*` tag. It gates completion/security/feature records, exact-source CI, and the original `c550fd…5bc57b` signer before one build. Earlier branch pushes reported failed zero-job runs; empty emulator-step `env:` blocks were removed, and remote validation of the correction is pending. Emulator checks are configured for API 21, 33, and 36 but have not run.

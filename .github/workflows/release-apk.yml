@@ -1,6 +1,9 @@
 name: Final Android release verification
 
 on:
+  push:
+    tags:
+      - 'rare-final-v*'
   workflow_dispatch:
     inputs:
       release_tag:
@@ -22,7 +25,7 @@ jobs:
     environment: rare-final-release
     timeout-minutes: 150
     env:
-      RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
     steps:
       - name: Check out the frozen source
@@ -136,7 +139,6 @@ jobs:
 
       - name: Install over 1.1.1 and smoke test on minimum API 21
         uses: reactivecircus/android-emulator-runner@v2
-        env:
         with:
           api-level: 21
           target: default
@@ -153,7 +155,6 @@ jobs:
 
       - name: Install over 1.1.1 and smoke test on Android 13
         uses: reactivecircus/android-emulator-runner@v2
-        env:
         with:
           api-level: 33
           target: google_apis
@@ -170,7 +171,6 @@ jobs:
 
       - name: Install over 1.1.1 and smoke test on latest stable API 36
         uses: reactivecircus/android-emulator-runner@v2
-        env:
         with:
           api-level: 36
           target: google_apis
