@@ -140,9 +140,10 @@ jobs:
 
   android-browser:
     name: Android 13 Chrome browser smoke (no APK)
-    # Linux runners for this public repo do not expose /dev/kvm. This standard
-    # Apple Silicon runner uses native ARM64 system images for the Android AVD.
-    runs-on: macos-15
+    # Hosted runners do not expose nested virtualization. Configure a trusted
+    # self-hosted Linux runner with KVM and set RARE_ANDROID_EMULATOR_RUNNER=true.
+    if: vars.RARE_ANDROID_EMULATOR_RUNNER == 'true' && github.event_name != 'pull_request'
+    runs-on: [self-hosted, linux, x64, android-emulator]
     timeout-minutes: 45
 
     steps:
@@ -183,8 +184,9 @@ jobs:
         with:
           api-level: 33
           target: google_apis_playstore
-          arch: arm64-v8a
+          arch: x86_64
           profile: pixel_6
+          disable-linux-hw-accel: false
           script: |
             set -euo pipefail
             adb shell pm path com.android.chrome

@@ -160,7 +160,7 @@ jobs:
   emulator-and-publish:
     name: Clean-install on Android 21, 33, and 36, then publish
     needs: verify-and-package
-    runs-on: macos-15
+    runs-on: [self-hosted, linux, x64, android-emulator]
     environment: rare-final-release
     timeout-minutes: 150
     env:
@@ -181,13 +181,17 @@ jobs:
           name: rare-final-apk-${{ needs.verify-and-package.outputs.version_name }}
           path: exports
 
+      - name: Require Linux KVM on the protected Android runner
+        run: test -r /dev/kvm && test -w /dev/kvm
+
       - name: Clean-install and smoke test on minimum API 21
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 21
           target: default
-          arch: arm64-v8a
+          arch: x86
           profile: Nexus 5
+          disable-linux-hw-accel: false
           script: |
             set -euo pipefail
             apk="exports/rare-v${VERSION_NAME}-release.apk"
@@ -202,8 +206,9 @@ jobs:
         with:
           api-level: 33
           target: google_apis
-          arch: arm64-v8a
+          arch: x86_64
           profile: pixel_6
+          disable-linux-hw-accel: false
           script: |
             set -euo pipefail
             apk="exports/rare-v${VERSION_NAME}-release.apk"
@@ -217,8 +222,9 @@ jobs:
         with:
           api-level: 36
           target: google_apis
-          arch: arm64-v8a
+          arch: x86_64
           profile: pixel_tablet
+          disable-linux-hw-accel: false
           script: |
             set -euo pipefail
             apk="exports/rare-v${VERSION_NAME}-release.apk"
@@ -234,7 +240,7 @@ jobs:
           set -euo pipefail
           apk="exports/rare-v${VERSION_NAME}-release.apk"
           checksum_file="$RUNNER_TEMP/rare-v${VERSION_NAME}-release.apk.sha256"
-          shasum -a 256 "$apk" | sed "s#  .*#  rare-v${VERSION_NAME}-release.apk#" > "$checksum_file"
+          sha256sum "$apk" | sed "s#  .*#  rare-v${VERSION_NAME}-release.apk#" > "$checksum_file"
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
           RARE $VERSION_NAME final Android release
 
@@ -249,7 +255,7 @@ jobs:
           gh release create "$RELEASE_TAG" "$apk" "$checksum_file" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --title "RARE $VERSION_NAME" --notes-file "$RUNNER_TEMP/release-notes.md"
           mkdir -p "$RUNNER_TEMP/release-download-check"
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "rare-v${VERSION_NAME}-release.apk" --pattern "rare-v${VERSION_NAME}-release.apk.sha256" --dir "$RUNNER_TEMP/release-download-check"
-          (cd "$RUNNER_TEMP/release-download-check" && shasum -a 256 -c "rare-v${VERSION_NAME}-release.apk.sha256")
+          (cd "$RUNNER_TEMP/release-download-check" && sha256sum --check "rare-v${VERSION_NAME}-release.apk.sha256")
           release_id="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId)"
           gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" -X PATCH -F draft=false -F make_latest=true --jq '{draft,html_url}'
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,url,assets --jq '{isDraft,url,assets:[.assets[].name]}'
