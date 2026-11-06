@@ -1,10 +1,12 @@
 name: Final Android release verification
 
 on:
-  push:
-    branches: [main, New-Fixes-by-Erudite]
-    tags:
-      - 'rare-final-v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Frozen source tag (rare-final-vX.Y.Z)
+        required: true
+        type: string
 permissions:
   contents: read
   actions: read
@@ -15,11 +17,12 @@ concurrency:
 
 jobs:
   verify-and-package:
-    if: startsWith(github.ref, 'refs/tags/rare-final-v')
     name: Gate, build once, and verify update compatibility
     runs-on: ubuntu-latest
     environment: rare-final-release
     timeout-minutes: 150
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
 
     steps:
       - name: Check out the frozen source
@@ -34,10 +37,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF" == refs/tags/rare-final-v* ]] || { echo "::error::Create a rare-final-v* tag only after all gates pass."; exit 1; }
-          RELEASE_SHA="$GITHUB_SHA"
-          VERSION_NAME="${GITHUB_REF_NAME#rare-final-v}"
+          [[ "$RELEASE_TAG" =~ ^rare-final-v[0-9]+(\.[0-9]+){1,3}$ ]] || { echo "::error::Select a rare-final-v* semantic version tag."; exit 1; }
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          RELEASE_SHA="$(git rev-parse "$RELEASE_TAG^{commit}")"
+          VERSION_NAME="${RELEASE_TAG#rare-final-v}"
           [[ "$VERSION_NAME" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]] || { echo "::error::The tag must end in a numeric semantic version."; exit 1; }
+          git checkout --detach "$RELEASE_SHA"
           [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]] || { echo "::error::Checkout does not match the requested release SHA."; exit 1; }
           branch_sha="$(git ls-remote origin refs/heads/New-Fixes-by-Erudite | cut -f1)"
           [[ "$branch_sha" == "$RELEASE_SHA" ]] || { echo "::error::The feature branch moved after the proposed source freeze."; exit 1; }
@@ -139,7 +144,7 @@ jobs:
           profile: Nexus 5
           script: |
             set -euo pipefail
-            apk="exports/rare-v${GITHUB_REF_NAME#rare-final-v}-release.apk"
+            apk="exports/rare-v${RELEASE_TAG#rare-final-v}-release.apk"
             adb install "$RUNNER_TEMP/rare-v1.1.1-release.apk"
             adb install -r "$apk"
             adb shell am start -W -n com.rare.ai.intelligence/.MainActivity
@@ -156,7 +161,7 @@ jobs:
           profile: pixel_6
           script: |
             set -euo pipefail
-            apk="exports/rare-v${GITHUB_REF_NAME#rare-final-v}-release.apk"
+            apk="exports/rare-v${RELEASE_TAG#rare-final-v}-release.apk"
             adb install "$RUNNER_TEMP/rare-v1.1.1-release.apk"
             adb install -r "$apk"
             adb shell am start -W -n com.rare.ai.intelligence/.MainActivity
@@ -173,7 +178,7 @@ jobs:
           profile: pixel_tablet
           script: |
             set -euo pipefail
-            apk="exports/rare-v${GITHUB_REF_NAME#rare-final-v}-release.apk"
+            apk="exports/rare-v${RELEASE_TAG#rare-final-v}-release.apk"
             adb install "$RUNNER_TEMP/rare-v1.1.1-release.apk"
             adb install -r "$apk"
             adb shell am start -W -n com.rare.ai.intelligence/.MainActivity
