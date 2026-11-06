@@ -1,6 +1,6 @@
 name: Final Android release verification
 
-'on':
+on:
   push:
     tags:
       - 'rare-final-v*'
