@@ -4,7 +4,7 @@ Statuses describe evidence for the current local implementation checkpoint. Loca
 
 | Area | Status | Evidence / remaining work |
 |---|---|---|
-| Repository and branch | PASS (local) | Recovered branch ancestry and verified backup; `main` untouched. Push/CI result pending. |
+| Repository and branch | PASS | Recovered branch ancestry and verified backup; feature branch pushed and matches origin. `main` remains untouched. |
 | Core source integrity | PASS | Restored full implementations; marker scan found no credential-like values or placeholder replacements in source. History-wide scanning remains. |
 | Email registration/login/session | PARTIAL | Full automated auth security tests pass; E2E local registration and reload persistence pass. Live email verification/recovery/reset not exercised. |
 | Google/Microsoft OAuth | PARTIAL | OAuth validation tests pass. Real provider credentials/callbacks are not configured or tested. |
@@ -23,18 +23,15 @@ Statuses describe evidence for the current local implementation checkpoint. Loca
 | Windows packaging | NOT VERIFIED | Windows source/type/build/browser CI added; no standalone Windows release was built. |
 | Supabase/PostgreSQL/RLS | NOT VERIFIED | No live database operation or complete grants/RLS audit. |
 | Vercel production | NOT VERIFIED | No deployment or live production smoke test. |
-| GitHub CI | PENDING | Workflow parses locally; commit/push and actual Ubuntu/Windows/Android run are pending. |
+| GitHub CI | PASS (source CI) | Exact implementation commit `e4bd90b3a73892c6a113c2c54de07ab56cc0cd84` passed Ubuntu and Windows typecheck, build, full suite, and desktop/mobile browser checks in run [#42250587710](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42250587710). Android packaging is absent from development CI. |
 
 ## 2026-11-06 continuation checks
 
 | Area | Status | Evidence / remaining work |
 |---|---|---|
-| Repository/remote | PASS | Branch/remote tip `9e31a6f43cfe413f285c5112cb2a300e1a21eaab` before the pending tag-trigger documentation commit. `main` and `origin/main` remain `64cd88a54b1c031dabb2edb3ba5832a39ec17b61`. Recovery bundle verified. |
+| Repository/remote | PASS | Feature branch and origin both point to implementation commit `e4bd90b3a73892c6a113c2c54de07ab56cc0cd84`; `main` and `origin/main` remain `64cd88a54b1c031dabb2edb3ba5832a39ec17b61`. Recovery bundle verified. |
 | Run #42 | CANCELLED | Exact SHA `5e96b5b32db0aeb369e033d7c5f784d390ab8249`; Windows passed, Ubuntu canceled during FFmpeg install, and the queued APK job was canceled before any step. [Run #42](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42239482331). |
 | Ordinary CI APK behavior | FIXED | `.github/workflows/ci.yml` has no APK packaging job; run #42 queued one but it was canceled before any step. |
 | Published Android identity | BLOCKED | apksigner verified both 1.1.0 and 1.1.1 APKs use c550fd6549d7bbdf2201f9578efb143128f925cf7f8830ddffd349f4995bc57b. This differs from the branch's recorded 92:85:…:75:2F:92 key. Original key/rotation has not been proven. |
 
-| Final release workflow | BLOCKED (remote validation) | Tag-only `rare-final-v*` trigger is committed, but GitHub created a failed zero-job run on the development push at `abaaaeecb75ebd738f6ff96c81ad31ed8f4ab119`. No steps or APK ran. Workflow needs GitHub-side validation before any final tag. |
-
-| Release workflow push behavior | BLOCKED (remote validation) | Pushes still produce a failed zero-job workflow run despite the tag-only filter; no packaging steps run. Local YAML parses, but this release workflow has not passed GitHub validation. |
-are-final-v* tag; release gates still fail closed. Updated trigger has not yet run remotely. |
+| Final release workflow | REGISTERED; FINAL GATES BLOCKED | GitHub recognizes the workflow on the feature branch. The corrected config accepts manual dispatch and explicit `rare-final-v*` tags; ordinary branch pushes do not start it. Tag activation has not been tested because signing identity and application-readiness gates remain blocked. |

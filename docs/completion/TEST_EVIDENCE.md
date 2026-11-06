@@ -31,15 +31,11 @@
 | GitHub Actions run #42 | CANCELLED | Exact SHA `5e96b5b32db0aeb369e033d7c5f784d390ab8249`. Windows typecheck/build/full tests/browser checks passed. Ubuntu was canceled during FFmpeg install; the queued APK job was canceled before any step. No APK was produced. [Run #42](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42239482331). |
 | Published APK signature verification | PASS | Downloaded official 1.1.0 and 1.1.1 assets to a temporary directory and ran Android SDK 36 apksigner verify --verbose --print-certs. Both report SHA-256 c550fd6549d7bbdf2201f9578efb143128f925cf7f8830ddffd349f4995bc57b; both have valid v1/v2/v3 signatures. |
 | Release key comparison | BLOCKED | Repository and scanned Codex Documents contained only .rare/android/rare-release.keystore; its recorded branch fingerprint is 92:85:…:75:2F:92, incompatible with published releases. No original-key backup found in the scanned locations. Secret names were inspected only; secret values were not read. |
-| Ordinary CI correction | PUSHED | APK signing/build/emulator job removed from `ci.yml` in commit `2ff57af`; current follow-up tag-trigger refinement is local pending push. |
-
-| Final-release workflow YAML | PASS (static parse) | Tag-triggered `rare-final-v*` workflow parses and is guarded by source/readiness/exact-SHA CI/original-signer checks. Emulator stages API 21, 33, and 36 are configured but not run. |
-
+| Ordinary CI correction | PASS | APK signing/build/emulator job removed from `.github/workflows/ci.yml`; development CI contains no APK packaging job. |
+| Release workflow | REGISTERED, TAG NOT RUN | Branch workflow parses and is present in GitHub. Tag pushes and manual dispatch are configured with frozen-source, readiness, exact-SHA CI, and published-signer gates. No release tag or APK workflow execution was started; the minimum/API 33/API 36 emulator stages remain unrun. |
 | Run #42 final status | CANCELLED | Windows job passed. Ubuntu job was canceled while installing FFmpeg. Its queued Android APK job started with zero steps and was canceled before package operations. No APK was produced. [Run #42](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42239482331). |
-| Push-triggered release workflow attempt | FAILED, NO JOBS | Prior `workflow_dispatch` version produced zero-job failures on pushes `2ff57af` and `9e31a6f`; no APK steps ran. The workflow is now tag-triggered only, pending remote validation. |
- |
-
-| Development CI run 42244520578 | PASS | Exact commit 9e31a6f43cfe413f285c5112cb2a300e1a21eaab; Ubuntu and Windows typecheck, production build, complete test suite, and desktop/mobile browser checks passed. It contains no APK job. [Run](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42244520578). |
+| Earlier release-workflow push runs | FAILED, ZERO JOBS | Runs [#42250019086](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42250019086) and earlier had no jobs or steps. Empty `env:` mappings on three emulator steps were removed. The corrected workflow does not run on a normal branch push. |
+| Development CI run 42250587710 | PASS | Exact implementation commit `e4bd90b3a73892c6a113c2c54de07ab56cc0cd84`; Ubuntu and Windows typecheck, production build, complete test suite, and desktop/mobile browser checks passed. No APK job ran. [Run](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42250587710). |
 
 ## Diarisation worker authentication review
 
@@ -48,5 +44,3 @@
 | Worker auth fail-closed patch | PASS (local) | Missing WORKER_TOKEN makes startup skip model loading and makes POST /diarize return 503 AUTH_NOT_CONFIGURED; unset/wrong bearer returns 401; a synthetic valid test token reached a stubbed inference handler. Pyannote was not imported or run. |
 | Worker Python syntax | PASS | python -m py_compile succeeded for server.py and diarize_offline.py. Generated __pycache__ was removed. |
 | Worker deployment/model | NOT VERIFIED | No production host, model credentials, inference, or live service is configured. |
-
-| Tag-only release workflow on development push | FAIL, ZERO JOBS | Run 42246444275 on baaaeecb75ebd738f6ff96c81ad31ed8f4ab119 is a failed push event with no jobs/steps and no APK. The local YAML parses, but remote workflow validation still needs resolution before a final tag is created. |
