@@ -25,3 +25,11 @@ History-wide secret scanning; complete route-by-route authorization/data-flow re
 - Ordinary CI no longer contains APK build/sign steps. Run #42 queued an Android job that was canceled before any step when a newer push superseded it; no APK was built. The `9e31a6f` source CI run passed; the tag-only trigger update is local pending push.
 
 - A separate tag-triggered final APK workflow now checks the frozen tag, exact source CI, completion/security gate markers, and legacy signer fingerprint before packaging. It does not run while the current records show blockers. Its configured emulator matrix is not evidence until actually run. It creates no candidate APK during ordinary CI.
+
+## Diarisation worker authentication — 2026-11-06
+
+- Static review found a fail-open check: the worker enforced WORKER_TOKEN only when it was nonempty. If unset, /diarize accepted unauthenticated requests. This is now fixed: missing token returns typed 503 and disables model preload, invalid/missing bearer returns 401, and comparison uses hmac.compare_digest.
+- Local HTTP smoke check verified missing, wrong, and synthetic-valid bearer behavior. The valid path used a stubbed inference function; no audio model or external request ran. Python syntax checks passed.
+- The worker remains undeployed; real pyannote inference and production authentication are unverified.
+
+- The tag-triggered release workflow currently yields a failed zero-job Actions run on a development push. No build step executes and no APK is produced, but remote validation is unresolved; do not create a final release tag until a non-packaging push confirms the workflow is accepted without unintended execution.

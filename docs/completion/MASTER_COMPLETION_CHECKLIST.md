@@ -24,12 +24,12 @@ The full release objective is **not complete**. Current feature source is at `9e
 - [x] Fix duplicate server initialization found during browser verification.
 - [x] Add Windows CI and browser verification.
 - [x] Remove APK packaging from ordinary CI; the queued Android job in run #42 was canceled before any steps, and the new workflow has no Android packaging job.
-- [x] Add an explicitly tag-triggered final-release workflow with frozen-source, completed-gate, exact-SHA CI, and original-certificate checks; it is not run while those gates remain blocked.
+- [ ] Validate that GitHub accepts the tag-triggered final-release workflow; branch pushes currently produce failed zero-job runs with no APK steps.
 - [x] Generate the permanent Android signing identity, record its SHA-256 certificate fingerprint, and configure encrypted GitHub Actions secrets.
 - [ ] Commit and push the CI correction and updated release evidence; inspect the resulting GitHub jobs.
 - [ ] Recover the original signing key or prove a supported, compatible rotation path; do not build an APK until resolved.
 - [ ] Verify live Supabase/PostgreSQL ownership and RLS, real OAuth/provider flows, and production connectivity without sending uncontrolled messages.
-- [ ] Run a real diarisation model or record its service as blocked; no model inference has passed.
+- [ ] Run a real diarisation model or record its service as blocked; worker auth is fixed, but no model inference/deployment has passed.
 - [ ] Complete exhaustive screen/route/control review and physical Android 13 checks.
 - [ ] Reconcile against current `main`, and only after every release gate passes, merge/deploy once and run production smoke checks.
 

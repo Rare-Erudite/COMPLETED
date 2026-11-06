@@ -26,6 +26,7 @@ Design notes
   and /diarize returns 503 with a typed code. It never invents speakers.
 """
 
+import hmac
 import json
 import os
 import subprocess
@@ -179,11 +180,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.split("?")[0] != "/diarize":
             return self._send(404, {"error": "not found"})
 
-        if WORKER_TOKEN:
-            auth = self.headers.get("Authorization", "")
-            if auth != f"Bearer {WORKER_TOKEN}":
-                return self._send(401, {"ok": False, "code": "UNAUTHORIZED",
-                                        "error": "A valid worker token is required."})
+        if not WORKER_TOKEN:
+            return self._send(503, {"ok": False, "code": "AUTH_NOT_CONFIGURED",
+                                    "error": "Worker authentication is not configured."})
+        auth = self.headers.get("Authorization", "")
+        if not hmac.compare_digest(auth, f"Bearer {WORKER_TOKEN}"):
+            return self._send(401, {"ok": False, "code": "UNAUTHORIZED",
+                                    "error": "A valid worker token is required."})
 
         s = snapshot()
         if s["status"] == "failed":
@@ -238,10 +241,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    if not HF_TOKEN:
-        log("WARNING: HF_TOKEN is not set. The model cannot be fetched; "
-            "/health will report failed.")
-    threading.Thread(target=preload, daemon=True).start()
+    if not WORKER_TOKEN:
+        set_state(status="failed", error="WORKER_TOKEN is not configured")
+        log("ERROR: WORKER_TOKEN is not configured. Inference is disabled.")
+    else:
+        if not HF_TOKEN:
+            log("WARNING: HF_TOKEN is not set. The model cannot be fetched; "
+                "/health will report failed.")
+        threading.Thread(target=preload, daemon=True).start()
     log(f"listening on :{PORT}")
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 

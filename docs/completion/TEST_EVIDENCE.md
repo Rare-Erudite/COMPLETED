@@ -40,3 +40,13 @@
  |
 
 | Development CI run 42244520578 | PASS | Exact commit 9e31a6f43cfe413f285c5112cb2a300e1a21eaab; Ubuntu and Windows typecheck, production build, complete test suite, and desktop/mobile browser checks passed. It contains no APK job. [Run](https://github.com/Rare-Erudite/COMPLETED/actions/runs/42244520578). |
+
+## Diarisation worker authentication review
+
+| Check | Outcome | Evidence / limit |
+|---|---|---|
+| Worker auth fail-closed patch | PASS (local) | Missing WORKER_TOKEN makes startup skip model loading and makes POST /diarize return 503 AUTH_NOT_CONFIGURED; unset/wrong bearer returns 401; a synthetic valid test token reached a stubbed inference handler. Pyannote was not imported or run. |
+| Worker Python syntax | PASS | python -m py_compile succeeded for server.py and diarize_offline.py. Generated __pycache__ was removed. |
+| Worker deployment/model | NOT VERIFIED | No production host, model credentials, inference, or live service is configured. |
+
+| Tag-only release workflow on development push | FAIL, ZERO JOBS | Run 42246444275 on baaaeecb75ebd738f6ff96c81ad31ed8f4ab119 is a failed push event with no jobs/steps and no APK. The local YAML parses, but remote workflow validation still needs resolution before a final tag is created. |
