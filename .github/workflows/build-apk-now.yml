@@ -12,10 +12,6 @@ on:
         required: false
         default: '1.1.2'
         type: string
-  push:
-    branches: [New-Fixes-by-Erudite]
-    paths:
-      - '.github/apk-build-trigger'
 
 permissions:
   contents: read
