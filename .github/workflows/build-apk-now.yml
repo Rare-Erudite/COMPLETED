@@ -193,31 +193,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-linux-hw-accel: false
-          script: |
-            set -euo pipefail
-            echo "--- downloaded artifact tree ---"
-            ls -laR apk || true
-            apk="$(find . -name '*.apk' -type f -print -quit)"
-            echo "APK: $apk"
-            test -n "$apk"
-            test -s "$apk"
-            adb install "$apk"
-            adb shell pm list packages | grep com.rare.ai.intelligence
-            adb logcat -c
-            adb shell am start -W -n com.rare.ai.intelligence/.MainActivity
-            sleep 20
-            echo "--- pid ---"
-            adb shell pidof com.rare.ai.intelligence
-            echo "--- app logcat ---"
-            adb logcat -d -s RARE_APP:* | tail -60
-            echo "--- network check ---"
-            adb shell "ping -c 1 rareproject.vercel.app" || true
-            adb exec-out screencap -p > "$RUNNER_TEMP/launch.png" || true
-            echo "--- crash check ---"
-            if adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime.*com.rare.ai.intelligence"; then
-              echo "::error::App crashed on launch"; exit 1
-            fi
-            echo "App launched without a fatal exception."
+          script: bash scripts/emulator_smoke.sh
 
       - name: Upload the launch screenshot
         if: always()
