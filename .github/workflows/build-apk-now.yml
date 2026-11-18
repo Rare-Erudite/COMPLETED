@@ -179,6 +179,9 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           ls -l /dev/kvm || true
 
+      - name: Check out the source (for the smoke-test script)
+        uses: actions/checkout@v4
+
       - name: Download the APK
         uses: actions/download-artifact@v4
         with:
