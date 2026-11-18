@@ -1,0 +1,217 @@
+name: Build RARE APK (on demand)
+
+# Builds the RARE Android APK from the checked-out source using the repository's
+# own scripts/build_apk.sh, signs it with the configured release identity, and
+# verifies the result. Nothing here invents a new pipeline.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'versionName for the APK'
+        required: false
+        default: '1.1.2'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, sign and verify the APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version_name: ${{ steps.vars.outputs.version_name }}
+      version_code: ${{ steps.vars.outputs.version_code }}
+
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@v4
+
+      - name: Resolve version identity
+        id: vars
+        run: |
+          set -euo pipefail
+          VN="${{ inputs.version_name }}"
+          [[ "$VN" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]] || { echo "::error::version_name must be numeric semver"; exit 1; }
+          VC=$(( 10#$(date -u +%y%m%d) * 1000 + GITHUB_RUN_NUMBER ))
+          echo "version_name=$VN" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VC" >> "$GITHUB_OUTPUT"
+          echo "Building $VN (versionCode $VC)"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK platform 34 and build-tools 34.0.0
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          echo "$SDK/build-tools/34.0.0" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_COMPILE_SDK=34" >> "$GITHUB_ENV"
+          echo "ANDROID_BUILD_TOOLS=$SDK/build-tools/34.0.0" >> "$GITHUB_ENV"
+          "$SDK/build-tools/34.0.0/aapt2" version
+          "$SDK/build-tools/34.0.0/apksigner" --version
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.0'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Restore the release signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          set +x
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            [[ -n "${!name:-}" ]] || { echo "::error::Missing signing secret: $name"; exit 1; }
+          done
+          umask 077
+          mkdir -p "$RUNNER_TEMP/rare-keystore"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/rare-keystore/release.keystore"
+          export STORE_PASS="$KEYSTORE_PASSWORD"
+          keytool -list -v -keystore "$RUNNER_TEMP/rare-keystore/release.keystore" \
+            -alias "$KEY_ALIAS" -storepass:env STORE_PASS | tee "$RUNNER_TEMP/keystore-info.txt"
+          echo "Keystore restored and readable."
+
+      - name: Build the APK with the repository script
+        env:
+          RARE_APP_VERSION_NAME: ${{ steps.vars.outputs.version_name }}
+          RARE_APP_VERSION_CODE: ${{ steps.vars.outputs.version_code }}
+          RARE_BACKEND_URL: https://rareproject.vercel.app
+          RARE_ANDROID_KEYSTORE: ${{ runner.temp }}/rare-keystore/release.keystore
+          RARE_ANDROID_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          RARE_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          RARE_ANDROID_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          bash scripts/build_apk.sh 2>&1 | tee "$RUNNER_TEMP/build.log"
+          apk="exports/rare-v${{ steps.vars.outputs.version_name }}-release.apk"
+          test -s "$apk"
+          echo "APK built: $apk"
+
+      - name: Verify signature, manifest and packaged backend URL
+        run: |
+          set -euo pipefail
+          apk="exports/rare-v${{ steps.vars.outputs.version_name }}-release.apk"
+          {
+            echo "### APK verification"
+            echo '```'
+            echo "--- apksigner verify --verbose --print-certs ---"
+            apksigner verify --verbose --print-certs "$apk"
+            echo
+            echo "--- aapt2 dump badging ---"
+            aapt2 dump badging "$apk"
+            echo
+            echo "--- size ---"
+            stat --format='%s bytes' "$apk"
+            echo "--- sha256 ---"
+            sha256sum "$apk"
+            echo '```'
+          } | tee "$RUNNER_TEMP/verify.txt"
+          {
+            echo "## RARE APK build report"
+            echo
+            echo "- versionName: ${{ steps.vars.outputs.version_name }}"
+            echo "- versionCode: ${{ steps.vars.outputs.version_code }}"
+            echo "- backend: https://rareproject.vercel.app"
+            echo
+            cat "$RUNNER_TEMP/verify.txt"
+            echo
+            echo "### Keystore"
+            echo '```'
+            cat "$RUNNER_TEMP/keystore-info.txt"
+            echo '```'
+          } > "$RUNNER_TEMP/report.md"
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rare-apk
+          path: exports/rare-v${{ steps.vars.outputs.version_name }}-release.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload the build report
+        uses: actions/upload-artifact@v4
+        with:
+          name: rare-apk-report
+          path: |
+            ${{ runner.temp }}/report.md
+            ${{ runner.temp }}/build.log
+          if-no-files-found: error
+          retention-days: 7
+
+  emulator:
+    name: Install and launch on an Android emulator
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm || true
+
+      - name: Download the APK
+        uses: actions/download-artifact@v4
+        with:
+          name: rare-apk
+          path: apk
+
+      - name: Install and launch on API 33
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-linux-hw-accel: false
+          script: |
+            set -euo pipefail
+            apk="$(ls apk/*.apk)"
+            adb install "$apk"
+            adb shell pm list packages | grep com.rare.ai.intelligence
+            adb logcat -c
+            adb shell am start -W -n com.rare.ai.intelligence/.MainActivity
+            sleep 20
+            echo "--- pid ---"
+            adb shell pidof com.rare.ai.intelligence
+            echo "--- app logcat ---"
+            adb logcat -d -s RARE_APP:* | tail -60
+            echo "--- network check ---"
+            adb shell "ping -c 1 rareproject.vercel.app" || true
+            adb exec-out screencap -p > "$RUNNER_TEMP/launch.png" || true
+            echo "--- crash check ---"
+            if adb logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime.*com.rare.ai.intelligence"; then
+              echo "::error::App crashed on launch"; exit 1
+            fi
+            echo "App launched without a fatal exception."
+
+      - name: Upload the launch screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rare-apk-launch-screenshot
+          path: ${{ runner.temp }}/launch.png
+          if-no-files-found: warn
+          retention-days: 7
