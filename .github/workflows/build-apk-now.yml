@@ -195,8 +195,11 @@ jobs:
           disable-linux-hw-accel: false
           script: |
             set -euo pipefail
-            apk="$(find apk -name '*.apk' -type f | head -1)"
+            echo "--- downloaded artifact tree ---"
+            ls -laR apk || true
+            apk="$(find . -name '*.apk' -type f -print -quit)"
             echo "APK: $apk"
+            test -n "$apk"
             test -s "$apk"
             adb install "$apk"
             adb shell pm list packages | grep com.rare.ai.intelligence
