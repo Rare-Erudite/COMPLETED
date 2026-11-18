@@ -123,6 +123,9 @@ jobs:
             echo "--- aapt2 dump badging ---"
             aapt2 dump badging "$apk"
             echo
+            echo "--- aapt2 dump xmltree (manifest) ---"
+            aapt2 dump xmltree --file AndroidManifest.xml "$apk"
+            echo
             echo "--- size ---"
             stat --format='%s bytes' "$apk"
             echo "--- sha256 ---"
