@@ -1,5 +1,34 @@
 import { expect, test } from '@playwright/test';
 
+/**
+ * The app asks the server for updates on first paint, and the server answers by
+ * querying the live GitHub Releases API for the newest published APK. When a
+ * release is newer than package.json's version, a full-screen "System Update
+ * Available" modal opens and covers the page — including the Login / Sign Up
+ * button these tests click.
+ *
+ * That made this suite depend on whether a release happened to be published
+ * minutes before the run: the same commit passed on Ubuntu/Chromium and failed
+ * on Windows/Chromium purely on timing. A browser test must not depend on a
+ * third-party API, so the update feed is pinned to "no update" for every test.
+ */
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/updates/check**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        hasUpdate: false,
+        update: null,
+        clientVersion: '0.0.0',
+        latestVersion: '0.0.0',
+        channel: 'public',
+        isDeveloperAuthed: false,
+      }),
+    }),
+  );
+});
+
 test('local account registration persists through reload and opens core workspaces', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile-chrome', 'Account and workspace journey is covered on desktop; mobile gets a viewport-specific smoke test.');
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
