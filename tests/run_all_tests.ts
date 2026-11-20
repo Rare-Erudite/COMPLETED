@@ -43,6 +43,8 @@ import { runChatPipelineTests } from './test_chat_pipeline.js';
 import { runDiarizationTests } from './test_diarization.js';
 import { runDocumentsIncrementTests } from './test_documents_increment.js';
 import { runResearchIncrementTests } from './test_research_increment.js';
+import { runRepoHygieneTests } from './test_repo_hygiene.js';
+import { runBm25Tests } from './test_bm25.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -177,6 +179,10 @@ async function main() {
     await runUpdateStoreTests();
     console.log();
     await runPublishedReleaseTests();
+    console.log();
+    await runRepoHygieneTests();
+    console.log();
+    await runBm25Tests();
     console.log();
     await runKeepAliveTests();
     console.log();

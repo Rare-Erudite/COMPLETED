@@ -3,6 +3,7 @@ import path from 'path';
 import type { PersistentJsonStore } from './PersistentJsonStore.js';
 import { resolveWritableAppRoot } from './PersistentJsonStore.js';
 import { MemoryRecord } from '../types.js';
+import { rankMemoriesByBm25 } from './bm25.js';
 
 // On a serverless host the deployment tree is read-only; resolveWritableAppRoot
 // selects os.tmpdir() there instead of failing every boot with EROFS.
@@ -131,13 +132,30 @@ export class MemoryStore {
     }
 
     if (query && query.trim()) {
+      // Ranked retrieval instead of a raw substring test.
+      //
+      // The previous implementation kept a memory only when the whole query
+      // string appeared verbatim inside it, so "what editor does the user
+      // prefer" matched nothing even when a memory said "prefers VS Code".
+      //
+      // An exact phrase match is still the strongest possible signal, so it
+      // takes precedence: if any memory contains the query verbatim, only those
+      // are returned. Otherwise the query is ranked with Okapi BM25 over the
+      // memory corpus (the same formula the RARE-INTELLIGENCE engine uses), so
+      // a natural-language query still finds a memory that shares its terms.
       const q = query.toLowerCase().trim();
-      results = results.filter(
+      const exact = results.filter(
         (m) =>
           m.text.toLowerCase().includes(q) ||
           m.tags.some((t) => t.toLowerCase().includes(q)) ||
-          m.kind.toLowerCase().includes(q)
+          m.kind.toLowerCase().includes(q),
       );
+      if (exact.length > 0) {
+        results = exact;
+      } else {
+        const ranked = rankMemoriesByBm25(results, query);
+        if (ranked.length > 0) results = ranked;
+      }
     }
 
     return results;

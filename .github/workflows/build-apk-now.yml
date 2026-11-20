@@ -14,7 +14,7 @@ on:
         type: string
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -161,6 +161,39 @@ jobs:
             ${{ runner.temp }}/build.log
           if-no-files-found: error
           retention-days: 7
+
+      # Publishing is what makes the APK reachable from the app's own download
+      # endpoint. Before this step existed the workflow built and verified the
+      # APK but published nothing, so /api/download/apk always answered 404.
+      # The tag family is `vX.Y.Z-android`, which is what PublishedRelease.ts
+      # resolves, and the asset name is `rare-vX.Y.Z-release.apk`.
+      - name: Publish the signed APK as a GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_NAME: ${{ steps.vars.outputs.version_name }}
+        run: |
+          set -euo pipefail
+          apk="exports/rare-v${VERSION_NAME}-release.apk"
+          test -s "$apk"
+          tag="v${VERSION_NAME}-android"
+          checksum_file="$RUNNER_TEMP/rare-v${VERSION_NAME}-release.apk.sha256"
+          sha256sum "$apk" | sed "s#  .*#  rare-v${VERSION_NAME}-release.apk#" > "$checksum_file"
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          RARE ${VERSION_NAME} Android release
+
+          - Built from commit ${GITHUB_SHA}
+          - Signed with the permanent RARE release key
+          - SHA-256: see the attached .sha256 file
+          EOF
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag already exists; uploading/replacing assets."
+            gh release upload "$tag" "$apk" "$checksum_file" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" "$apk" "$checksum_file" \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "RARE Android ${VERSION_NAME}" --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,assets --jq '{tagName,isDraft,assets:[.assets[].name]}'
 
   emulator:
     name: Install and launch on an Android emulator
