@@ -45,6 +45,8 @@ import { runDocumentsIncrementTests } from './test_documents_increment.js';
 import { runResearchIncrementTests } from './test_research_increment.js';
 import { runRepoHygieneTests } from './test_repo_hygiene.js';
 import { runBm25Tests } from './test_bm25.js';
+import { runMcpTests } from './test_mcp_client.js';
+import { runWebSearchProviderTests } from './test_web_search_providers.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -183,6 +185,8 @@ async function main() {
     await runRepoHygieneTests();
     console.log();
     await runBm25Tests();
+    await runMcpTests();
+    await runWebSearchProviderTests();
     console.log();
     await runKeepAliveTests();
     console.log();

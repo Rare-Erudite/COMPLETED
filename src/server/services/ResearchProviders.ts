@@ -326,10 +326,125 @@ const duckDuckGoProvider: ResearchProvider = {
 };
 
 // ---------------------------------------------------------------------------
+// Brave Search — general web index, keyed
+//
+// The gap the inventory recorded: "research" could not answer a general web
+// question because every connector was encyclopedic or academic. Brave is a
+// real independent web index with a documented API. It is keyed, so it is
+// available only when BRAVE_SEARCH_API_KEY is set — and `available()` says so
+// rather than silently returning nothing.
+// ---------------------------------------------------------------------------
+
+const braveProvider: ResearchProvider = {
+  id: 'brave',
+  name: 'Brave Search',
+  categories: ['web', 'news'],
+  available: () => Boolean(process.env.BRAVE_SEARCH_API_KEY),
+  async search({ query, limit }) {
+    const key = process.env.BRAVE_SEARCH_API_KEY;
+    if (!key) throw new Error('BRAVE_SEARCH_API_KEY is not configured.');
+    const url = new URL('https://api.search.brave.com/res/v1/web/search');
+    url.search = new URLSearchParams({ q: query, count: String(Math.min(limit, 20)) }).toString();
+    const data = await getJson(url.toString(), {
+      'X-Subscription-Token': key,
+      Accept: 'application/json',
+    });
+    return (data?.web?.results || []).map((item: any) => ({
+      title: String(item.title || 'Brave result'),
+      url: String(item.url || 'https://search.brave.com/'),
+      provider: 'brave',
+      category: 'web' as SourceCategory,
+      credibility: 0.6,
+      date: item.age ? String(item.age) : item.page_age?.slice(0, 10) || '',
+      snippet: stripHtml(String(item.description || '')).slice(0, 1000),
+    }));
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Tavily — search API built for LLM grounding, keyed
+// ---------------------------------------------------------------------------
+
+const tavilyProvider: ResearchProvider = {
+  id: 'tavily',
+  name: 'Tavily',
+  categories: ['web', 'news'],
+  available: () => Boolean(process.env.TAVILY_API_KEY),
+  async search({ query, limit }) {
+    const key = process.env.TAVILY_API_KEY;
+    if (!key) throw new Error('TAVILY_API_KEY is not configured.');
+    // Tavily's API is POST-only, and safeFetch is deliberately GET-only (it is
+    // the SSRF guard for user-supplied URLs). The endpoint here is a fixed
+    // constant, so there is no user-controlled host to guard against.
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        api_key: key,
+        query,
+        max_results: Math.min(limit, 20),
+        include_answer: false,
+        search_depth: 'basic',
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      throw new Error(`Tavily returned HTTP ${response.status}.`);
+    }
+    const data = await response.json() as any;
+    return (data?.results || []).map((item: any) => ({
+      title: String(item.title || 'Tavily result'),
+      url: String(item.url || 'https://tavily.com/'),
+      provider: 'tavily',
+      category: 'web' as SourceCategory,
+      credibility: 0.62,
+      date: item.published_date ? String(item.published_date).slice(0, 10) : '',
+      snippet: stripHtml(String(item.content || '')).slice(0, 1000),
+    }));
+  },
+};
+
+// ---------------------------------------------------------------------------
+// SearXNG — self-hosted meta-search, no key
+//
+// Available when SEARXNG_URL points at an instance the operator runs. This is
+// the zero-cost path: no vendor key, no per-query billing, and the operator
+// controls the upstream engines.
+// ---------------------------------------------------------------------------
+
+const searxngProvider: ResearchProvider = {
+  id: 'searxng',
+  name: 'SearXNG',
+  categories: ['web', 'news'],
+  available: () => Boolean(process.env.SEARXNG_URL),
+  async search({ query, limit }) {
+    const base = process.env.SEARXNG_URL;
+    if (!base) throw new Error('SEARXNG_URL is not configured.');
+    const url = new URL('/search', base);
+    url.search = new URLSearchParams({ q: query, format: 'json', categories: 'general' }).toString();
+    const data = await getJson(url.toString());
+    return (data?.results || []).slice(0, limit).map((item: any) => ({
+      title: String(item.title || 'SearXNG result'),
+      url: String(item.url || base),
+      provider: 'searxng',
+      category: 'web' as SourceCategory,
+      credibility: 0.55,
+      date: item.publishedDate ? String(item.publishedDate).slice(0, 10) : '',
+      snippet: stripHtml(String(item.content || '')).slice(0, 1000),
+    }));
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
 const PROVIDERS: ResearchProvider[] = [
+  // General web first: a web question should hit a web index before an
+  // encyclopedia. Keyed providers are skipped automatically when unset.
+  braveProvider,
+  tavilyProvider,
+  searxngProvider,
   wikipediaProvider,
   crossrefProvider,
   openAlexProvider,

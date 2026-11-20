@@ -41,6 +41,7 @@ import { resolveSpeechProvider, LocalWhisperProvider } from './src/server/conten
 import { type ProjectTemplate } from './src/server/builder/ProjectScaffolder.js';
 import { detectToolchains, type ToolchainCapability } from './src/server/builder/ToolchainRegistry.js';
 import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
+import { McpClientManager } from './src/server/mcp/McpClientManager.js';
 import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
@@ -464,7 +465,7 @@ const requireAuthenticatedSession: express.RequestHandler = async (
       '/api/updates/apply', '/api/updates/publish', '/api/research/search',
       '/api/images/generate', '/api/images/edit', '/api/documents/transcribe',
       '/api/v1/tasks/execute', '/api/voice/chat', '/api/voice/transcribe',
-      '/api/voice/tts', '/api/voice/synthesize',
+      '/api/voice/tts', '/api/voice/synthesize', '/api/mcp/call',
     ].includes(req.originalUrl.split('?')[0])) {
       return res.status(403).json({ error: { message: 'Create an account to use this operation.' } });
     }
@@ -5871,6 +5872,60 @@ app.get('/api/plugins', async (req, res) => {
     console.error('[Plugins] Private plugin settings read failed:', error);
     res.status(503).json({ error: { message: 'Plugin settings are unavailable.' } });
   }
+});
+
+// -----------------------------------------------------------------------------
+// MCP — a real Model Context Protocol client
+//
+// The static `pluginsDirectory` above is RARE's built-in capability catalogue.
+// This is the extensibility system: it connects to actual MCP servers over
+// stdio/SSE/HTTP, performs the protocol handshake, discovers their tools and
+// exposes them for execution. Servers come from RARE_MCP_SERVERS (operator
+// configured), so a user cannot make the server spawn an arbitrary command.
+// -----------------------------------------------------------------------------
+const mcpManager = McpClientManager.fromEnvironment();
+let mcpConnectPromise: Promise<unknown> | null = null;
+
+function ensureMcpConnected(): Promise<unknown> {
+  if (!mcpConnectPromise) {
+    mcpConnectPromise = mcpManager.connectAll().catch((error) => {
+      console.error('[MCP] connectAll failed:', error);
+      return [];
+    });
+  }
+  return mcpConnectPromise;
+}
+
+app.get('/api/mcp/servers', async (_req, res) => {
+  await ensureMcpConnected();
+  res.json({
+    configured: mcpManager.statuses().length > 0,
+    configurationError: mcpManager.configurationError ?? null,
+    servers: mcpManager.statuses(),
+  });
+});
+
+app.get('/api/mcp/tools', async (_req, res) => {
+  await ensureMcpConnected();
+  res.json({
+    tools: mcpManager.listTools().map((tool) => ({
+      serverId: tool.serverId,
+      name: tool.name,
+      qualifiedName: tool.qualifiedName,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    })),
+  });
+});
+
+app.post('/api/mcp/call', async (req, res) => {
+  const { tool, arguments: args } = req.body ?? {};
+  if (typeof tool !== 'string' || !tool) {
+    return res.status(400).json({ error: { message: 'A qualified tool name is required.' } });
+  }
+  await ensureMcpConnected();
+  const result = await mcpManager.callTool(tool, (args && typeof args === 'object') ? args : {});
+  res.status(result.ok ? 200 : 502).json(result);
 });
 
 app.post('/api/plugins/:id/toggle', async (req, res) => {

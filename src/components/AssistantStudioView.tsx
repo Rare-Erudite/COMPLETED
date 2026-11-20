@@ -21,6 +21,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../api.js';
 import { ThemeConfig } from '../theme';
+import { device, getDeviceCapabilities, isDeviceBridgeAvailable, type DeviceCapabilities } from '../device/deviceBridge.js';
+import { getVoiceAvailability, isNativeVoiceAvailable, listenOnce, speakNative, stopNativeSpeech } from '../device/voiceBridge.js';
 import {
   Bot,
   FileText,
@@ -206,7 +208,29 @@ interface ActionLogEntry {
 
 export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: AssistantStudioViewProps) {
   const platform = useMemo<AssistantPlatform>(() => detectPlatform(), []);
-  const capabilities = useMemo<AssistantCapability[]>(() => buildCapabilities(platform), [platform]);
+  const capabilities = useMemo<AssistantCapability[]>(() => {
+    const base = buildCapabilities(platform);
+    // Inside the Android shell the native recogniser/TTS replace the browser
+    // APIs, and the native path can work offline. Report the platform's own
+    // answer rather than assuming.
+    const native = getVoiceAvailability();
+    if (!native) return base;
+    return base.map((capability) => {
+      if (capability.id === 'voice_input' && native.recognition) {
+        return {
+          ...capability,
+          available: true,
+          detail: native.onDevice
+            ? 'On-device speech recognition is available and works offline.'
+            : 'Device speech recognition is available (may use the network).',
+        };
+      }
+      if (capability.id === 'voice_output' && native.tts) {
+        return { ...capability, available: true, detail: 'The device text-to-speech engine is used for spoken answers.' };
+      }
+      return capability;
+    });
+  }, [platform]);
   const speechRecognitionSupported = capabilities.find((c) => c.id === 'voice_input')?.available ?? false;
   const speechOutputSupported = capabilities.find((c) => c.id === 'voice_output')?.available ?? false;
 
@@ -217,11 +241,27 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
   const [reply, setReply] = useState('');
   const [log, setLog] = useState<ActionLogEntry[]>([]);
   const [micError, setMicError] = useState('');
+  const [deviceCaps, setDeviceCaps] = useState<DeviceCapabilities | null>(null);
+  const [deviceLog, setDeviceLog] = useState<string>('');
+
+  // The native device layer reports its own state. Poll it so the panel shows
+  // the truth after the user returns from a Settings screen.
+  useEffect(() => {
+    if (!isDeviceBridgeAvailable()) return;
+    const refresh = () => setDeviceCaps(getDeviceCapabilities());
+    refresh();
+    const timer = window.setInterval(refresh, 4000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   const speak = useCallback((text: string) => {
-    if (!speakReplies || !speechOutputSupported || !text.trim()) return;
+    if (!speakReplies || !text.trim()) return;
+    // Prefer the device's own TTS inside the Android shell: it works offline
+    // and does not depend on the WebView exposing speechSynthesis.
+    if (isNativeVoiceAvailable() && speakNative(text.slice(0, 600))) return;
+    if (!speechOutputSupported) return;
     try {
       const utterance = new SpeechSynthesisUtterance(text.slice(0, 600));
       utterance.rate = 1;
@@ -239,6 +279,13 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
     ].slice(0, 12));
   }, []);
 
+  const runDeviceAction = useCallback((label: string, action: () => { ok: boolean; message?: string; error?: string }) => {
+    const result = action();
+    setDeviceLog(result.ok ? `${label}: ${result.message || 'done'}` : `${label} failed: ${result.error || 'unknown error'}`);
+    setDeviceCaps(getDeviceCapabilities());
+    record(label, result.ok, result.ok ? (result.message || 'done') : (result.error || 'failed'));
+  }, [record]);
+
   const stopListening = useCallback(() => {
     try {
       recognitionRef.current?.stop();
@@ -250,6 +297,19 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
   }, []);
 
   const startListening = useCallback(() => {
+    // Inside the RARE Android shell, use the device's own recogniser first: it
+    // can run offline and does not depend on the WebView exposing Web Speech.
+    if (isNativeVoiceAvailable()) {
+      setMicError('');
+      setListening(true);
+      listenOnce()
+        .then((transcript) => {
+          if (transcript) setCommand(transcript);
+        })
+        .catch((error: Error) => setMicError(error.message))
+        .finally(() => setListening(false));
+      return;
+    }
     const Ctor = getSpeechRecognition();
     if (!Ctor) {
       setMicError('Speech recognition is not available in this browser.');
@@ -288,6 +348,7 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
 
   useEffect(() => () => {
     stopListening();
+    stopNativeSpeech();
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
   }, [stopListening]);
 
@@ -544,6 +605,93 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Device control (Android shell only) */}
+      <div className="border border-slate-800 rounded-xl bg-slate-900/30 p-6 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          <Smartphone className="w-4 h-4 text-cyan-400" />
+          <span>Device control</span>
+        </div>
+        {!isDeviceBridgeAvailable() ? (
+          <p className="text-[11px] text-slate-500">
+            Device control is only available in the RARE Android app. In a browser tab the assistant cannot read the
+            screen or operate the phone, and this panel will not pretend otherwise.
+          </p>
+        ) : (
+          <>
+            <p className="text-[11px] text-slate-500">
+              Each permission below is granted by you in Android Settings. RARE reports the real state and never
+              claims a capability it has not been granted.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {[
+                { key: 'accessibility', label: 'Screen reading & taps', granted: !!deviceCaps?.accessibility, request: device.requestAccessibility },
+                { key: 'notifications', label: 'Notification access', granted: !!deviceCaps?.notifications, request: device.requestNotificationAccess },
+                { key: 'overlay', label: 'Floating status pill', granted: !!deviceCaps?.overlay, request: device.requestOverlay },
+              ].map((row) => (
+                <div key={row.key} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {row.granted ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    )}
+                    <span className="text-xs text-slate-300 truncate">{row.label}</span>
+                  </div>
+                  {!row.granted && (
+                    <button
+                      onClick={() => runDeviceAction(row.label, row.request)}
+                      className="px-2 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white text-[10px] font-medium cursor-pointer transition shrink-0"
+                    >
+                      Enable
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                onClick={() => runDeviceAction('Read screen', device.describeScreen)}
+                className="px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] cursor-pointer transition"
+              >
+                Read screen
+              </button>
+              <button
+                onClick={() => runDeviceAction('Notifications', () => device.notifications(10))}
+                className="px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] cursor-pointer transition"
+              >
+                Read notifications
+              </button>
+              <button
+                onClick={() => runDeviceAction('Home', () => device.globalAction('home'))}
+                className="px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] cursor-pointer transition"
+              >
+                Home
+              </button>
+              <button
+                onClick={() => runDeviceAction('Back', () => device.globalAction('back'))}
+                className="px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] cursor-pointer transition"
+              >
+                Back
+              </button>
+              <button
+                onClick={() => runDeviceAction('Background service', device.startBackgroundService)}
+                className="px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] cursor-pointer transition"
+              >
+                Keep alive
+              </button>
+            </div>
+            {deviceLog && (
+              <div className="text-[11px] font-mono text-slate-400 bg-slate-950/60 border border-slate-800 rounded-lg p-2 break-words">
+                {deviceLog}
+              </div>
+            )}
+            {deviceCaps?.foregroundPackage && (
+              <div className="text-[10px] text-slate-500 font-mono">Foreground: {deviceCaps.foregroundPackage}</div>
+            )}
+          </>
         )}
       </div>
 

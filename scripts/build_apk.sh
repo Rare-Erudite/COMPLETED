@@ -68,6 +68,7 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/src/com/rare/ai/intelligence"
 mkdir -p "$BUILD_DIR/bin/classes"
 mkdir -p "$BUILD_DIR/res/values"
+mkdir -p "$BUILD_DIR/res/xml"
 mkdir -p "$BUILD_DIR/res/mipmap-mdpi"
 mkdir -p "$BUILD_DIR/res/mipmap-hdpi"
 mkdir -p "$BUILD_DIR/res/mipmap-xhdpi"
@@ -97,8 +98,16 @@ cat << 'EOF' > "$BUILD_DIR/res/values/strings.xml"
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">RARE</string>
+    <string name="accessibility_summary">Lets RARE read the screen and perform taps, typing and navigation on your behalf.</string>
+    <string name="accessibility_description">RARE uses this service to operate the phone for you: it reads the current screen, taps controls, types text, scrolls and opens apps. It never reads password fields, and it only acts when you ask it to. You can turn it off at any time in Settings.</string>
 </resources>
 EOF
+
+# Device-control layer sources. These are real, reviewable Java files under
+# android/device/ rather than heredocs, so the accessibility service, the
+# notification listener, the overlay and the bridge can be audited in the repo.
+cp android/device/*.java "$BUILD_DIR/src/com/rare/ai/intelligence/"
+cp android/device/res/xml/rare_accessibility_service.xml "$BUILD_DIR/res/xml/"
 
 cat << EOF > "$BUILD_DIR/AndroidManifest.xml"
 <?xml version="1.0" encoding="utf-8"?>
@@ -127,6 +136,13 @@ cat << EOF > "$BUILD_DIR/AndroidManifest.xml"
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- Device-control layer. SYSTEM_ALERT_WINDOW is the floating status pill;
+         FOREGROUND_SERVICE keeps the device layer alive during a task;
+         POST_NOTIFICATIONS lets the foreground service show its notice. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
@@ -152,6 +168,37 @@ cat << EOF > "$BUILD_DIR/AndroidManifest.xml"
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Device-control layer: accessibility service, notification listener,
+             foreground service. All three are user-enabled from Settings; none
+             is granted automatically. -->
+        <service
+            android:name="com.rare.ai.intelligence.RareAccessibilityService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/rare_accessibility_service" />
+        </service>
+
+        <service
+            android:name="com.rare.ai.intelligence.RareNotificationListener"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name="com.rare.ai.intelligence.RareDeviceService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
     </application>
 </manifest>
 EOF
@@ -218,6 +265,8 @@ public class MainActivity extends Activity {
     private static final String ACTION_INSTALL_RESULT = "com.rare.ai.intelligence.INSTALL_RESULT";
 
     private WebView mWebView;
+    /** Exposed so the voice bridge can deliver async transcripts to the page. */
+    static volatile WebView currentWebView;
     private FrameLayout mRootLayout;
     private LinearLayout mSplashLayout;
     private ProgressBar mProgressBar;
@@ -248,6 +297,14 @@ public class MainActivity extends Activity {
         // this bridge only streams the verified bytes into a PackageInstaller
         // session and hands control to Android's own confirmation dialog.
         mWebView.addJavascriptInterface(new InstallerBridge(), "RareInstaller");
+        // Device-control bridge: screen reading, taps, typing, notifications,
+        // overlay and the background service. Every call reports the real
+        // result of the platform action, never an assumed one.
+        mWebView.addJavascriptInterface(new DeviceBridge(this), "RareDevice");
+        // On-device speech: Android's own recogniser and TTS, which work offline
+        // when the device has an offline language pack.
+        mWebView.addJavascriptInterface(new VoiceBridge(this), "RareVoice");
+        currentWebView = mWebView;
         mRootLayout.addView(mWebView);
 
         setupSplashScreen();
@@ -874,8 +931,7 @@ echo "=== [6/8] Compiling Java Bytecode with ECJ ==="
 ECJ="${ECJ:-$(command -v ecj || true)}"
 if [ -n "$ECJ" ] && [ -x "$ECJ" ]; then
   "$ECJ" -proc:none -cp "$ANDROID_JAR" -source 1.8 -target 1.8 -d "$BUILD_DIR/bin/classes" \
-    "$BUILD_DIR/src/com/rare/ai/intelligence/R.java" \
-    "$BUILD_DIR/src/com/rare/ai/intelligence/MainActivity.java"
+    $(find "$BUILD_DIR/src" -name '*.java')
 else
   JAVAC="${JAVAC:-$(command -v javac || true)}"
   if [ -z "$JAVAC" ]; then
@@ -885,8 +941,7 @@ else
   echo "ecj not found; using javac at $JAVAC"
   "$JAVAC" -source 8 -target 8 -bootclasspath "$ANDROID_JAR" -classpath "$ANDROID_JAR" \
     -d "$BUILD_DIR/bin/classes" \
-    "$BUILD_DIR/src/com/rare/ai/intelligence/R.java" \
-    "$BUILD_DIR/src/com/rare/ai/intelligence/MainActivity.java"
+    $(find "$BUILD_DIR/src" -name '*.java')
 fi
 
 echo "=== [7/8] Converting Bytecode to Dalvik classes.dex ==="
