@@ -148,7 +148,7 @@ for aar in "$VOSK_AAR" "$JNA_AAR"; do
     done
   fi
 done
-VOSK_CLASSPATH="$(ls "$BUILD_DIR"/libs/*.jar | tr '\n' ':')"
+VOSK_CLASSPATH="$(ls "$BUILD_DIR"/libs/*.jar | tr '\n' ':' | sed 's/:$//')"
 echo "Vosk/JNA classpath: $VOSK_CLASSPATH"
 echo "Native ABIs: $(ls "$BUILD_DIR/lib" | tr '\n' ' ')"
 
@@ -1010,11 +1010,9 @@ if [[ "$D8" == *.jar ]]; then
     exit 1
   fi
   "$JAVA" -cp "$D8" com.android.tools.r8.D8 --lib "$ANDROID_JAR" --min-api 21 --output "$BUILD_DIR/bin" \
-    --classpath "$VOSK_CLASSPATH" \
     $(find "$BUILD_DIR/bin/classes" -name '*.class') $(ls "$BUILD_DIR"/libs/*.jar)
 else
   "$D8" --lib "$ANDROID_JAR" --min-api 21 --output "$BUILD_DIR/bin" \
-    --classpath "$VOSK_CLASSPATH" \
     $(find "$BUILD_DIR/bin/classes" -name '*.class') $(ls "$BUILD_DIR"/libs/*.jar)
 fi
 
