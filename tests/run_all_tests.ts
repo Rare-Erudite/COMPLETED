@@ -40,6 +40,7 @@ import { runKeepAliveTests } from './test_keepalive.js';
 import { runServerlessFrontendAvailabilityTests } from './test_serverless_frontend.js';
 import { runContentEngineTests } from './test_content_engine.js';
 import { runChatPipelineTests } from './test_chat_pipeline.js';
+import { runDeviceActionTests } from './test_device_actions.js';
 import { runDiarizationTests } from './test_diarization.js';
 import { runDocumentsIncrementTests } from './test_documents_increment.js';
 import { runResearchIncrementTests } from './test_research_increment.js';
@@ -207,6 +208,7 @@ async function main() {
     await runContentEngineTests();
     console.log();
     await runChatPipelineTests();
+    await runDeviceActionTests();
     console.log();
     await runDiarizationTests();
     console.log();

@@ -48,6 +48,8 @@ import { prepareConversationContext } from './src/server/providers/ConversationC
 import { extractMemories } from './src/server/chat/MemoryExtractor.js';
 import { routeChatIntent } from './src/server/chat/IntentRouter.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
+import { DevicePlanner } from './src/server/device/DevicePlanner.js';
+import { DEVICE_ACTIONS } from './src/device/deviceActions.js';
 import { BenchmarkSuite } from './src/server/evaluation/BenchmarkSuite.js';
 import { engine } from './src/engine/engine.ts';
 import { googleTtsProvider } from './src/server/providers/GoogleTtsProvider.js';
@@ -147,6 +149,9 @@ let documentsService: DocumentsService | undefined;
 const toolExecutor = new ToolExecutor(memoryStore, checkpointStore);
 const providerRegistry = new ProviderRegistry(memoryStore, toolExecutor);
 const selfDevEngine = new SelfDevelopmentEngine(checkpointStore, trajectoryStore, toolExecutor);
+// The device planner decides the next phone action for the on-device agent loop.
+// It only plans; the device performs. See src/device/deviceAgent.ts.
+const devicePlanner = new DevicePlanner(providerRegistry);
 const benchmarkSuite = new BenchmarkSuite(toolExecutor, memoryStore, checkpointStore);
 
 // -----------------------------------------------------------------------------
@@ -4086,6 +4091,52 @@ app.get('/api/builder/toolchains', async (req, res) => {
     res.status(503).json({
       error: { message: 'Toolchain detection could not be completed on this host.' },
     });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// Device agent — the "model plans" half of the plan → act → observe loop.
+//
+// The client (src/device/deviceAgent.ts) reads the screen, calls this route for
+// the next action, performs it through the native bridge, and calls again with
+// the result. This route only decides; it never touches a phone. Every proposed
+// action is validated against the canonical catalogue before it is returned.
+// -----------------------------------------------------------------------------
+app.get('/api/device/actions', (_req, res) => {
+  res.json({
+    actions: DEVICE_ACTIONS.map((action) => ({
+      name: action.name,
+      description: action.description,
+      params: action.params,
+      mutating: action.mutating,
+      sensitive: action.sensitive,
+    })),
+  });
+});
+
+app.post('/api/device/plan', async (req, res) => {
+  const body = req.body ?? {};
+  const objective = typeof body.objective === 'string' ? body.objective.trim() : '';
+  if (!objective || objective.length > 2000) {
+    return res.status(400).json({ error: { message: 'A device task objective of at most 2,000 characters is required.' } });
+  }
+  const screen = typeof body.screen === 'string' ? body.screen : '';
+  const step = Number.isFinite(body.step) ? Math.max(1, Math.floor(body.step)) : 1;
+  const maxSteps = Number.isFinite(body.maxSteps) ? Math.min(Math.max(Math.floor(body.maxSteps), 1), 30) : 12;
+  const history = Array.isArray(body.history) ? body.history.slice(-12) : [];
+  try {
+    const decision = await devicePlanner.planNextAction({
+      objective,
+      screen,
+      history,
+      approved: body.approved === true,
+      step,
+      maxSteps,
+    });
+    res.json(decision);
+  } catch (error) {
+    console.error('[Device] Planning failed:', error);
+    res.status(502).json({ error: { message: 'The device planner could not produce a next action.' } });
   }
 });
 

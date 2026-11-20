@@ -199,6 +199,15 @@ cat << EOF > "$BUILD_DIR/AndroidManifest.xml"
             android:name="com.rare.ai.intelligence.RareDeviceService"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
+
+        <!-- Wake word ("Hey Rae"): a foreground service that keeps Android's own
+             SpeechRecognizer listening in short cycles. It is user-started and
+             user-stopped from the Assistant panel; it does not run when the app
+             is force-stopped or the phone is locked. -->
+        <service
+            android:name="com.rare.ai.intelligence.RareWakeWordService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
     </application>
 </manifest>
 EOF
@@ -304,6 +313,9 @@ public class MainActivity extends Activity {
         // On-device speech: Android's own recogniser and TTS, which work offline
         // when the device has an offline language pack.
         mWebView.addJavascriptInterface(new VoiceBridge(this), "RareVoice");
+        // Wake-word bridge: start/stop the "Hey Rae" foreground service and read
+        // its real state. It never reports listening unless the service runs.
+        mWebView.addJavascriptInterface(new WakeWordBridge(this), "RareWake");
         currentWebView = mWebView;
         mRootLayout.addView(mWebView);
 

@@ -23,6 +23,8 @@ import { apiFetch } from '../api.js';
 import { ThemeConfig } from '../theme';
 import { device, getDeviceCapabilities, isDeviceBridgeAvailable, type DeviceCapabilities } from '../device/deviceBridge.js';
 import { getVoiceAvailability, isNativeVoiceAvailable, listenOnce, speakNative, stopNativeSpeech } from '../device/voiceBridge.js';
+import { runDeviceTask, type AgentStep } from '../device/deviceAgent.js';
+import { getWakeStatus, isWakeWordAvailable, startWakeWord, stopWakeWord } from '../device/wakeWordBridge.js';
 import {
   Bot,
   FileText,
@@ -244,6 +246,17 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
   const [deviceCaps, setDeviceCaps] = useState<DeviceCapabilities | null>(null);
   const [deviceLog, setDeviceLog] = useState<string>('');
 
+  // Autonomous device task: the model plans, the device acts, results feed back.
+  const [taskObjective, setTaskObjective] = useState('');
+  const [taskRunning, setTaskRunning] = useState(false);
+  const [taskSteps, setTaskSteps] = useState<AgentStep[]>([]);
+  const [taskSummary, setTaskSummary] = useState('');
+  const [taskError, setTaskError] = useState('');
+  const taskAbortRef = useRef<AbortController | null>(null);
+
+  // Wake word ("Hey Rae") — a foreground service on Android.
+  const [wakeStatus, setWakeStatus] = useState(() => getWakeStatus());
+
   // The native device layer reports its own state. Poll it so the panel shows
   // the truth after the user returns from a Settings screen.
   useEffect(() => {
@@ -285,6 +298,52 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
     setDeviceCaps(getDeviceCapabilities());
     record(label, result.ok, result.ok ? (result.message || 'done') : (result.error || 'failed'));
   }, [record]);
+
+  const startAutonomousTask = useCallback(async () => {
+    const objective = taskObjective.trim();
+    if (!objective || taskRunning) return;
+    setTaskRunning(true);
+    setTaskSteps([]);
+    setTaskSummary('');
+    setTaskError('');
+    const controller = new AbortController();
+    taskAbortRef.current = controller;
+    try {
+      const result = await runDeviceTask({
+        objective,
+        maxSteps: 12,
+        signal: controller.signal,
+        onStep: (step) => setTaskSteps((current) => [...current, step]),
+        // Mutating actions are confirmed once per task, not per step, so a
+        // multi-step task is not a wall of dialogs. The user sees the plan.
+        confirm: (action) => {
+          if (!action) return true;
+          return window.confirm(`RARE wants to run "${action.tool}" on this device. Allow it?`);
+        },
+      });
+      setTaskSummary(result.summary || (result.ok ? 'Task finished.' : ''));
+      if (result.error) setTaskError(result.error);
+      record('device_task', result.ok, result.summary || result.error || 'finished');
+      if (result.summary) speak(result.summary);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'The device task failed.';
+      setTaskError(message);
+      record('device_task', false, message);
+    } finally {
+      setTaskRunning(false);
+      taskAbortRef.current = null;
+    }
+  }, [taskObjective, taskRunning, record, speak]);
+
+  const stopAutonomousTask = useCallback(() => {
+    taskAbortRef.current?.abort();
+  }, []);
+
+  const toggleWakeWord = useCallback(() => {
+    const result = wakeStatus.running ? stopWakeWord() : startWakeWord();
+    setWakeStatus(getWakeStatus());
+    record('wake_word', result.ok, result.ok ? (result.message || 'toggled') : (result.error || 'failed'));
+  }, [wakeStatus.running, record]);
 
   const stopListening = useCallback(() => {
     try {
@@ -691,6 +750,100 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
             {deviceCaps?.foregroundPackage && (
               <div className="text-[10px] text-slate-500 font-mono">Foreground: {deviceCaps.foregroundPackage}</div>
             )}
+
+            {/* Wake word ("Hey Rae") — foreground service on Android. */}
+            <div className="pt-3 mt-1 border-t border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-semibold text-white">Wake word — "Hey Rae"</div>
+                  <div className="text-[11px] text-slate-500">{wakeStatus.detail}</div>
+                </div>
+                <button
+                  onClick={toggleWakeWord}
+                  disabled={!wakeStatus.available}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                    wakeStatus.running
+                      ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                  }`}
+                >
+                  {wakeStatus.running ? 'Stop' : 'Start'}
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-600">
+                Uses Android's own speech recogniser in a foreground service. Needs connectivity unless an offline
+                language pack is installed, and does not run when the app is force-stopped or the phone is locked.
+              </p>
+            </div>
+
+            {/* Autonomous multi-step task: model plans, device acts, results feed back. */}
+            <div className="pt-3 mt-1 border-t border-slate-800 space-y-2">
+              <div className="text-xs font-semibold text-white">Autonomous task</div>
+              <p className="text-[11px] text-slate-500">
+                Describe a multi-step phone task. The model plans each step, the device performs it, and the result is
+                read back before the next step. You confirm before RARE acts.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={taskObjective}
+                  onChange={(e) => setTaskObjective(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !taskRunning) void startAutonomousTask(); }}
+                  placeholder='e.g. "Open Settings and turn on Wi-Fi"'
+                  className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
+                  disabled={taskRunning}
+                />
+                {taskRunning ? (
+                  <button
+                    onClick={stopAutonomousTask}
+                    className="px-3 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold cursor-pointer transition"
+                  >
+                    Stop
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => void startAutonomousTask()}
+                    disabled={!taskObjective.trim()}
+                    className="px-3 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold cursor-pointer transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Run task
+                  </button>
+                )}
+              </div>
+              {taskSteps.length > 0 && (
+                <div className="space-y-1 max-h-56 overflow-y-auto">
+                  {taskSteps.map((step) => (
+                    <div key={step.index} className="flex items-start gap-2 text-[11px] font-mono bg-slate-950/60 border border-slate-800 rounded-lg p-2">
+                      {step.error ? (
+                        <AlertCircle className="w-3 h-3 text-amber-400 mt-0.5 shrink-0" />
+                      ) : step.result?.ok === false ? (
+                        <AlertCircle className="w-3 h-3 text-rose-400 mt-0.5 shrink-0" />
+                      ) : (
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400 mt-0.5 shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-slate-300">
+                          {step.index}. {step.action ? `${step.action.tool}(${JSON.stringify(step.action.args)})` : 'finish'}
+                        </div>
+                        {step.reasoning && <div className="text-slate-500">{step.reasoning}</div>}
+                        {step.result && (
+                          <div className={step.result.ok ? 'text-emerald-400/80' : 'text-rose-400/80'}>
+                            {step.result.ok ? (step.result.message || 'ok') : (step.result.error || 'failed')}
+                          </div>
+                        )}
+                        {step.error && <div className="text-amber-400/80">{step.error}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {taskSummary && (
+                <div className="text-[11px] text-emerald-300 bg-emerald-950/30 border border-emerald-900 rounded-lg p-2">{taskSummary}</div>
+              )}
+              {taskError && (
+                <div className="text-[11px] text-amber-300 bg-amber-950/30 border border-amber-900 rounded-lg p-2">{taskError}</div>
+              )}
+            </div>
           </>
         )}
       </div>
