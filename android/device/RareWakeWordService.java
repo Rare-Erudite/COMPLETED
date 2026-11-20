@@ -99,45 +99,56 @@ public class RareWakeWordService extends Service {
             Log.w(TAG, lastStatus);
             return;
         }
-        main.post(() -> {
-            try {
-                if (recognizer == null) {
-                    recognizer = SpeechRecognizer.createSpeechRecognizer(this);
-                    recognizer.setRecognitionListener(listener);
+        main.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (recognizer == null) {
+                        recognizer = SpeechRecognizer.createSpeechRecognizer(RareWakeWordService.this);
+                        recognizer.setRecognitionListener(listener);
+                    }
+                    Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+                    intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+                    intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+                    intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString());
+                    intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+                    listening = true;
+                    lastStatus = "listening";
+                    recognizer.startListening(intent);
+                } catch (Exception e) {
+                    lastStatus = "error: " + e.getMessage();
+                    Log.e(TAG, "Could not start listening", e);
+                    scheduleRestart(3000);
                 }
-                Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-                intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString());
-                intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-                listening = true;
-                lastStatus = "listening";
-                recognizer.startListening(intent);
-            } catch (Exception e) {
-                lastStatus = "error: " + e.getMessage();
-                Log.e(TAG, "Could not start listening", e);
-                scheduleRestart(3000);
             }
         });
     }
 
     private void stopRecognizer() {
-        main.post(() -> {
-            try {
-                if (recognizer != null) {
-                    recognizer.cancel();
-                    recognizer.destroy();
-                    recognizer = null;
+        main.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (recognizer != null) {
+                        recognizer.cancel();
+                        recognizer.destroy();
+                        recognizer = null;
+                    }
+                } catch (Exception ignored) {
                 }
-            } catch (Exception ignored) {
+                listening = false;
             }
-            listening = false;
         });
     }
 
     private void scheduleRestart(long delayMs) {
         if (destroyed) return;
-        main.postDelayed(this::startCycle, delayMs);
+        main.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                startCycle();
+            }
+        }, delayMs);
     }
 
     /** True when the transcript contains the wake phrase. */
