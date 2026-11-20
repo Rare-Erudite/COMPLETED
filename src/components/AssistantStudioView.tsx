@@ -26,6 +26,14 @@ import { getVoiceAvailability, isNativeVoiceAvailable, listenOnce, speakNative, 
 import { runDeviceTask, type AgentStep } from '../device/deviceAgent.js';
 import { getWakeStatus, isWakeWordAvailable, startWakeWord, stopWakeWord } from '../device/wakeWordBridge.js';
 import {
+  deleteOfflineModel,
+  downloadOfflineModel,
+  formatBytes,
+  getOfflineWakeStatus,
+  isOfflineWakeAvailable,
+  type OfflineWakeStatus,
+} from '../device/offlineWakeBridge.js';
+import {
   Bot,
   FileText,
   Globe,
@@ -256,6 +264,8 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
 
   // Wake word ("Hey Rae") — a foreground service on Android.
   const [wakeStatus, setWakeStatus] = useState(() => getWakeStatus());
+  // Optional offline engine (Vosk). Reports the real state of the model on disk.
+  const [offlineWake, setOfflineWake] = useState<OfflineWakeStatus>(() => getOfflineWakeStatus());
 
   // The native device layer reports its own state. Poll it so the panel shows
   // the truth after the user returns from a Settings screen.
@@ -344,6 +354,28 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
     setWakeStatus(getWakeStatus());
     record('wake_word', result.ok, result.ok ? (result.message || 'toggled') : (result.error || 'failed'));
   }, [wakeStatus.running, record]);
+
+  // Poll the offline model state while a download is in progress so the panel
+  // shows real progress rather than a spinner that never resolves.
+  useEffect(() => {
+    if (!isOfflineWakeAvailable()) return;
+    const refresh = () => setOfflineWake(getOfflineWakeStatus());
+    refresh();
+    const timer = window.setInterval(refresh, offlineWake.downloading ? 1000 : 5000);
+    return () => window.clearInterval(timer);
+  }, [offlineWake.downloading]);
+
+  const startOfflineDownload = useCallback(() => {
+    const result = downloadOfflineModel();
+    setOfflineWake(getOfflineWakeStatus());
+    record('offline_wake_download', result.ok, result.ok ? (result.message || 'started') : (result.error || 'failed'));
+  }, [record]);
+
+  const removeOfflineModel = useCallback(() => {
+    const result = deleteOfflineModel();
+    setOfflineWake(getOfflineWakeStatus());
+    record('offline_wake_delete', result.ok, result.ok ? (result.message || 'removed') : (result.error || 'failed'));
+  }, [record]);
 
   const stopListening = useCallback(() => {
     try {
@@ -774,6 +806,56 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
                 Uses Android's own speech recogniser in a foreground service. Needs connectivity unless an offline
                 language pack is installed, and does not run when the app is force-stopped or the phone is locked.
               </p>
+              {wakeStatus.engine && (
+                <p className="text-[10px] text-slate-500 font-mono">Engine: {wakeStatus.engine}</p>
+              )}
+
+              {/* Optional offline engine (Vosk). Downloaded on demand, runs with no network. */}
+              <div className="mt-2 rounded-lg border border-slate-800 bg-slate-950/50 p-2 space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-semibold text-slate-200">Offline engine (Vosk)</div>
+                    <div className="text-[10px] text-slate-500">
+                      {offlineWake.available
+                        ? offlineWake.ready
+                          ? `Installed — runs with no network. ${offlineWake.modelName}`
+                          : offlineWake.downloading
+                            ? `Downloading… ${offlineWake.progress}%`
+                            : `Not installed — ${formatBytes(offlineWake.downloadBytes)} download`
+                        : 'Only available in the RARE Android app.'}
+                    </div>
+                  </div>
+                  {offlineWake.available && (
+                    offlineWake.ready ? (
+                      <button
+                        onClick={removeOfflineModel}
+                        className="px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold cursor-pointer transition shrink-0"
+                      >
+                        Remove
+                      </button>
+                    ) : (
+                      <button
+                        onClick={startOfflineDownload}
+                        disabled={offlineWake.downloading}
+                        className="px-2.5 py-1 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-semibold cursor-pointer transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                      >
+                        {offlineWake.downloading ? `${offlineWake.progress}%` : 'Download'}
+                      </button>
+                    )
+                  )}
+                </div>
+                {offlineWake.available && offlineWake.downloading && (
+                  <div className="h-1 w-full rounded bg-slate-800 overflow-hidden">
+                    <div className="h-full bg-cyan-500 transition-all" style={{ width: `${offlineWake.progress}%` }} />
+                  </div>
+                )}
+                <p className="text-[10px] text-slate-600">
+                  Vosk and the {offlineWake.modelName} model are Apache-2.0. The download is{' '}
+                  {formatBytes(offlineWake.downloadBytes)}; about {formatBytes(offlineWake.unpackedBytes)} on disk. When
+                  installed, the wake word runs entirely on the device and falls back to the online recogniser if the
+                  model is removed.
+                </p>
+              </div>
             </div>
 
             {/* Autonomous multi-step task: model plans, device acts, results feed back. */}

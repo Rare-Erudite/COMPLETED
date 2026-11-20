@@ -109,6 +109,49 @@ EOF
 cp android/device/*.java "$BUILD_DIR/src/com/rare/ai/intelligence/"
 cp android/device/res/xml/rare_accessibility_service.xml "$BUILD_DIR/res/xml/"
 
+# -----------------------------------------------------------------------------
+# Optional offline hotword engine: Vosk (Apache-2.0) + JNA (Apache-2.0).
+#
+# The Vosk AAR ships the Java bindings (classes.jar) and the native libvosk.so
+# for each ABI; JNA ships libjnidispatch.so, which Vosk's bindings load. Both are
+# extracted here and packaged into the APK so the offline engine can run. The
+# MODEL is NOT bundled — the user downloads it from inside the app.
+# -----------------------------------------------------------------------------
+echo "=== [3b/8] Bundling Vosk + JNA (offline hotword engine) ==="
+VOSK_AAR="${VOSK_AAR:-}"
+JNA_AAR="${JNA_AAR:-}"
+VOSK_AAR_URL="https://repo1.maven.org/maven2/com/alphacephei/vosk-android/0.3.47/vosk-android-0.3.47.aar"
+JNA_AAR_URL="https://repo1.maven.org/maven2/net/java/dev/jna/jna/5.14.0/jna-5.14.0.aar"
+mkdir -p "$BUILD_DIR/libs" "$BUILD_DIR/lib"
+if [ -z "$VOSK_AAR" ] || [ ! -f "$VOSK_AAR" ]; then
+  VOSK_AAR="$BUILD_DIR/vosk-android.aar"
+  curl -fsSL -o "$VOSK_AAR" "$VOSK_AAR_URL"
+fi
+if [ -z "$JNA_AAR" ] || [ ! -f "$JNA_AAR" ]; then
+  JNA_AAR="$BUILD_DIR/jna.aar"
+  curl -fsSL -o "$JNA_AAR" "$JNA_AAR_URL"
+fi
+# Extract the Java bindings and the native libraries from each AAR.
+for aar in "$VOSK_AAR" "$JNA_AAR"; do
+  tmp="$BUILD_DIR/$(basename "$aar" .aar)-x"
+  rm -rf "$tmp"; mkdir -p "$tmp"
+  unzip -q "$aar" -d "$tmp"
+  if [ -f "$tmp/classes.jar" ]; then
+    cp "$tmp/classes.jar" "$BUILD_DIR/libs/$(basename "$aar" .aar)-classes.jar"
+  fi
+  if [ -d "$tmp/jni" ]; then
+    for abi in "$tmp"/jni/*; do
+      [ -d "$abi" ] || continue
+      abi_name="$(basename "$abi")"
+      mkdir -p "$BUILD_DIR/lib/$abi_name"
+      cp "$abi"/*.so "$BUILD_DIR/lib/$abi_name/" 2>/dev/null || true
+    done
+  fi
+done
+VOSK_CLASSPATH="$(ls "$BUILD_DIR"/libs/*.jar | tr '\n' ':')"
+echo "Vosk/JNA classpath: $VOSK_CLASSPATH"
+echo "Native ABIs: $(ls "$BUILD_DIR/lib" | tr '\n' ' ')"
+
 cat << EOF > "$BUILD_DIR/AndroidManifest.xml"
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -154,6 +197,7 @@ cat << EOF > "$BUILD_DIR/AndroidManifest.xml"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
+        android:extractNativeLibs="true"
         android:usesCleartextTraffic="false">
 
         <activity
@@ -951,7 +995,7 @@ else
     exit 1
   fi
   echo "ecj not found; using javac at $JAVAC"
-  "$JAVAC" -source 8 -target 8 -bootclasspath "$ANDROID_JAR" -classpath "$ANDROID_JAR" \
+  "$JAVAC" -source 8 -target 8 -bootclasspath "$ANDROID_JAR" -classpath "$ANDROID_JAR:$VOSK_CLASSPATH" \
     -d "$BUILD_DIR/bin/classes" \
     $(find "$BUILD_DIR/src" -name '*.java')
 fi
@@ -966,10 +1010,12 @@ if [[ "$D8" == *.jar ]]; then
     exit 1
   fi
   "$JAVA" -cp "$D8" com.android.tools.r8.D8 --lib "$ANDROID_JAR" --min-api 21 --output "$BUILD_DIR/bin" \
-    $(find "$BUILD_DIR/bin/classes" -name '*.class')
+    --classpath "$VOSK_CLASSPATH" \
+    $(find "$BUILD_DIR/bin/classes" -name '*.class') $(ls "$BUILD_DIR"/libs/*.jar)
 else
   "$D8" --lib "$ANDROID_JAR" --min-api 21 --output "$BUILD_DIR/bin" \
-    $(find "$BUILD_DIR/bin/classes" -name '*.class')
+    --classpath "$VOSK_CLASSPATH" \
+    $(find "$BUILD_DIR/bin/classes" -name '*.class') $(ls "$BUILD_DIR"/libs/*.jar)
 fi
 
 echo "=== [8/8] Packaging, Aligning & Signing Standalone Release APK ==="
@@ -983,6 +1029,15 @@ aapt package -f \
 # Inject classes.dex into the APK
 cd "$BUILD_DIR/bin"
 aapt add unaligned.apk classes.dex
+
+# Inject the native libraries (Vosk + JNA) under lib/<abi>/ so the offline
+# hotword engine can load them at runtime. `zip` stores the exact path given,
+# so we add them from a staging dir that mirrors the APK layout.
+if [ -d "$BUILD_DIR/lib" ]; then
+  ( cd "$BUILD_DIR" && zip -q -r "bin/unaligned.apk" lib )
+  echo "Native libraries packaged:"
+  unzip -l unaligned.apk | grep -E "lib/.*\.so" || true
+fi
 
 # 4-byte alignment
 zipalign -v -p 4 "$BUILD_DIR/bin/unaligned.apk" "$BUILD_DIR/bin/aligned.apk"

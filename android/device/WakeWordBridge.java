@@ -26,7 +26,62 @@ public class WakeWordBridge {
         String detail = running
                 ? RareWakeWordService.status()
                 : "The wake-word service is not running.";
-        return "{\"ok\":true,\"running\":" + running + ",\"detail\":\"" + escape(detail) + "\"}";
+        String engine = RareWakeWordService.activeEngine();
+        return "{\"ok\":true,\"running\":" + running
+                + ",\"engine\":\"" + escape(engine) + "\""
+                + ",\"detail\":\"" + escape(detail) + "\"}";
+    }
+
+    // -- optional offline (Vosk) engine -------------------------------------
+
+    /**
+     * Real state of the optional offline engine: whether the model is installed,
+     * whether a download is in progress, and the download size in bytes.
+     */
+    @JavascriptInterface
+    public String offlineStatus() {
+        boolean ready = VoskModelManager.isModelReady(context);
+        boolean downloading = VoskModelManager.isDownloading();
+        int progress = VoskModelManager.progress();
+        String state = VoskModelManager.status(context);
+        return "{\"ok\":true"
+                + ",\"ready\":" + ready
+                + ",\"downloading\":" + downloading
+                + ",\"progress\":" + progress
+                + ",\"downloadBytes\":" + VoskModelManager.MODEL_ZIP_BYTES
+                + ",\"unpackedBytes\":" + VoskModelManager.MODEL_UNPACKED_BYTES
+                + ",\"modelName\":\"" + escape(VoskModelManager.MODEL_NAME) + "\""
+                + ",\"licence\":\"" + escape(VoskModelManager.MODEL_LICENCE) + "\""
+                + ",\"state\":\"" + escape(state) + "\"}";
+    }
+
+    /**
+     * Downloads the model in the background. Returns immediately; the web layer
+     * polls offlineStatus() for progress. The download is ~41 MB and is only
+     * started by an explicit user action.
+     */
+    @JavascriptInterface
+    public String downloadOfflineModel() {
+        if (VoskModelManager.isModelReady(context)) {
+            return "{\"ok\":true,\"message\":\"The offline model is already installed.\"}";
+        }
+        if (VoskModelManager.isDownloading()) {
+            return "{\"ok\":true,\"message\":\"A download is already in progress.\"}";
+        }
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                VoskModelManager.download(context);
+            }
+        }, "rare-vosk-download").start();
+        return "{\"ok\":true,\"message\":\"Downloading the offline model (~41 MB).\"}";
+    }
+
+    /** Removes the downloaded model; the wake word falls back to the online engine. */
+    @JavascriptInterface
+    public String deleteOfflineModel() {
+        VoskModelManager.delete(context);
+        return "{\"ok\":true,\"message\":\"The offline model was removed.\"}";
     }
 
     @JavascriptInterface

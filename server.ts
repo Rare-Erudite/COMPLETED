@@ -151,7 +151,7 @@ const providerRegistry = new ProviderRegistry(memoryStore, toolExecutor);
 const selfDevEngine = new SelfDevelopmentEngine(checkpointStore, trajectoryStore, toolExecutor);
 // The device planner decides the next phone action for the on-device agent loop.
 // It only plans; the device performs. See src/device/deviceAgent.ts.
-const devicePlanner = new DevicePlanner(providerRegistry);
+const devicePlanner = new DevicePlanner(engine.orchestrator);
 const benchmarkSuite = new BenchmarkSuite(toolExecutor, memoryStore, checkpointStore);
 
 // -----------------------------------------------------------------------------
@@ -2311,6 +2311,19 @@ app.get('/api/v1/providers/available', async (_req, res) => {
       providers,
       activeProvider: engine.providers.getActiveProvider().id,
     });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: { message: err.message } });
+  }
+});
+
+// The intelligence layer's own health: what every provider really reports, what
+// the orchestrator would route a chat and a device-planning task to right now,
+// and the state of each per-provider circuit. This is the endpoint that proves
+// the device planner is wired to RARE's orchestration, not to a bare provider.
+app.get('/api/v1/orchestrator/health', async (_req, res) => {
+  try {
+    const health = await engine.orchestrator.health();
+    res.json({ success: true, health });
   } catch (err: any) {
     res.status(500).json({ success: false, error: { message: err.message } });
   }

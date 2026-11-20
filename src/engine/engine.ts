@@ -53,6 +53,7 @@ import {
   VerificationReport,
 } from './types.js';
 import { logger } from './security/logger.js';
+import { RareOrchestrator } from './orchestrator/orchestrator.js';
 
 export class RareIntelligenceEngine {
   private static instance: RareIntelligenceEngine;
@@ -76,6 +77,12 @@ export class RareIntelligenceEngine {
   public readonly assistant: AssistantFoundation;
   public readonly networkManager: NetworkTransitionManager;
   public readonly providerCircuitBreaker: CircuitBreaker;
+  /**
+   * The intelligence layer every capability goes through. It owns routing,
+   * task-aware model selection, tool calling, memory/context, the plan→act→
+   * observe loop, provider health and fallback. It is NOT a model.
+   */
+  public readonly orchestrator: RareOrchestrator;
 
   private operationalState: EngineOperationalState = 'STARTING';
   private operationalReport: OperationalStateReport | null = null;
@@ -151,6 +158,19 @@ export class RareIntelligenceEngine {
     );
     this.repair = new SelfRepairEngine(this.durableStore, this.tools);
     this.selfBuild = new ProjectBuildEngine(this.durableStore, this.tools);
+
+    // The orchestrator is constructed last: it needs the provider manager, the
+    // tool registry, durable memory and the network manager, all of which exist
+    // by this point. Every capability (chat, device planning, research, coding)
+    // routes through it rather than calling a provider directly.
+    this.orchestrator = new RareOrchestrator({
+      providers: this.providers,
+      tools: this.tools,
+      memory: this.memory,
+      networkManager: this.networkManager,
+      workspaceRoot: this.config.workspace.rootDir,
+      circuitBreaker: this.providerCircuitBreaker,
+    });
 
     // -------------------------------------------------------------
     // STEP 8, 9, 10: Non-blocking asynchronous startup completion

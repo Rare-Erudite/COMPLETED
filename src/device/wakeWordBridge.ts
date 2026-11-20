@@ -15,6 +15,9 @@ interface NativeWake {
   status(): string;
   start(): string;
   stop(): string;
+  offlineStatus?(): string;
+  downloadOfflineModel?(): string;
+  deleteOfflineModel?(): string;
 }
 
 function getNative(): NativeWake | null {
@@ -30,6 +33,8 @@ export interface WakeStatus {
   available: boolean;
   running: boolean;
   detail: string;
+  /** Which engine is actually running: 'vosk' (offline) or 'speech-recognizer'. */
+  engine?: string;
 }
 
 export function getWakeStatus(): WakeStatus {
@@ -42,11 +47,12 @@ export function getWakeStatus(): WakeStatus {
     };
   }
   try {
-    const parsed = JSON.parse(native.status()) as { ok?: boolean; running?: boolean; detail?: string };
+    const parsed = JSON.parse(native.status()) as { ok?: boolean; running?: boolean; detail?: string; engine?: string };
     return {
       available: true,
       running: parsed.running === true,
       detail: parsed.detail || (parsed.running ? 'Listening for "Hey Rae".' : 'Not listening.'),
+      engine: parsed.engine,
     };
   } catch {
     return { available: true, running: false, detail: 'Could not read the wake-word state.' };

@@ -51,6 +51,10 @@ public class RareWakeWordService extends Service {
     private final Handler main = new Handler(Looper.getMainLooper());
     private boolean listening = false;
     private boolean destroyed = false;
+    /** The optional offline engine. Non-null only when the Vosk model is installed. */
+    private VoskWakeEngine voskEngine;
+    /** Which engine is actually running: "vosk" (offline) or "speech-recognizer". */
+    private static volatile String activeEngine = "none";
 
     public static boolean isRunning() {
         return running;
@@ -58,6 +62,11 @@ public class RareWakeWordService extends Service {
 
     public static String status() {
         return lastStatus;
+    }
+
+    /** Which engine the service is using right now, for honest UI reporting. */
+    public static String activeEngine() {
+        return activeEngine;
     }
 
     @Override
@@ -68,8 +77,14 @@ public class RareWakeWordService extends Service {
         createChannel();
         startForeground(NOTIFICATION_ID, buildNotification());
         lastStatus = "starting";
-        startCycle();
-        Log.i(TAG, "Wake-word service started");
+        // Prefer the offline Vosk engine when its model is installed. If it is
+        // not, or it fails to start, fall back to Android's SpeechRecognizer.
+        if (startVoskIfAvailable()) {
+            Log.i(TAG, "Wake-word service started (Vosk, offline)");
+        } else {
+            startCycle();
+            Log.i(TAG, "Wake-word service started (SpeechRecognizer)");
+        }
     }
 
     @Override
@@ -82,6 +97,8 @@ public class RareWakeWordService extends Service {
         destroyed = true;
         running = false;
         lastStatus = "stopped";
+        activeEngine = "none";
+        stopVosk();
         stopRecognizer();
         Log.i(TAG, "Wake-word service stopped");
         super.onDestroy();
@@ -92,6 +109,56 @@ public class RareWakeWordService extends Service {
         return null;
     }
 
+    /**
+     * Starts the offline Vosk engine when its model is installed. Returns true
+     * only when the engine actually started; on any failure it returns false so
+     * the caller falls back to Android's SpeechRecognizer.
+     */
+    private boolean startVoskIfAvailable() {
+        if (!VoskModelManager.isModelReady(this)) {
+            return false;
+        }
+        try {
+            voskEngine = new VoskWakeEngine(this);
+            voskEngine.start(new VoskWakeEngine.Listener() {
+                @Override
+                public void onWakePhrase(String transcript) {
+                    onHeard(transcript);
+                }
+
+                @Override
+                public void onError(String message) {
+                    lastStatus = "vosk error: " + message;
+                    Log.e(TAG, lastStatus);
+                    // The offline engine failed at runtime; fall back to the
+                    // online recogniser rather than leaving the user with nothing.
+                    stopVosk();
+                    if (!destroyed) startCycle();
+                }
+            });
+            activeEngine = "vosk";
+            lastStatus = "listening (offline, Vosk)";
+            return true;
+        } catch (Throwable error) {
+            // A missing native library or a corrupt model must never crash the
+            // service; it just means the offline engine is unavailable.
+            Log.w(TAG, "Vosk engine unavailable: " + error.getMessage());
+            stopVosk();
+            return false;
+        }
+    }
+
+    private void stopVosk() {
+        if (voskEngine != null) {
+            try {
+                voskEngine.close();
+            } catch (Exception ignored) {
+            }
+            voskEngine = null;
+        }
+        if ("vosk".equals(activeEngine)) activeEngine = "none";
+    }
+
     private void startCycle() {
         if (destroyed) return;
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -99,6 +166,7 @@ public class RareWakeWordService extends Service {
             Log.w(TAG, lastStatus);
             return;
         }
+        activeEngine = "speech-recognizer";
         main.post(new Runnable() {
             @Override
             public void run() {
@@ -169,8 +237,19 @@ public class RareWakeWordService extends Service {
         broadcast.putExtra("transcript", text);
         sendBroadcast(broadcast);
         // Pause briefly so the app can take over the microphone, then resume.
-        stopRecognizer();
-        scheduleRestart(4000);
+        // Whichever engine is active is the one that must be paused and resumed.
+        if ("vosk".equals(activeEngine)) {
+            stopVosk();
+            main.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    if (!destroyed && !startVoskIfAvailable()) startCycle();
+                }
+            }, 4000);
+        } else {
+            stopRecognizer();
+            scheduleRestart(4000);
+        }
     }
 
     private final RecognitionListener listener = new RecognitionListener() {

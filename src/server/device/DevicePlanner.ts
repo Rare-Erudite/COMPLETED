@@ -3,9 +3,26 @@
  *
  * This is the "model plans" half of the plan → act → observe loop. Given a
  * natural-language objective, the current screen state and the history of what
- * has already been tried, it asks the active language model for the SINGLE next
+ * has already been tried, it asks RARE's intelligence layer for the SINGLE next
  * action to take, validates that action against the canonical catalogue
  * (src/device/deviceActions.ts) and returns it.
+ *
+ * IMPORTANT — this planner does NOT talk to a model provider directly. It calls
+ * the RARE orchestrator (src/engine/orchestrator/orchestrator.ts), which owns:
+ *
+ *   • model orchestration and routing,
+ *   • selection of a model according to the task ("device_planning"),
+ *   • tool calling and execution,
+ *   • memory and context management,
+ *   • planning and autonomous workflows,
+ *   • provider configuration and health checks,
+ *   • model evaluation and fallback handling.
+ *
+ * So when a provider fails or is unhealthy, the orchestrator — not this file —
+ * decides what to try next, and the decision it returns names the provider that
+ * actually answered. The device loop keeps its plan → act → observe cycle: the
+ * client performs the action, reads the real screen, and calls back with the
+ * result, which is fed into the next planning turn.
  *
  * The loop itself lives on the client (src/device/deviceAgent.ts) because only
  * the device can actually perform an action and read the resulting screen. The
@@ -16,7 +33,7 @@
  * action rather than inventing one — the caller surfaces that honestly.
  */
 
-import { ProviderRegistry } from '../providers/ProviderRegistry.js';
+import type { RareOrchestrator } from '../../engine/orchestrator/orchestrator.js';
 import {
   describeDeviceActionsForModel,
   validateDeviceAction,
@@ -57,6 +74,10 @@ export interface DevicePlanDecision {
   summary?: string;
   /** Which provider answered, for honest reporting. */
   provider: string;
+  /** Which orchestrator task profile routed this decision. */
+  taskKind?: string;
+  /** Every provider the orchestrator tried, in order, with its outcome. */
+  attempts?: Array<{ provider: string; ok: boolean; error?: string }>;
   /** Set when no action could be produced. */
   error?: string;
 }
@@ -128,7 +149,7 @@ function extractJsonObject(text: string): unknown | null {
 }
 
 export class DevicePlanner {
-  constructor(private providers: ProviderRegistry) {}
+  constructor(private orchestrator: RareOrchestrator) {}
 
   public async planNextAction(request: DevicePlanRequest): Promise<DevicePlanDecision> {
     const { objective, screen, history, step, maxSteps } = request;
@@ -146,22 +167,34 @@ export class DevicePlanner {
       'Decide the single next action. Reply with one JSON object only.',
     ].join('\n');
 
-    let reply: string;
+    let text: string;
     let provider: string;
+    let attempts: Array<{ provider: string; ok: boolean; error?: string }> = [];
     try {
-      const result = await this.providers.generateOnline(userPrompt, undefined, {
-        systemPrompt: SYSTEM_PROMPT,
+      // Route through RARE's intelligence layer, not a bare provider. The
+      // orchestrator picks the model for "device_planning", applies fallback
+      // when a provider fails or is unhealthy, and reports which one answered.
+      const result = await this.orchestrator.run({
+        taskKind: 'device_planning',
+        systemInstruction: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userPrompt }],
         temperature: 0.2,
-        maxTokens: 700,
+        maxOutputTokens: 700,
+        maxToolRounds: 1,
+        // A device plan must be a JSON action; anything else is a failed attempt
+        // and the orchestrator falls back to the next provider.
+        validate: (reply) => (extractJsonObject(reply) ? null : 'reply was not a JSON action'),
       });
-      reply = result.reply || '';
-      provider = result.modelUsed || result.providerType;
+      text = result.text;
+      provider = result.provider;
+      attempts = result.attempts.map((a) => ({ provider: a.provider, ok: a.ok, error: a.error }));
     } catch (error) {
       return {
         action: null,
         reasoning: '',
         done: false,
         provider: 'none',
+        taskKind: 'device_planning',
         error:
           error instanceof Error
             ? `No language model is available to plan the task: ${error.message}`
@@ -169,13 +202,15 @@ export class DevicePlanner {
       };
     }
 
-    const parsed = extractJsonObject(reply);
+    const parsed = extractJsonObject(text);
     if (!parsed) {
       return {
         action: null,
         reasoning: '',
         done: false,
         provider,
+        taskKind: 'device_planning',
+        attempts,
         error: 'The planner did not return a usable action. It replied with text that was not a JSON action.',
       };
     }
@@ -187,6 +222,8 @@ export class DevicePlanner {
         reasoning: '',
         done: false,
         provider,
+        taskKind: 'device_planning',
+        attempts,
         error: validation.error || 'The planner proposed an action that is not permitted.',
       };
     }
@@ -198,7 +235,7 @@ export class DevicePlanner {
 
     if (validation.action.tool === 'finish') {
       const summary = String(validation.action.args.summary || 'Task finished.');
-      return { action: null, reasoning, done: true, summary, provider };
+      return { action: null, reasoning, done: true, summary, provider, taskKind: 'device_planning', attempts };
     }
 
     // A mutating action that the user has not approved is returned but flagged
@@ -211,10 +248,12 @@ export class DevicePlanner {
         reasoning,
         done: false,
         provider,
+        taskKind: 'device_planning',
+        attempts,
         error: 'This action is sensitive and needs explicit user confirmation before it runs.',
       };
     }
 
-    return { action: validation.action, reasoning, done: false, provider };
+    return { action: validation.action, reasoning, done: false, provider, taskKind: 'device_planning', attempts };
   }
 }

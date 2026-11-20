@@ -34,7 +34,15 @@ export interface LocalModelManifest {
 export class LocalTransformersProvider implements IModelProvider {
   public readonly id: ModelProviderType = 'local-transformers';
   public readonly name = 'In-Process Local Neural Model (Qwen2.5-0.5B)';
-  public readonly modelIdentifier = 'onnx-community/Qwen2.5-0.5B-Instruct';
+  /**
+   * The open-weight model this provider runs in-process. Defaults to Qwen2.5
+   * 0.5B (Apache-2.0), but RARE_LOCAL_MODEL lets a constrained host pick a
+   * smaller Apache-2.0 model (e.g. onnx-community/SmolLM2-135M-Instruct-ONNX)
+   * without changing code. No weights are ever trained here — this only selects
+   * which existing open-weight model to load.
+   */
+  public readonly modelIdentifier =
+    process.env.RARE_LOCAL_MODEL?.trim() || 'onnx-community/Qwen2.5-0.5B-Instruct';
 
   private pipelineInstance: any = null;
   private isLoading = false;
@@ -43,8 +51,10 @@ export class LocalTransformersProvider implements IModelProvider {
   private loadProgressPercent = 0;
 
   public readonly manifest: LocalModelManifest = {
-    name: 'Qwen 2.5 0.5B Instruct (ONNX Q4)',
-    repoId: 'onnx-community/Qwen2.5-0.5B-Instruct',
+    name: process.env.RARE_LOCAL_MODEL?.trim()
+      ? `Local open-weight model (${process.env.RARE_LOCAL_MODEL.trim()})`
+      : 'Qwen 2.5 0.5B Instruct (ONNX Q4)',
+    repoId: this.modelIdentifier,
     version: '2.5.0',
     license: 'Apache-2.0 (100% Free & Open-Source)',
     quantization: 'INT4 / Q4 ONNX',
@@ -82,21 +92,25 @@ export class LocalTransformersProvider implements IModelProvider {
       '/tmp/models_cache',
       path.resolve(process.cwd(), 'data/models_cache'),
     ];
+    // The on-disk weight file name depends on the model; check the model's own
+    // directory for any .onnx weight rather than hardcoding one filename.
+    const modelDir = path.resolve(this.getCacheDir(), this.modelIdentifier);
+    const onnxDir = path.resolve(modelDir, 'onnx');
     for (const dir of candidateDirs) {
-      const candidatePath = path.resolve(
-        dir,
-        'onnx-community/Qwen2.5-0.5B-Instruct/onnx/model_q4.onnx'
-      );
-      if (fs.existsSync(candidatePath)) {
-        try {
-          const stat = fs.statSync(candidatePath);
-          // Complete quantized ONNX Q4 weights for Qwen2.5-0.5B are ~786MB (750MB uncompressed)
-          if (stat.size >= 700_000_000) return true;
-        } catch {
-          // ignore
+      const candidateDir = path.resolve(dir, this.modelIdentifier, 'onnx');
+      if (!fs.existsSync(candidateDir)) continue;
+      try {
+        const files = fs.readdirSync(candidateDir).filter((f) => f.endsWith('.onnx'));
+        for (const file of files) {
+          const stat = fs.statSync(path.resolve(candidateDir, file));
+          // Any real quantized weight file is at least a few MB.
+          if (stat.size >= 5_000_000) return true;
         }
+      } catch {
+        // ignore
       }
     }
+    void onnxDir;
     return false;
   }
 
