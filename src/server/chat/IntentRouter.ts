@@ -13,7 +13,14 @@
  * spending a minute of network retrieval on "what is a monad" would be wrong.
  */
 
-export type ChatIntent = 'conversation' | 'research';
+export type ChatIntent =
+  | 'conversation'
+  | 'research'
+  | 'build'
+  | 'repository'
+  | 'deploy'
+  | 'self_build'
+  | 'documents';
 
 export interface IntentDecision {
   intent: ChatIntent;
@@ -27,6 +34,18 @@ export interface IntentDecision {
   seedUrls: string[];
   /** The question with the routing phrase removed, when that is safe to do. */
   question: string;
+  /**
+   * For build/repository/deploy intents: which sub-actions the message asks
+   * for. A single message can request several ("build it, put it in a repo and
+   * deploy it"), and the orchestrator runs them in dependency order.
+   */
+  actions?: {
+    build?: boolean;
+    repository?: boolean;
+    deploy?: boolean;
+  };
+  /** For build intents: the project name the user asked for, when stated. */
+  projectName?: string;
 }
 
 /** Verbs that unambiguously ask for investigation rather than an answer. */
@@ -48,6 +67,49 @@ const DEEP_MARKERS = [
 ];
 
 const QUICK_MARKERS = ['quickly', 'quick check', 'briefly', 'just check'];
+
+/**
+ * Build verbs. These ask RARE to produce a working artifact, not to describe
+ * one. Kept separate from research verbs so "build a website about X" is a
+ * build, while "research X" is research.
+ */
+const BUILD_VERBS = [
+  'build me', 'build a', 'build an', 'build the', 'create a website', 'create an app',
+  'create a web app', 'create a web application', 'create an application', 'create a project',
+  'make me a', 'make a website', 'make an app', 'scaffold', 'generate a project',
+  'set up a project', 'start a new project', 'develop a', 'develop an',
+];
+
+/** Repository verbs. */
+const REPO_VERBS = [
+  'create a repository', 'create a repo', 'new repository', 'new repo',
+  'push to github', 'push it to github', 'commit to github', 'put it in a repo',
+  'put it in a repository', 'create the repo', 'make a repository', 'make a repo',
+  'create a github repo', 'create a github repository',
+];
+
+/** Deployment verbs. */
+const DEPLOY_VERBS = [
+  'deploy it', 'deploy this', 'deploy the app', 'deploy the application',
+  'deploy to vercel', 'deploy to production', 'publish it', 'publish the app',
+  'put it live', 'make it live', 'go live', 'ship it',
+];
+
+/** Self-build verbs: a change to RARE itself. */
+const SELF_BUILD_VERBS = [
+  'improve rare', "improve rare's", 'add a department', 'create a new department',
+  'add a feature to rare', 'modify rare', 'repair rare', 'fix rare',
+  'self-build', 'self build', 'improve the research department',
+  'improve the documents department', 'add a plugin to rare',
+];
+
+/** Document verbs that mean "read this file/link", not "chat about it". */
+const DOCUMENT_VERBS = [
+  'read this document', 'read the document', 'read this pdf', 'read the pdf',
+  'summarise this document', 'summarize this document', 'summarise the pdf',
+  'summarize the pdf', 'extract from this document', 'analyse this document',
+  'analyze this document', 'read this file', 'what does this document say',
+];
 
 const URL_PATTERN = /https?:\/\/[^\s<>"')]+/g;
 
@@ -86,6 +148,67 @@ export function routeChatIntent(message: string): IntentDecision {
   const deep = DEEP_MARKERS.find((phrase) => lower.includes(phrase));
   const quick = QUICK_MARKERS.find((phrase) => lower.includes(phrase));
 
+  // ---- Action intents -----------------------------------------------------
+  // These are checked before research because "build a website about X" is a
+  // build, not an investigation, even though it mentions a subject. A single
+  // message may ask for several actions; they are collected, not short-circuited.
+  const buildVerb = BUILD_VERBS.find((phrase) => lower.includes(phrase));
+  const repoVerb = REPO_VERBS.find((phrase) => lower.includes(phrase));
+  const deployVerb = DEPLOY_VERBS.find((phrase) => lower.includes(phrase));
+  const selfBuildVerb = SELF_BUILD_VERBS.find((phrase) => lower.includes(phrase));
+  const documentVerb = DOCUMENT_VERBS.find((phrase) => lower.includes(phrase));
+
+  const actions = {
+    build: Boolean(buildVerb),
+    repository: Boolean(repoVerb),
+    deploy: Boolean(deployVerb),
+  };
+
+  // Self-build is a change to RARE itself and takes precedence over a generic
+  // build, because "add a department" is not a user project.
+  if (selfBuildVerb) {
+    return {
+      intent: 'self_build',
+      reason: `Matched the self-build phrase "${selfBuildVerb}".`,
+      confidence: 0.9,
+      depth: 'standard',
+      seedUrls,
+      question: text,
+      actions,
+    };
+  }
+
+  // A build request, optionally with repository and/or deploy in the same
+  // message. This is the multi-department workflow the assignment requires.
+  if (actions.build || actions.repository || actions.deploy) {
+    const parts: string[] = [];
+    if (actions.build) parts.push('build');
+    if (actions.repository) parts.push('repository');
+    if (actions.deploy) parts.push('deploy');
+    return {
+      intent: 'build',
+      reason: `Matched action phrase(s): ${[buildVerb, repoVerb, deployVerb].filter(Boolean).join(', ')}.`,
+      confidence: 0.9,
+      depth: 'standard',
+      seedUrls,
+      question: text,
+      actions,
+      projectName: extractProjectName(text),
+    };
+  }
+
+  // A document instruction with a link or a named file.
+  if (documentVerb) {
+    return {
+      intent: 'documents',
+      reason: `Matched the document phrase "${documentVerb}".`,
+      confidence: 0.85,
+      depth: 'standard',
+      seedUrls,
+      question: text,
+    };
+  }
+
   // A pasted link plus an instruction to read it is research even without a
   // research verb: "summarise this and check it against the news".
   const linkWithInstruction = seedUrls.length > 0
@@ -115,4 +238,18 @@ export function routeChatIntent(message: string): IntentDecision {
     seedUrls,
     question: extractQuestion(text),
   };
+}
+
+/**
+ * Pull an explicit project name out of an instruction, e.g.
+ * `build a website called "aurora"` or `create an app named aurora`.
+ * Returns undefined when the user did not name one, so the caller can derive
+ * a slug from the instruction instead.
+ */
+function extractProjectName(text: string): string | undefined {
+  const quoted = text.match(/(?:called|named)\s+["'“]([^"'”]{2,40})["'”]/i);
+  if (quoted) return quoted[1].trim();
+  const bare = text.match(/(?:called|named)\s+([a-z0-9][a-z0-9 _-]{1,30})/i);
+  if (bare) return bare[1].trim();
+  return undefined;
 }

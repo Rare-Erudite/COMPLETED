@@ -1,0 +1,897 @@
+{
+  "startedAt": "2026-11-23T12:30:44.756Z",
+  "toolchains": [
+    {
+      "id": "node_ts",
+      "name": "Node.js & TypeScript",
+      "status": "ready",
+      "version": "Node 20.20.2",
+      "evidence": "v20.20.2"
+    },
+    {
+      "id": "npm",
+      "name": "npm package manager",
+      "status": "ready",
+      "version": "npm 11.19.0",
+      "evidence": "11.19.0"
+    },
+    {
+      "id": "vite_bundler",
+      "name": "Vite bundler (project dependency)",
+      "status": "ready",
+      "version": "Vite 8.3.4",
+      "evidence": "8.3.4"
+    },
+    {
+      "id": "python_runtime",
+      "name": "Python 3 runtime",
+      "status": "ready",
+      "version": "Python 3.11.15",
+      "evidence": "Python 3.11.15"
+    },
+    {
+      "id": "git",
+      "name": "Git",
+      "status": "ready",
+      "version": "Git 2.39.5",
+      "evidence": "git version 2.39.5"
+    },
+    {
+      "id": "rust_cargo",
+      "name": "Rust toolchain",
+      "status": "ready",
+      "version": "Cargo 1.65.0",
+      "evidence": "cargo 1.65.0"
+    },
+    {
+      "id": "go_toolchain",
+      "name": "Go toolchain",
+      "status": "ready",
+      "version": "Go 1.19.8",
+      "evidence": "go version go1.19.8 linux/amd64"
+    },
+    {
+      "id": "java_toolchain",
+      "name": "Java / JVM",
+      "status": "ready",
+      "version": "Java 17.0.21",
+      "evidence": "openjdk version \"17.0.21\" 2026-10-20"
+    },
+    {
+      "id": "android_gradle",
+      "name": "Android Gradle build",
+      "status": "missing",
+      "version": null,
+      "evidence": "gradle not found on PATH"
+    },
+    {
+      "id": "gcc",
+      "name": "C compiler (gcc)",
+      "status": "ready",
+      "version": "gcc 12.2.0",
+      "evidence": "gcc (Debian 12.2.0-14+deb12u1) 12.2.0"
+    },
+    {
+      "id": "gpp",
+      "name": "C++ compiler (g++)",
+      "status": "ready",
+      "version": "g++ 12.2.0",
+      "evidence": "g++ (Debian 12.2.0-14+deb12u1) 12.2.0"
+    },
+    {
+      "id": "make",
+      "name": "GNU make",
+      "status": "ready",
+      "version": "make 4.3",
+      "evidence": "GNU Make 4.3"
+    },
+    {
+      "id": "php",
+      "name": "PHP runtime",
+      "status": "ready",
+      "version": "PHP 8.2.36",
+      "evidence": "PHP 8.2.36 (cli) (built: Nov 18 2026 20:02:04) (NTS)"
+    },
+    {
+      "id": "maven",
+      "name": "Maven build tool",
+      "status": "ready",
+      "version": "Maven 3.8.7",
+      "evidence": "\u001b[1mApache Maven 3.8.7\u001b[m"
+    },
+    {
+      "id": "dotnet",
+      "name": ".NET SDK",
+      "status": "missing",
+      "version": null,
+      "evidence": "dotnet not found on PATH"
+    },
+    {
+      "id": "ruby",
+      "name": "Ruby runtime",
+      "status": "ready",
+      "version": "Ruby 3.1.2",
+      "evidence": "ruby 3.1.2p20 (2022-04-12 revision 4491bb740a) [x86_64-linux-gnu]"
+    },
+    {
+      "id": "ffmpeg",
+      "name": "FFmpeg media toolchain",
+      "status": "ready",
+      "version": "ffmpeg 5.1.9-0+deb12u1",
+      "evidence": "ffmpeg version 5.1.9-0+deb12u1 Copyright (c) 2000-2026 the FFmpeg developers"
+    },
+    {
+      "id": "psql",
+      "name": "PostgreSQL client",
+      "status": "ready",
+      "version": "psql 15.18",
+      "evidence": "psql (PostgreSQL) 15.18 (Debian 15.18-0+deb12u1)"
+    },
+    {
+      "id": "kotlinc",
+      "name": "Kotlin compiler",
+      "status": "missing",
+      "version": null,
+      "evidence": "kotlinc not found on PATH"
+    },
+    {
+      "id": "swift",
+      "name": "Swift toolchain",
+      "status": "missing",
+      "version": null,
+      "evidence": "swift not found on PATH"
+    },
+    {
+      "id": "dart",
+      "name": "Dart / Flutter SDK",
+      "status": "missing",
+      "version": null,
+      "evidence": "dart not found on PATH"
+    },
+    {
+      "id": "docker",
+      "name": "Container runtime",
+      "status": "missing",
+      "version": null,
+      "evidence": "docker not found on PATH"
+    }
+  ],
+  "provisioning": {
+    "requested": [
+      "node_ts",
+      "npm",
+      "vite_bundler",
+      "python_runtime",
+      "git",
+      "rust_cargo",
+      "go_toolchain",
+      "java_toolchain",
+      "android_gradle",
+      "gcc",
+      "gpp",
+      "make",
+      "php",
+      "maven",
+      "dotnet",
+      "ruby",
+      "ffmpeg",
+      "psql",
+      "kotlinc",
+      "swift",
+      "dart",
+      "docker"
+    ],
+    "steps": [
+      {
+        "toolchainId": "node_ts",
+        "name": "Node.js & TypeScript",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "v20.20.2",
+        "version": "Node 20.20.2",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "npm",
+        "name": "npm package manager",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "11.19.0",
+        "version": "npm 11.19.0",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "vite_bundler",
+        "name": "Vite bundler (project dependency)",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "8.3.4",
+        "version": "Vite 8.3.4",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "python_runtime",
+        "name": "Python 3 runtime",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "Python 3.11.15",
+        "version": "Python 3.11.15",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "git",
+        "name": "Git",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "git version 2.39.5",
+        "version": "Git 2.39.5",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "rust_cargo",
+        "name": "Rust toolchain",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "cargo 1.65.0",
+        "version": "Cargo 1.65.0",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "go_toolchain",
+        "name": "Go toolchain",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "go version go1.19.8 linux/amd64",
+        "version": "Go 1.19.8",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "java_toolchain",
+        "name": "Java / JVM",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "openjdk version \"17.0.21\" 2026-10-20",
+        "version": "Java 17.0.21",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "android_gradle",
+        "name": "Android Gradle build",
+        "outcome": "unavailable_from_archive",
+        "command": null,
+        "exitCode": null,
+        "output": "gradle not found on PATH",
+        "version": null,
+        "reason": "Android packaging needs the Android SDK (sdkmanager, build-tools, platform) plus Gradle. The SDK is licensed and downloaded from Google, not Debian."
+      },
+      {
+        "toolchainId": "gcc",
+        "name": "C compiler (gcc)",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "gcc (Debian 12.2.0-14+deb12u1) 12.2.0",
+        "version": "gcc 12.2.0",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "gpp",
+        "name": "C++ compiler (g++)",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "g++ (Debian 12.2.0-14+deb12u1) 12.2.0",
+        "version": "g++ 12.2.0",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "make",
+        "name": "GNU make",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "GNU Make 4.3",
+        "version": "make 4.3",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "php",
+        "name": "PHP runtime",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "PHP 8.2.36 (cli) (built: Nov 18 2026 20:02:04) (NTS)",
+        "version": "PHP 8.2.36",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "maven",
+        "name": "Maven build tool",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "\u001b[1mApache Maven 3.8.7\u001b[m",
+        "version": "Maven 3.8.7",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "dotnet",
+        "name": ".NET SDK",
+        "outcome": "unavailable_from_archive",
+        "command": null,
+        "exitCode": null,
+        "output": "dotnet not found on PATH",
+        "version": null,
+        "reason": "The .NET SDK is distributed by Microsoft, not Debian. Install from https://dotnet.microsoft.com/download or add the Microsoft package feed."
+      },
+      {
+        "toolchainId": "ruby",
+        "name": "Ruby runtime",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "ruby 3.1.2p20 (2022-04-12 revision 4491bb740a) [x86_64-linux-gnu]",
+        "version": "Ruby 3.1.2",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "ffmpeg",
+        "name": "FFmpeg media toolchain",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "ffmpeg version 5.1.9-0+deb12u1 Copyright (c) 2000-2026 the FFmpeg developers",
+        "version": "ffmpeg 5.1.9-0+deb12u1",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "psql",
+        "name": "PostgreSQL client",
+        "outcome": "already_ready",
+        "command": null,
+        "exitCode": null,
+        "output": "psql (PostgreSQL) 15.18 (Debian 15.18-0+deb12u1)",
+        "version": "psql 15.18",
+        "reason": "The probe already reported this toolchain as ready; nothing was installed."
+      },
+      {
+        "toolchainId": "kotlinc",
+        "name": "Kotlin compiler",
+        "outcome": "unavailable_from_archive",
+        "command": null,
+        "exitCode": null,
+        "output": "kotlinc not found on PATH",
+        "version": null,
+        "reason": "The Kotlin compiler is distributed as a GitHub release zip, not a Debian package. Install from https://github.com/JetBrains/kotlin/releases."
+      },
+      {
+        "toolchainId": "swift",
+        "name": "Swift toolchain",
+        "outcome": "unavailable_from_archive",
+        "command": null,
+        "exitCode": null,
+        "output": "swift not found on PATH",
+        "version": null,
+        "reason": "Swift for Linux is a platform-specific toolchain from https://swift.org/download; it is not in the Debian archive."
+      },
+      {
+        "toolchainId": "dart",
+        "name": "Dart / Flutter SDK",
+        "outcome": "unavailable_from_archive",
+        "command": null,
+        "exitCode": null,
+        "output": "dart not found on PATH",
+        "version": null,
+        "reason": "The Dart/Flutter SDK is distributed by Google, not Debian. Install from https://docs.flutter.dev/get-started/install."
+      },
+      {
+        "toolchainId": "docker",
+        "name": "Container runtime",
+        "outcome": "unavailable_from_archive",
+        "command": null,
+        "exitCode": null,
+        "output": "docker not found on PATH",
+        "version": null,
+        "reason": "A container runtime needs a daemon and kernel privileges that this sandbox does not grant. Install on a host you control."
+      }
+    ],
+    "ready": [
+      "node_ts",
+      "npm",
+      "vite_bundler",
+      "python_runtime",
+      "git",
+      "rust_cargo",
+      "go_toolchain",
+      "java_toolchain",
+      "gcc",
+      "gpp",
+      "make",
+      "php",
+      "maven",
+      "ruby",
+      "ffmpeg",
+      "psql"
+    ],
+    "stillMissing": [
+      {
+        "id": "android_gradle",
+        "reason": "Android packaging needs the Android SDK (sdkmanager, build-tools, platform) plus Gradle. The SDK is licensed and downloaded from Google, not Debian."
+      },
+      {
+        "id": "dotnet",
+        "reason": "The .NET SDK is distributed by Microsoft, not Debian. Install from https://dotnet.microsoft.com/download or add the Microsoft package feed."
+      },
+      {
+        "id": "kotlinc",
+        "reason": "The Kotlin compiler is distributed as a GitHub release zip, not a Debian package. Install from https://github.com/JetBrains/kotlin/releases."
+      },
+      {
+        "id": "swift",
+        "reason": "Swift for Linux is a platform-specific toolchain from https://swift.org/download; it is not in the Debian archive."
+      },
+      {
+        "id": "dart",
+        "reason": "The Dart/Flutter SDK is distributed by Google, not Debian. Install from https://docs.flutter.dev/get-started/install."
+      },
+      {
+        "id": "docker",
+        "reason": "A container runtime needs a daemon and kernel privileges that this sandbox does not grant. Install on a host you control."
+      }
+    ],
+    "durationMs": 1436
+  },
+  "routing": [
+    {
+      "message": "build a small website called aurora and deploy it",
+      "intent": "build",
+      "reason": "Matched action phrase(s): build a, deploy it.",
+      "actions": {
+        "build": true,
+        "repository": false,
+        "deploy": true
+      },
+      "projectName": "aurora and deploy it"
+    },
+    {
+      "message": "create a repository for this project and push it to github",
+      "intent": "build",
+      "reason": "Matched action phrase(s): create a repository.",
+      "actions": {
+        "build": false,
+        "repository": true,
+        "deploy": false
+      }
+    },
+    {
+      "message": "research whether solid state batteries are shipping in 2026",
+      "intent": "research",
+      "reason": "Matched the research phrase \"research\"."
+    },
+    {
+      "message": "improve RARE's research department",
+      "intent": "self_build",
+      "reason": "Matched the self-build phrase \"improve rare\".",
+      "actions": {
+        "build": false,
+        "repository": false,
+        "deploy": false
+      }
+    },
+    {
+      "message": "read this document and summarise it",
+      "intent": "documents",
+      "reason": "Matched the document phrase \"read this document\"."
+    },
+    {
+      "message": "what is a monad",
+      "intent": "conversation",
+      "reason": "No research verb or source request was present."
+    }
+  ],
+  "workflows": [
+    {
+      "instruction": "build a small static website called rare-stage3-demo that shows the RARE build pipeline, then create a repository for it and deploy it",
+      "project": "small-static-website",
+      "template": "static-web",
+      "steps": [
+        {
+          "id": "provision",
+          "title": "Provision development environment",
+          "status": "passed",
+          "summary": "Every requested toolchain was already ready.",
+          "evidence": {
+            "requested": [
+              "node_ts",
+              "npm"
+            ],
+            "steps": [
+              {
+                "toolchainId": "node_ts",
+                "name": "Node.js & TypeScript",
+                "outcome": "already_ready",
+                "command": null,
+                "exitCode": null,
+                "output": "v20.20.2",
+                "version": "Node 20.20.2",
+                "reason": "The probe already reported this toolchain as ready; nothing was installed."
+              },
+              {
+                "toolchainId": "npm",
+                "name": "npm package manager",
+                "outcome": "already_ready",
+                "command": null,
+                "exitCode": null,
+                "output": "11.19.0",
+                "version": "npm 11.19.0",
+                "reason": "The probe already reported this toolchain as ready; nothing was installed."
+              }
+            ],
+            "ready": [
+              "node_ts",
+              "npm",
+              "vite_bundler",
+              "python_runtime",
+              "git",
+              "rust_cargo",
+              "go_toolchain",
+              "java_toolchain",
+              "gcc",
+              "gpp",
+              "make",
+              "php",
+              "maven",
+              "ruby",
+              "ffmpeg",
+              "psql"
+            ],
+            "stillMissing": [
+              {
+                "id": "android_gradle",
+                "reason": "Android packaging needs a JDK plus the Android SDK (sdkmanager, build-tools, platform) and Gradle. None are required for web builds."
+              },
+              {
+                "id": "dotnet",
+                "reason": "Install the .NET SDK from https://dotnet.microsoft.com/download (not in the base Debian archive)."
+              },
+              {
+                "id": "kotlinc",
+                "reason": "Install Kotlin from https://github.com/JetBrains/kotlin/releases (not in the base Debian archive)."
+              },
+              {
+                "id": "swift",
+                "reason": "Install Swift from https://swift.org/download (Linux builds are platform-specific)."
+              },
+              {
+                "id": "dart",
+                "reason": "Install the Dart/Flutter SDK from https://docs.flutter.dev/get-started/install."
+              },
+              {
+                "id": "docker",
+                "reason": "Install Docker to run builds in an isolated container."
+              }
+            ],
+            "durationMs": 1383
+          },
+          "durationMs": 1384
+        },
+        {
+          "id": "scaffold",
+          "title": "Create project from instruction",
+          "status": "passed",
+          "summary": "Wrote 5 files for a static-web project at projects/small-static-website.",
+          "evidence": {
+            "name": "small-static-website",
+            "template": "static-web",
+            "relativeRoot": "projects/small-static-website",
+            "files": [
+              "projects/small-static-website/index.html",
+              "projects/small-static-website/styles.css",
+              "projects/small-static-website/app.js",
+              "projects/small-static-website/README.md",
+              "projects/small-static-website/.rare-project.json"
+            ],
+            "buildCommand": null,
+            "testCommand": null,
+            "runCommand": "open index.html",
+            "requiresInstall": false
+          },
+          "durationMs": 0
+        },
+        {
+          "id": "build",
+          "title": "Build and test",
+          "status": "passed",
+          "summary": "Build and tests passed for small-static-website (static-web).\n- build: skipped — `n/a` exit n/a\n- test: skipped — `n/a` exit n/a",
+          "evidence": {
+            "project": "small-static-website",
+            "relativeRoot": "projects/small-static-website",
+            "template": "static-web",
+            "stages": [
+              {
+                "stage": "build",
+                "command": "",
+                "exitCode": null,
+                "passed": true,
+                "durationMs": 0,
+                "output": "",
+                "skippedReason": "This project type has no build stage.",
+                "repairs": []
+              },
+              {
+                "stage": "test",
+                "command": "",
+                "exitCode": null,
+                "passed": true,
+                "durationMs": 0,
+                "output": "",
+                "skippedReason": "This project type has no test stage.",
+                "repairs": []
+              }
+            ],
+            "passed": true,
+            "durationMs": 0,
+            "limitations": []
+          },
+          "durationMs": 1
+        },
+        {
+          "id": "repository",
+          "title": "Commit to repository",
+          "status": "passed",
+          "summary": "Committed 5 files to Rare-Erudite/COMPLETED@rare-stage3-demo as 7c918c0f.",
+          "evidence": {
+            "repo": {
+              "owner": "Rare-Erudite",
+              "repo": "COMPLETED",
+              "branch": "rare-stage3-demo"
+            },
+            "commit": {
+              "branch": "rare-stage3-demo",
+              "commitSha": "7c918c0fc9b27d24ed9864cc5d8cec3c50709c91",
+              "commitUrl": "https://github.com/Rare-Erudite/COMPLETED/commit/7c918c0fc9b27d24ed9864cc5d8cec3c50709c91",
+              "filesChanged": 5,
+              "noChanges": false
+            }
+          },
+          "durationMs": 4909
+        },
+        {
+          "id": "deploy",
+          "title": "Deploy and verify",
+          "status": "passed",
+          "summary": "Deployed and verified: https://small-static-website-g4p6it2fi-mypremierai-2827.vercel.app returned HTTP 200 (state READY, 9s).",
+          "evidence": {
+            "deployment": {
+              "ok": true,
+              "id": "dpl_6z3S4ueqvFkv8G1u9J3hQAFTgEFm",
+              "state": "READY",
+              "url": "https://small-static-website-g4p6it2fi-mypremierai-2827.vercel.app",
+              "alias": null,
+              "httpStatus": 200,
+              "errorCode": null,
+              "errorMessage": null,
+              "transitions": [
+                {
+                  "state": "INITIALIZING",
+                  "at": "2026-11-23T12:30:54.449Z"
+                },
+                {
+                  "state": "BUILDING",
+                  "at": "2026-11-23T12:30:58.854Z"
+                },
+                {
+                  "state": "READY",
+                  "at": "2026-11-23T12:31:03.088Z"
+                }
+              ],
+              "durationMs": 9434
+            },
+            "accountLimited": true
+          },
+          "durationMs": 9556
+        }
+      ],
+      "ok": true,
+      "liveUrl": "https://small-static-website-g4p6it2fi-mypremierai-2827.vercel.app",
+      "repoUrl": "https://github.com/Rare-Erudite/COMPLETED/tree/rare-stage3-demo",
+      "limitations": [],
+      "durationMs": 15850
+    },
+    {
+      "instruction": "build a python command line tool called rare-py-demo that prints a greeting",
+      "project": "python-command-line",
+      "template": "python-cli",
+      "steps": [
+        {
+          "id": "provision",
+          "title": "Provision development environment",
+          "status": "passed",
+          "summary": "Every requested toolchain was already ready.",
+          "evidence": {
+            "requested": [
+              "python_runtime"
+            ],
+            "steps": [
+              {
+                "toolchainId": "python_runtime",
+                "name": "Python 3 runtime",
+                "outcome": "already_ready",
+                "command": null,
+                "exitCode": null,
+                "output": "Python 3.11.15",
+                "version": "Python 3.11.15",
+                "reason": "The probe already reported this toolchain as ready; nothing was installed."
+              }
+            ],
+            "ready": [
+              "node_ts",
+              "npm",
+              "vite_bundler",
+              "python_runtime",
+              "git",
+              "rust_cargo",
+              "go_toolchain",
+              "java_toolchain",
+              "gcc",
+              "gpp",
+              "make",
+              "php",
+              "maven",
+              "ruby",
+              "ffmpeg",
+              "psql"
+            ],
+            "stillMissing": [
+              {
+                "id": "android_gradle",
+                "reason": "Android packaging needs a JDK plus the Android SDK (sdkmanager, build-tools, platform) and Gradle. None are required for web builds."
+              },
+              {
+                "id": "dotnet",
+                "reason": "Install the .NET SDK from https://dotnet.microsoft.com/download (not in the base Debian archive)."
+              },
+              {
+                "id": "kotlinc",
+                "reason": "Install Kotlin from https://github.com/JetBrains/kotlin/releases (not in the base Debian archive)."
+              },
+              {
+                "id": "swift",
+                "reason": "Install Swift from https://swift.org/download (Linux builds are platform-specific)."
+              },
+              {
+                "id": "dart",
+                "reason": "Install the Dart/Flutter SDK from https://docs.flutter.dev/get-started/install."
+              },
+              {
+                "id": "docker",
+                "reason": "Install Docker to run builds in an isolated container."
+              }
+            ],
+            "durationMs": 1505
+          },
+          "durationMs": 1505
+        },
+        {
+          "id": "scaffold",
+          "title": "Create project from instruction",
+          "status": "passed",
+          "summary": "Wrote 5 files for a python-cli project at projects/python-command-line.",
+          "evidence": {
+            "name": "python-command-line",
+            "template": "python-cli",
+            "relativeRoot": "projects/python-command-line",
+            "files": [
+              "projects/python-command-line/main.py",
+              "projects/python-command-line/test_main.py",
+              "projects/python-command-line/requirements.txt",
+              "projects/python-command-line/README.md",
+              "projects/python-command-line/.rare-project.json"
+            ],
+            "buildCommand": "python3 -m py_compile main.py",
+            "testCommand": "python3 -m unittest",
+            "runCommand": "python3 main.py",
+            "requiresInstall": false
+          },
+          "durationMs": 1
+        },
+        {
+          "id": "build",
+          "title": "Build and test",
+          "status": "passed",
+          "summary": "Build and tests passed for python-command-line (python-cli).\n- build: passed — `python3 -m py_compile main.py` exit 0\n- test: passed — `python3 -m unittest` exit 0\n- run: passed — `python3 main.py` exit 0",
+          "evidence": {
+            "project": "python-command-line",
+            "relativeRoot": "projects/python-command-line",
+            "template": "python-cli",
+            "stages": [
+              {
+                "stage": "build",
+                "command": "python3 -m py_compile main.py",
+                "exitCode": 0,
+                "passed": true,
+                "durationMs": 28,
+                "output": "",
+                "repairs": []
+              },
+              {
+                "stage": "test",
+                "command": "python3 -m unittest",
+                "exitCode": 0,
+                "passed": true,
+                "durationMs": 37,
+                "output": "..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\nOK",
+                "repairs": []
+              },
+              {
+                "stage": "run",
+                "command": "python3 main.py",
+                "exitCode": 0,
+                "passed": true,
+                "durationMs": 18,
+                "output": "Hello, world!",
+                "repairs": []
+              }
+            ],
+            "passed": true,
+            "durationMs": 83,
+            "limitations": []
+          },
+          "durationMs": 83
+        }
+      ],
+      "ok": true,
+      "liveUrl": null,
+      "repoUrl": null,
+      "limitations": [],
+      "durationMs": 1589
+    }
+  ],
+  "failureInjection": {
+    "injected": "Truncated the module.exports assignment in src/index.js to force a syntax error.",
+    "broken": {
+      "passed": false,
+      "buildExitCode": 1,
+      "buildOutput": "/workspace/repo/projects/rare-failure-demo/src/index.js:9\nif (import.meta.url === `file://${process.argv[1]}`) {\n                         ^^^^\nSyntaxError: Unexpected identifier 'file'\n    at checkSyntax (node:internal/main/check_syntax:74:5)\nNode.js v20.20.2",
+      "repairsAttempted": []
+    },
+    "repaired": {
+      "passed": true,
+      "stages": [
+        {
+          "stage": "build",
+          "passed": true,
+          "exitCode": 0
+        },
+        {
+          "stage": "test",
+          "passed": true,
+          "exitCode": 0
+        }
+      ]
+    }
+  },
+  "accounts": {
+    "github": {
+      "ok": true,
+      "login": "Rare-Erudite",
+      "error": null
+    },
+    "vercel": {
+      "ok": true,
+      "username": "mypremierai-2827",
+      "limited": true,
+      "error": null
+    }
+  },
+  "notes": [],
+  "finishedAt": "2026-11-23T12:31:05.576Z"
+}

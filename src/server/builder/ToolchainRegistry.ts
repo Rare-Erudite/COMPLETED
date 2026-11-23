@@ -169,6 +169,154 @@ const PROBES: ToolchainProbe[] = [
     timeoutMs: 20_000,
   },
   {
+    id: 'gcc',
+    name: 'C compiler (gcc)',
+    command: 'gcc',
+    args: ['--version'],
+    domains: ['C', 'Native', 'Embedded'],
+    parse: (out) => {
+      const match = out.match(/gcc[^\d]*(\d+\.\d+\.\d+)/);
+      return match ? `gcc ${match[1]}` : null;
+    },
+    installHint: 'Install a C toolchain: `apt-get install -y build-essential`.',
+  },
+  {
+    id: 'gpp',
+    name: 'C++ compiler (g++)',
+    command: 'g++',
+    args: ['--version'],
+    domains: ['C++', 'Native', 'Games'],
+    parse: (out) => {
+      const match = out.match(/g\+\+[^\d]*(\d+\.\d+\.\d+)/);
+      return match ? `g++ ${match[1]}` : null;
+    },
+    installHint: 'Install a C++ toolchain: `apt-get install -y build-essential`.',
+  },
+  {
+    id: 'make',
+    name: 'GNU make',
+    command: 'make',
+    args: ['--version'],
+    domains: ['Build systems', 'C/C++'],
+    parse: (out) => {
+      const match = out.match(/GNU Make (\d+\.\d+(?:\.\d+)?)/);
+      return match ? `make ${match[1]}` : null;
+    },
+    installHint: 'Install make: `apt-get install -y make`.',
+  },
+  {
+    id: 'php',
+    name: 'PHP runtime',
+    command: 'php',
+    args: ['--version'],
+    domains: ['Web backend', 'Scripting'],
+    parse: (out) => {
+      const match = out.match(/PHP (\d+\.\d+\.\d+)/);
+      return match ? `PHP ${match[1]}` : null;
+    },
+    installHint: 'Install PHP CLI: `apt-get install -y php-cli`.',
+  },
+  {
+    id: 'maven',
+    name: 'Maven build tool',
+    command: 'mvn',
+    args: ['--version'],
+    domains: ['Java', 'Enterprise'],
+    parse: (out) => {
+      const match = out.match(/Apache Maven (\d+\.\d+\.\d+)/);
+      return match ? `Maven ${match[1]}` : null;
+    },
+    installHint: 'Install Maven: `apt-get install -y maven`.',
+    timeoutMs: 20_000,
+  },
+  {
+    id: 'dotnet',
+    name: '.NET SDK',
+    command: 'dotnet',
+    args: ['--version'],
+    domains: ['C#', 'Desktop', 'Backend'],
+    parse: (out) => {
+      const match = out.match(/(\d+\.\d+\.\d+)/);
+      return match ? `.NET ${match[1]}` : null;
+    },
+    installHint: 'Install the .NET SDK from https://dotnet.microsoft.com/download (not in the base Debian archive).',
+  },
+  {
+    id: 'ruby',
+    name: 'Ruby runtime',
+    command: 'ruby',
+    args: ['--version'],
+    domains: ['Web backend', 'Scripting'],
+    parse: (out) => {
+      const match = out.match(/ruby (\d+\.\d+\.\d+)/);
+      return match ? `Ruby ${match[1]}` : null;
+    },
+    installHint: 'Install Ruby: `apt-get install -y ruby-full`.',
+  },
+  {
+    id: 'ffmpeg',
+    name: 'FFmpeg media toolchain',
+    command: 'ffmpeg',
+    args: ['-version'],
+    domains: ['Audio', 'Video', 'Media'],
+    parse: (out) => {
+      const match = out.match(/ffmpeg version (\S+)/);
+      return match ? `ffmpeg ${match[1]}` : null;
+    },
+    installHint: 'Install FFmpeg: `apt-get install -y ffmpeg`.',
+  },
+  {
+    id: 'psql',
+    name: 'PostgreSQL client',
+    command: 'psql',
+    args: ['--version'],
+    domains: ['Database', 'SQL'],
+    parse: (out) => {
+      const match = out.match(/psql \(PostgreSQL\) (\d+\.\d+(?:\.\d+)?)/);
+      return match ? `psql ${match[1]}` : null;
+    },
+    installHint: 'Install the PostgreSQL client: `apt-get install -y postgresql-client`.',
+  },
+  {
+    id: 'kotlinc',
+    name: 'Kotlin compiler',
+    command: 'kotlinc',
+    args: ['-version'],
+    domains: ['Android', 'JVM'],
+    parse: (out) => {
+      const match = out.match(/kotlinc-jvm (\d+\.\d+\.\d+)/);
+      return match ? `Kotlin ${match[1]}` : null;
+    },
+    installHint: 'Install Kotlin from https://github.com/JetBrains/kotlin/releases (not in the base Debian archive).',
+    timeoutMs: 20_000,
+  },
+  {
+    id: 'swift',
+    name: 'Swift toolchain',
+    command: 'swift',
+    args: ['--version'],
+    domains: ['iOS', 'macOS', 'Server'],
+    parse: (out) => {
+      const match = out.match(/Swift version (\d+\.\d+(?:\.\d+)?)/);
+      return match ? `Swift ${match[1]}` : null;
+    },
+    installHint: 'Install Swift from https://swift.org/download (Linux builds are platform-specific).',
+    timeoutMs: 20_000,
+  },
+  {
+    id: 'dart',
+    name: 'Dart / Flutter SDK',
+    command: 'dart',
+    args: ['--version'],
+    domains: ['Flutter', 'Mobile', 'Web'],
+    parse: (out) => {
+      const match = out.match(/Dart SDK version: (\d+\.\d+\.\d+)/);
+      return match ? `Dart ${match[1]}` : null;
+    },
+    installHint: 'Install the Dart/Flutter SDK from https://docs.flutter.dev/get-started/install.',
+    timeoutMs: 20_000,
+  },
+  {
     id: 'docker',
     name: 'Container runtime',
     command: 'docker',

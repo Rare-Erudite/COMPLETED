@@ -47,6 +47,14 @@ import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
 import { extractMemories } from './src/server/chat/MemoryExtractor.js';
 import { routeChatIntent } from './src/server/chat/IntentRouter.js';
+import {
+  runDeliveryWorkflow,
+  summariseDelivery,
+  inferTemplate,
+  inferName,
+  type DeliveryReport,
+} from './src/server/builder/DeliveryOrchestrator.js';
+import { provisionToolchains, summariseProvisioning } from './src/server/builder/EnvironmentProvisioner.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
 import { DevicePlanner } from './src/server/device/DevicePlanner.js';
 import { DEVICE_ACTIONS } from './src/device/deviceActions.js';
@@ -1490,6 +1498,76 @@ app.post('/api/conversations/:id/stream', async (req, res) => {
           stats: report.stats,
         },
       });
+      res.end();
+      return;
+    }
+
+    // A build / repository / deploy instruction is a multi-department workflow,
+    // not a chat answer. It runs the real pipeline (provision -> scaffold ->
+    // build -> test -> repository -> deploy -> verify) and streams each stage's
+    // actual outcome. Nothing here is a simulated success message.
+    if (decision.intent === 'build') {
+      send('intent', { intent: decision.intent, reason: decision.reason, actions: decision.actions });
+      const report = await runDeliveryWorkflow(PROJECT_ROOT, {
+        instruction: text,
+        name: decision.projectName ? inferName(decision.projectName) : inferName(text),
+        template: inferTemplate(text),
+        createRepository: Boolean(decision.actions?.repository),
+        deploy: Boolean(decision.actions?.deploy),
+      });
+
+      for (const stage of report.steps) {
+        send('progress', { stage: stage.id, title: stage.title, status: stage.status, summary: stage.summary });
+      }
+
+      const reply = summariseDelivery(report);
+      for (let offset = 0; offset < reply.length; offset += 400) {
+        send('delta', { text: reply.slice(offset, offset + 400) });
+      }
+
+      const deliveryMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: reply, timestamp: new Date().toISOString() };
+      let deliveryUpdated: any = null;
+      await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
+        if (item.id !== conversation.id) return item;
+        const title = !item.customTitle && (!item.title || item.title === 'New Chat') ? text.replace(/[^\w\s]/g, '').trim().slice(0, 34) || 'Chat' : item.title;
+        deliveryUpdated = { ...item, title, messages: [...item.messages, userMessage, deliveryMessage], messageCount: item.messages.length + 2 };
+        return deliveryUpdated;
+      }));
+
+      send('done', {
+        user_message: userMessage,
+        assistant_message: deliveryMessage,
+        reply: deliveryMessage,
+        conversationTitle: deliveryUpdated?.title,
+        memoriesStored: 0,
+        delivery: {
+          project: report.project,
+          template: report.template,
+          ok: report.ok,
+          liveUrl: report.liveUrl,
+          repoUrl: report.repoUrl,
+          limitations: report.limitations,
+          steps: report.steps.map((s) => ({ id: s.id, status: s.status, summary: s.summary })),
+        },
+      });
+      res.end();
+      return;
+    }
+
+    // A self-build instruction changes RARE itself. It is routed to the
+    // developer-gated self-development engine rather than to a user project.
+    if (decision.intent === 'self_build') {
+      send('intent', { intent: decision.intent, reason: decision.reason });
+      const reply = (await isDeveloperSessionAuthorized(req))
+        ? 'Self-build is available in the Developer Space. Open Self-Build and submit this instruction there so it runs against a checkpoint with rollback.'
+        : 'Self-build requires the developer passkey. Open the Developer Space and authenticate to run changes against RARE itself.';
+      send('delta', { text: reply });
+      const selfBuildMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: reply, timestamp: new Date().toISOString() };
+      await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
+        if (item.id !== conversation.id) return item;
+        return { ...item, messages: [...item.messages, userMessage, selfBuildMessage], messageCount: item.messages.length + 2 };
+      }));
+      send('done', { user_message: userMessage, assistant_message: selfBuildMessage, reply: selfBuildMessage, memoriesStored: 0 });
       res.end();
       return;
     }
