@@ -1,0 +1,9 @@
+{
+  "name": "small-static-website",
+  "template": "static-web",
+  "objective": "build a small static website called rare-stage3-demo that shows the RARE build pipeline, then create a repository for it and deploy it",
+  "createdAt": "2026-11-23T12:29:43.521Z",
+  "buildCommand": null,
+  "testCommand": null,
+  "runCommand": "open index.html"
+}
