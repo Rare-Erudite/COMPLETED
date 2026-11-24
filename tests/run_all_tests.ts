@@ -51,6 +51,7 @@ import { runMcpTests } from './test_mcp_client.js';
 import { runWebSearchProviderTests } from './test_web_search_providers.js';
 import { runOrchestrationAcceptanceTests } from './test_orchestration_acceptance.js';
 import { runNavigationTests } from './test_navigation.js';
+import { runSessionBootstrapTests } from './test_session_bootstrap.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -193,6 +194,7 @@ async function main() {
     await runWebSearchProviderTests();
     await runOrchestrationAcceptanceTests();
     await runNavigationTests();
+    await runSessionBootstrapTests();
     console.log();
     await runKeepAliveTests();
     console.log();

@@ -269,7 +269,32 @@ function isTrustedBackendRequest(url: string): boolean {
   }
 }
 
-function isConversationApiRequest(url: string): boolean {
+// Endpoints the server serves without a session. This mirrors PUBLIC_API_PATHS
+// in server.ts. Everything else under /api is session-gated, so the client must
+// have a session before calling it.
+const PUBLIC_API_PATHS = new Set([
+  '/api/health', '/api/status',
+  '/api/download/source', '/api/download/bundle', '/api/download/apk/info',
+  '/api/download/apk/chunk', '/api/download/apk', '/api/download/exe',
+  '/api/updates/check', '/api/updates/list',
+  '/api/intelligence/status', '/api/integration/rare-intelligence',
+  '/api/v1/engine/health', '/api/v1/engine/status', '/api/v1/providers/available',
+  '/api/developer/status',
+  '/api/user/guest-session', '/api/user/signup', '/api/user/login',
+  '/api/user/oauth', '/api/user/send-otp', '/api/user/verify-otp',
+  '/api/user/send-email-otp', '/api/user/verify-email-otp',
+]);
+
+/**
+ * True when this request needs a server-issued session.
+ *
+ * This used to match only /api/conversations, so the very first /api/settings
+ * call on a cold load raced the guest-session bootstrap and came back 401 -
+ * a console error on every fresh visit, and a settings panel that briefly
+ * showed defaults. Any session-gated endpoint has the same requirement, so the
+ * check is now driven by the public-path list rather than one hardcoded route.
+ */
+function isSessionGatedApiRequest(url: string): boolean {
   if (
     /^https?:\/\//i.test(url) &&
     !isTrustedBackendRequest(url)
@@ -277,17 +302,19 @@ function isConversationApiRequest(url: string): boolean {
     return false;
   }
 
+  let pathname: string;
   try {
     const base =
       typeof window !== 'undefined'
         ? window.location.origin
         : 'http://localhost';
-
-    const pathname = new URL(url, base).pathname;
-    return /^\/api\/conversations(?:\/|$)/.test(pathname);
+    pathname = new URL(url, base).pathname;
   } catch {
-    return /^\/api\/conversations(?:\/|$)/.test(url.split('?')[0]);
+    pathname = url.split('?')[0];
   }
+
+  if (!/^\/api(?:\/|$)/.test(pathname)) return false;
+  return !PUBLIC_API_PATHS.has(pathname);
 }
 
 let guestSessionInitialization: Promise<string | null> | null = null;
@@ -980,11 +1007,11 @@ export async function safeFetch<T>(
     }
   }
 
-  // Conversation requests require a server-issued session when using a backend.
+  // Session-gated requests need a server-issued session when using a backend.
   // Call fetch directly in the initializer so this cannot recurse through safeFetch.
   if (
     !useLocalFirst &&
-    isConversationApiRequest(url) &&
+    isSessionGatedApiRequest(url) &&
     !getStoredSessionToken()
   ) {
     await initializeGuestSessionToken();
