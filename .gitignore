@@ -56,3 +56,6 @@ public/rare-v1.0.0-release.apk
 
 # Scaffolded demo projects from evidence runs
 projects/
+
+# Downloaded model weights — never commit large binaries.
+data/models/
