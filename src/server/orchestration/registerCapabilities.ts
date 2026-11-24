@@ -37,6 +37,7 @@ import type { BenchmarkSuite } from '../evaluation/BenchmarkSuite.js';
 import type { ProviderRegistry } from '../providers/ProviderRegistry.js';
 import { ModelCatalogue, type ModelTask } from '../intelligence/ModelCatalogue.js';
 import { MODEL_CATALOGUE } from '../intelligence/ModelCatalogue.js';
+import type { PluginRegistry } from '../plugins/PluginRegistry.js';
 
 export interface DepartmentBindings {
   documents: () => DocumentsService | undefined;
@@ -49,6 +50,8 @@ export interface DepartmentBindings {
   workspaceRoot: string;
   /** Model catalogue for discovery, acquisition and routing. */
   modelCatalogue: ModelCatalogue;
+  /** Plugin lifecycle registry (install/configure/execute/health). */
+  pluginRegistry: PluginRegistry;
 }
 
 function ok(summary: string, data: unknown, started: number, limitations?: string[]): CapabilityResult {
@@ -78,7 +81,7 @@ function groundingProvider(providers: ProviderRegistry): GroundingProvider {
  * again replaces the descriptors (hot reload) rather than duplicating them.
  */
 export function registerDepartmentCapabilities(bindings: DepartmentBindings): void {
-  const { documents, research, mcp, devicePlanner, benchmark, providers, workspaceRoot, modelCatalogue } = bindings;
+  const { documents, research, mcp, devicePlanner, benchmark, providers, workspaceRoot, modelCatalogue, pluginRegistry } = bindings;
 
   const requireDocuments = (): DocumentsService => {
     const service = documents();
@@ -547,15 +550,114 @@ export function registerDepartmentCapabilities(bindings: DepartmentBindings): vo
       idempotent: true,
       cost: 'free',
       args: [],
-      async handler() {
+      async handler(_args, ctx) {
         const started = Date.now();
-        const servers = mcp.statuses();
+        const plugins = await pluginRegistry.list(ctx.ownerId);
         const tools = mcp.listTools();
-        return ok(`${servers.filter((s) => s.connected).length}/${servers.length} MCP server(s) connected, ${tools.length} tool(s) discovered.`, {
-          configurationError: mcp.configurationError ?? null,
-          servers,
-          tools,
-        }, started);
+        return ok(
+          `${plugins.filter((p) => p.connected).length}/${plugins.length} plugin(s) connected, ${tools.length} tool(s) discovered.`,
+          { configurationError: mcp.configurationError ?? null, plugins, tools },
+          started,
+        );
+      },
+    },
+    {
+      id: 'plugins.install',
+      department: 'plugins',
+      title: 'Install an MCP plugin',
+      description: 'Register an MCP server, connect it for real and record it durably.',
+      permission: 'write',
+      idempotent: false,
+      cost: 'network',
+      timeoutMs: 60_000,
+      args: [
+        { name: 'name', type: 'string', required: true, description: 'Human name for the plugin.' },
+        { name: 'transport', type: 'string', required: true, description: 'stdio|sse|http' },
+        { name: 'target', type: 'string', required: true, description: 'Command (stdio) or URL (sse/http).' },
+        { name: 'args', type: 'array', required: false, description: 'Arguments for a stdio command.' },
+        { name: 'permissions', type: 'array', required: false, description: 'Declared scopes, e.g. ["files:read"].' },
+      ],
+      async handler(args, ctx) {
+        const started = Date.now();
+        const transport = String(args.transport);
+        if (!['stdio', 'sse', 'http'].includes(transport)) {
+          return fail(`Unsupported transport "${transport}".`, 'unsupported_transport', started);
+        }
+        const plugin = await pluginRegistry.install(ctx.ownerId, {
+          name: String(args.name),
+          transport: transport as any,
+          target: String(args.target),
+          args: Array.isArray(args.args) ? (args.args as string[]) : undefined,
+          permissions: Array.isArray(args.permissions) ? (args.permissions as string[]) : undefined,
+        });
+        return {
+          ok: plugin.connected,
+          summary: plugin.connected
+            ? `Installed "${plugin.name}" with ${plugin.toolCount} tool(s).`
+            : `Installed "${plugin.name}" but it did not connect: ${plugin.error || 'unknown error'}`,
+          data: plugin,
+          durationMs: Date.now() - started,
+        };
+      },
+    },
+    {
+      id: 'plugins.execute',
+      department: 'plugins',
+      title: 'Execute a plugin tool',
+      description: 'Call a discovered MCP tool by its qualified name and return the real result.',
+      permission: 'execute',
+      idempotent: false,
+      cost: 'network',
+      timeoutMs: 60_000,
+      args: [
+        { name: 'tool', type: 'string', required: true, description: 'Qualified tool name: serverId__toolName' },
+        { name: 'args', type: 'object', required: false, description: 'Tool arguments.' },
+      ],
+      async handler(args, ctx) {
+        const started = Date.now();
+        const result = await pluginRegistry.execute(
+          ctx.ownerId,
+          String(args.tool),
+          (args.args as Record<string, unknown>) || {},
+        );
+        return {
+          ok: result.ok,
+          summary: result.ok ? `Plugin tool "${args.tool}" executed.` : `Plugin tool "${args.tool}" failed: ${result.error}`,
+          data: result,
+          durationMs: Date.now() - started,
+        };
+      },
+    },
+    {
+      id: 'plugins.health',
+      department: 'plugins',
+      title: 'Probe plugin health',
+      description: 'Probe every plugin and record its real connection state.',
+      permission: 'read',
+      idempotent: true,
+      cost: 'free',
+      args: [],
+      async handler(_args, ctx) {
+        const started = Date.now();
+        const plugins = await pluginRegistry.health(ctx.ownerId);
+        return ok(`${plugins.filter((p) => p.connected).length}/${plugins.length} plugin(s) healthy.`, { plugins }, started);
+      },
+    },
+    {
+      id: 'plugins.uninstall',
+      department: 'plugins',
+      title: 'Uninstall a plugin',
+      description: 'Disconnect a plugin and remove its durable record.',
+      permission: 'destructive',
+      idempotent: false,
+      cost: 'free',
+      args: [{ name: 'id', type: 'string', required: true, description: 'Plugin id.' }],
+      async handler(args, ctx) {
+        const started = Date.now();
+        const removed = await pluginRegistry.uninstall(ctx.ownerId, String(args.id));
+        return removed
+          ? ok(`Uninstalled plugin "${args.id}".`, { id: args.id }, started)
+          : fail(`No plugin "${args.id}" was installed.`, 'not_found', started);
       },
     },
     {

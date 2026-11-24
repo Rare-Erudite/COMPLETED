@@ -146,6 +146,38 @@ export class McpClientManager {
     return this.statuses();
   }
 
+  /**
+   * Register a server at runtime and connect it for real. Used by the plugin
+   * registry when a user installs a plugin. Returns the real connection result.
+   */
+  async addServer(config: McpServerConfig): Promise<{ ok: boolean; error?: string }> {
+    if (this.configs.some((c) => c.id === config.id)) {
+      await this.removeServer(config.id);
+    }
+    this.configs.push(config);
+    const status = await this.connect(config);
+    return { ok: status.connected, error: status.error };
+  }
+
+  /** Disconnect and forget a server. Returns true when it was configured. */
+  async removeServer(id: string): Promise<boolean> {
+    const connection = this.connections.get(id);
+    if (connection) {
+      try {
+        await connection.client.close();
+      } catch {
+        // The transport may already be gone; forgetting it is still correct.
+      }
+      this.connections.delete(id);
+    }
+    const index = this.configs.findIndex((c) => c.id === id);
+    if (index >= 0) {
+      this.configs.splice(index, 1);
+      return true;
+    }
+    return false;
+  }
+
   async connect(config: McpServerConfig): Promise<McpServerStatus> {
     const existing = this.connections.get(config.id);
     if (existing) return existing.status;

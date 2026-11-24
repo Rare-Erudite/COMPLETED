@@ -69,6 +69,7 @@ import { registerDepartmentCapabilities } from './src/server/orchestration/regis
 import { jobStore } from './src/server/orchestration/JobStore.js';
 import { startJob, resumeJob, shouldRunAsJob } from './src/server/orchestration/JobRunner.js';
 import { ModelCatalogue } from './src/server/intelligence/ModelCatalogue.js';
+import { PluginRegistry } from './src/server/plugins/PluginRegistry.js';
 
 const app = express();
 // Two roots, deliberately distinct: the deployment tree holds the bundle and
@@ -177,6 +178,13 @@ const benchmarkSuite = new BenchmarkSuite(toolExecutor, memoryStore, checkpointS
 // declared before boot completes.
 let capabilitiesRegistered = false;
 const modelCatalogue = new ModelCatalogue(path.join(PROJECT_ROOT, 'data', 'models'));
+// The plugin registry wraps the MCP client, which is constructed later in the
+// file; a lazy getter keeps the declaration order honest without a forward ref.
+let pluginRegistryInstance: PluginRegistry | undefined;
+function getPluginRegistry(): PluginRegistry {
+  if (!pluginRegistryInstance) pluginRegistryInstance = new PluginRegistry(mcpManager);
+  return pluginRegistryInstance;
+}
 function ensureCapabilitiesRegistered(): void {
   if (capabilitiesRegistered) return;
   registerDepartmentCapabilities({
@@ -188,6 +196,7 @@ function ensureCapabilitiesRegistered(): void {
     providers: providerRegistry,
     workspaceRoot: PROJECT_ROOT,
     modelCatalogue,
+    pluginRegistry: getPluginRegistry(),
   });
   capabilitiesRegistered = true;
 }
@@ -6651,6 +6660,7 @@ async function startServer() {
   // Jobs persist through the same store, and every department publishes its
   // real capabilities to the one registry Chat and the Assistant both use.
   jobStore.attach(persistentStorage);
+  getPluginRegistry().attach(persistentStorage);
   ensureCapabilitiesRegistered();
 
   // Production must never start with local-only authentication sessions.
