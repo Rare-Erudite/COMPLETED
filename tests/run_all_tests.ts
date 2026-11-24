@@ -52,6 +52,8 @@ import { runWebSearchProviderTests } from './test_web_search_providers.js';
 import { runOrchestrationAcceptanceTests } from './test_orchestration_acceptance.js';
 import { runNavigationTests } from './test_navigation.js';
 import { runSessionBootstrapTests } from './test_session_bootstrap.js';
+import { runSelfBuildTests } from './test_self_build_real.js';
+import { runIntentRouterTests } from './test_intent_router.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -195,6 +197,8 @@ async function main() {
     await runOrchestrationAcceptanceTests();
     await runNavigationTests();
     await runSessionBootstrapTests();
+    await runSelfBuildTests();
+    runIntentRouterTests();
     console.log();
     await runKeepAliveTests();
     console.log();

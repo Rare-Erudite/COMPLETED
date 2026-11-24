@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+
 /**
  * IntentRouter — decides what a chat message is actually asking RARE to do.
  *
@@ -101,7 +104,60 @@ const SELF_BUILD_VERBS = [
   'add a feature to rare', 'modify rare', 'repair rare', 'fix rare',
   'self-build', 'self build', 'improve the research department',
   'improve the documents department', 'add a plugin to rare',
+  // Second-person and possessive forms. "change your own code" and "fix your
+  // source" are unambiguously about this codebase, and were previously routed
+  // to ordinary conversation because only the literal word "rare" matched.
+  'your own code', 'your own source', 'your source code', 'your codebase',
+  'change your code', 'modify your code', 'fix your code', 'edit your code',
+  'change your source', 'modify your source', 'fix your source',
+  'change yourself', 'modify yourself', 'improve yourself',
+  'this codebase', 'this repository', 'this repo',
 ];
+
+/**
+ * A path into RARE's own source is self-reference — but only if that file
+ * actually exists in this repository. A user project legitimately has
+ * `src/main.tsx`, so matching the shape alone would hijack ordinary builds.
+ * Existence is the evidence that separates the two.
+ */
+const SELF_SOURCE_PATH = /(?:^|[\s"'`(])((?:src|api|scripts|tests)\/[\w./-]+\.(?:ts|tsx|js|mjs|json|css|html))\b/;
+
+/** Files at the repository root that only exist in RARE itself. */
+const SELF_ROOT_FILES = /\b(server\.ts|vercel\.json|vite\.config\.ts)\b/;
+
+/** Repository root used to decide whether a named path is RARE's own source. */
+const REPO_ROOT = path.resolve(process.env.RARE_APP_ROOT || process.cwd());
+
+/**
+ * Directories that only exist inside RARE itself. A path under one of these is
+ * self-reference even when the file does not exist yet — "add a test in
+ * tests/test_foo.ts" is a change to this repository, not to a user project.
+ */
+const RARE_ONLY_DIRS = ['src/server/', 'src/components/', 'src/navigation/', 'tests/', 'api/', 'scripts/'];
+
+/** True when a path named in the message is a real file in this repository. */
+function namesExistingRepoFile(text: string, root: string): boolean {
+  const match = text.match(SELF_SOURCE_PATH);
+  if (match) {
+    const rel = match[1];
+    // A RARE-only directory is conclusive on its own.
+    if (RARE_ONLY_DIRS.some((d) => rel.startsWith(d))) return true;
+    try {
+      return fs.existsSync(path.resolve(root, rel));
+    } catch {
+      return false;
+    }
+  }
+  const rootFile = text.match(SELF_ROOT_FILES);
+  if (rootFile) {
+    try {
+      return fs.existsSync(path.resolve(root, rootFile[1]));
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
 
 /** Document verbs that mean "read this file/link", not "chat about it". */
 const DOCUMENT_VERBS = [
@@ -166,10 +222,22 @@ export function routeChatIntent(message: string): IntentDecision {
 
   // Self-build is a change to RARE itself and takes precedence over a generic
   // build, because "add a department" is not a user project.
-  if (selfBuildVerb) {
+  //
+  // A named path into RARE's own source counts as self-reference even without a
+  // verb: "fix src/server/tools/ToolExecutor.ts" can only mean this repository.
+  // This is checked BEFORE the generic build branch so such a request can never
+  // fall through to the unprivileged project path.
+  const selfSourcePath = namesExistingRepoFile(text, REPO_ROOT);
+  // An explicit build verb wins over a bare path: "build an app with
+  // src/main.tsx" is a user project that happens to mention a file. Only a
+  // self-build phrase, or a path with no build verb at all, is self-reference.
+  const selfBuild = Boolean(selfBuildVerb) || (selfSourcePath && !buildVerb);
+  if (selfBuild) {
     return {
       intent: 'self_build',
-      reason: `Matched the self-build phrase "${selfBuildVerb}".`,
+      reason: selfBuildVerb
+        ? `Matched the self-build phrase "${selfBuildVerb}".`
+        : 'The request names a file inside RARE\'s own source tree.',
       confidence: 0.9,
       depth: 'standard',
       seedUrls,

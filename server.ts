@@ -47,7 +47,7 @@ import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
 import { extractMemories } from './src/server/chat/MemoryExtractor.js';
-import { routeChatIntent } from './src/server/chat/IntentRouter.js';
+import { routeChatIntent, capabilitiesForIntent } from './src/server/chat/IntentRouter.js';
 import {
   runDeliveryWorkflow,
   summariseDelivery,
@@ -1639,12 +1639,90 @@ app.post('/api/conversations/:id/stream', async (req, res) => {
 
     // A self-build instruction changes RARE itself. It is routed to the
     // developer-gated self-development engine rather than to a user project.
+    //
+    // This used to deflect in BOTH cases: an authorized developer was told to
+    // "open Self-Build and submit this instruction there", which is exactly the
+    // "abandon the Assistant and repeat the task elsewhere" behaviour the
+    // requirement forbids. An authorized developer now gets the real engine run
+    // here, with the real diffs and verification results streamed back.
     if (decision.intent === 'self_build') {
       send('intent', { intent: decision.intent, reason: decision.reason });
-      const reply = (await isDeveloperSessionAuthorized(req))
-        ? 'Self-build is available in the Developer Space. Open Self-Build and submit this instruction there so it runs against a checkpoint with rollback.'
-        : 'Self-build requires the developer passkey. Open the Developer Space and authenticate to run changes against RARE itself.';
-      send('delta', { text: reply });
+
+      if (!(await isDeveloperSessionAuthorized(req))) {
+        const reply =
+          'Changing RARE\'s own source requires the developer passkey. ' +
+          'Open the developer sign-in and authenticate — then ask me again and I will run the change here.';
+        send('delta', { text: reply });
+        const gateMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: reply, timestamp: new Date().toISOString() };
+        await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
+          if (item.id !== conversation.id) return item;
+          return { ...item, messages: [...item.messages, userMessage, gateMessage], messageCount: item.messages.length + 2 };
+        }));
+        send('done', { user_message: userMessage, assistant_message: gateMessage, reply: gateMessage, memoriesStored: 0 });
+        res.end();
+        return;
+      }
+
+      // Authorized: run the real self-development cycle.
+      send('progress', { stage: 'self_build', message: 'Planning a grounded change against the real source…' });
+      let selfDevResult: any;
+      try {
+        selfDevResult = await selfDevEngine.executeCycle({ instruction: text }, true);
+      } catch (error: any) {
+        const reply = `The self-build could not run: ${error?.message || String(error)}. No files were changed.`;
+        send('delta', { text: reply });
+        const errMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: reply, timestamp: new Date().toISOString() };
+        await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
+          if (item.id !== conversation.id) return item;
+          return { ...item, messages: [...item.messages, userMessage, errMessage], messageCount: item.messages.length + 2 };
+        }));
+        send('done', { user_message: userMessage, assistant_message: errMessage, reply: errMessage, memoriesStored: 0 });
+        res.end();
+        return;
+      }
+
+      // Report what actually happened, including the real diff.
+      const lines: string[] = [];
+      lines.push(`**Self-build ${selfDevResult.status}**`);
+      lines.push('');
+      for (const step of selfDevResult.steps || []) {
+        lines.push(`${step.step}. ${step.title} — ${step.outcome}${step.details ? `: ${step.details}` : ''}`);
+      }
+      if (selfDevResult.blocker) {
+        lines.push('');
+        lines.push(`**Blocked:** ${selfDevResult.blocker}`);
+      }
+      const diffs = selfDevResult.diffs || [];
+      if (diffs.length > 0) {
+        lines.push('');
+        lines.push(`**Changed files (${diffs.length}):**`);
+        for (const d of diffs) {
+          lines.push(`- \`${d.file}\``);
+        }
+        lines.push('');
+        lines.push('```diff');
+        for (const d of diffs) {
+          const beforeLines = d.before.split('\n');
+          const afterLines = d.after.split('\n');
+          let i = 0;
+          while (i < beforeLines.length && i < afterLines.length && beforeLines[i] === afterLines[i]) i++;
+          let j = 0;
+          while (
+            j < beforeLines.length - i &&
+            j < afterLines.length - i &&
+            beforeLines[beforeLines.length - 1 - j] === afterLines[afterLines.length - 1 - j]
+          ) j++;
+          lines.push(`--- ${d.file}`);
+          lines.push(`+++ ${d.file}`);
+          for (const l of beforeLines.slice(i, beforeLines.length - j)) lines.push(`-${l}`);
+          for (const l of afterLines.slice(i, afterLines.length - j)) lines.push(`+${l}`);
+        }
+        lines.push('```');
+      }
+      const reply = lines.join('\n');
+      for (let offset = 0; offset < reply.length; offset += 400) {
+        send('delta', { text: reply.slice(offset, offset + 400) });
+      }
       const selfBuildMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: reply, timestamp: new Date().toISOString() };
       await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
         if (item.id !== conversation.id) return item;
@@ -2475,6 +2553,42 @@ app.get('/api/v1/providers/available', async (_req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: { message: err.message } });
   }
+});
+
+// The canonical routing decision for a natural-language request.
+//
+// Chat, the Assistant and any other surface ask this instead of each keeping its
+// own keyword list, so a request cannot be classified one way in Chat and
+// another in the Assistant. It reports the decision and whether the caller is
+// currently authorized for the privileged branch — it does NOT execute anything.
+// The mutating routes re-check authorization themselves; this is a preview, not
+// a permission grant.
+app.post('/api/orchestrator/route', async (req, res) => {
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+  if (!text) {
+    return res.status(400).json({ error: { message: 'text is required.' } });
+  }
+
+  const decision = routeChatIntent(text);
+  const requiresDeveloper = decision.intent === 'self_build';
+  const developerAuthorized = requiresDeveloper
+    ? await isDeveloperSessionAuthorized(req)
+    : false;
+
+  return res.json({
+    intent: decision.intent,
+    reason: decision.reason,
+    requiresDeveloper,
+    developerAuthorized,
+    // What the caller should do next, stated plainly so the UI does not have to
+    // re-derive it from the intent name.
+    nextAction: requiresDeveloper
+      ? developerAuthorized
+        ? 'run_self_build'
+        : 'request_developer_auth'
+      : 'execute_normally',
+    capabilities: capabilitiesForIntent(decision),
+  });
 });
 
 // The intelligence layer's own health: what every provider really reports, what
