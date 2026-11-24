@@ -10,15 +10,107 @@
  */
 
 import assert from 'node:assert/strict';
+import os from 'node:os';
+import path from 'node:path';
 import { capabilityRegistry } from '../src/server/orchestration/CapabilityRegistry.js';
+import { registerDepartmentCapabilities } from '../src/server/orchestration/registerCapabilities.js';
 import { routeChatIntent, capabilitiesForIntent, isResearchToDocument } from '../src/server/chat/IntentRouter.js';
+import { MemoryStore } from '../src/server/storage/MemoryStore.js';
+import { CheckpointStore } from '../src/server/storage/CheckpointStore.js';
+import { ToolExecutor } from '../src/server/tools/ToolExecutor.js';
+import { ProviderRegistry } from '../src/server/providers/ProviderRegistry.js';
+import { DeepResearchEngine } from '../src/server/services/DeepResearchEngine.js';
+import { BenchmarkSuite } from '../src/server/evaluation/BenchmarkSuite.js';
+import { McpClientManager } from '../src/server/mcp/McpClientManager.js';
+import { PluginRegistry } from '../src/server/plugins/PluginRegistry.js';
+import { ModelCatalogue } from '../src/server/intelligence/ModelCatalogue.js';
+import { AgentRuntime } from '../src/server/agents/AgentRuntime.js';
 
-const BASE = process.env.RARE_TEST_BASE_URL || 'http://127.0.0.1:3000';
+/**
+ * The intent→capability mapping is asserted against the registry in THIS
+ * process, so the registry has to be populated here too. The server registers
+ * its own copy at boot; this mirrors that construction with the same real
+ * classes (no mocks) so `capabilityRegistry.has(...)` means what it says.
+ */
+function registerCapabilitiesInProcess(): void {
+  const memoryStore = new MemoryStore();
+  const checkpointStore = new CheckpointStore();
+  const toolExecutor = new ToolExecutor(memoryStore, checkpointStore);
+  const providerRegistry = new ProviderRegistry(memoryStore, toolExecutor);
+  const mcpManager = new McpClientManager([]);
+  const modelCatalogue = new ModelCatalogue(path.join(os.tmpdir(), 'rare-test-models'));
+  const agentRuntime = new AgentRuntime(modelCatalogue, {
+    async providerModels() {
+      return { ids: [], models: [] };
+    },
+    hostRamGb() {
+      return Math.round(os.totalmem() / 1024 / 1024 / 1024);
+    },
+  });
+
+  registerDepartmentCapabilities({
+    documents: () => undefined,
+    research: new DeepResearchEngine(),
+    mcp: mcpManager,
+    devicePlanner: { plan: async () => ({}) } as any,
+    benchmark: new BenchmarkSuite(toolExecutor, memoryStore, checkpointStore),
+    providers: providerRegistry,
+    workspaceRoot: process.cwd(),
+    modelCatalogue,
+    pluginRegistry: new PluginRegistry(mcpManager),
+    agentRuntime,
+  });
+}
+
+const baseUrl = (): string => process.env.RARE_TEST_BASE_URL || 'http://127.0.0.1:3000';
+
+let sessionHeadersValue: Record<string, string> | undefined;
+
+/**
+ * The capability routes are session-gated (they expose host tooling), so the
+ * HTTP tests need a real session. A guest session is the least-privileged one
+ * and is created once per run.
+ */
+async function sessionHeaders(): Promise<Record<string, string>> {
+  if (sessionHeadersValue) return sessionHeadersValue;
+  const res = await fetch(`${baseUrl()}/api/user/guest-session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: baseUrl() },
+    body: '{}',
+  });
+  assert.equal(res.status, 200, `guest-session returned ${res.status}`);
+  const raw = typeof (res.headers as any).getSetCookie === 'function'
+    ? (res.headers as any).getSetCookie() as string[]
+    : (res.headers.get('set-cookie') || '').split(/, (?=[^;,]+=)/g);
+  const cookies = raw.map((value) => value.split(';', 1)[0]).filter(Boolean);
+  const csrf = cookies.find((value) => value.startsWith('rare_csrf='))?.split('=', 2)[1] || '';
+  assert.ok(cookies.length && csrf, 'guest-session must issue a session cookie and CSRF token');
+  sessionHeadersValue = {
+    'Content-Type': 'application/json',
+    Origin: baseUrl(),
+    Cookie: cookies.join('; '),
+    'X-CSRF-Token': decodeURIComponent(csrf),
+  };
+  return sessionHeadersValue;
+}
 
 async function json(path: string, init?: RequestInit): Promise<{ status: number; body: any }> {
-  const response = await fetch(`${BASE}${path}`, {
+  const headers = { ...(init?.headers || {}) };
+  if (!headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  // Attach the session to every request; the routes under test are gated.
+  if (!headers['Cookie']) {
+    try {
+      const s = await sessionHeaders();
+      headers['Cookie'] = s['Cookie'];
+      headers['X-CSRF-Token'] = s['X-CSRF-Token'];
+      headers['Origin'] = s['Origin'];
+    } catch {
+      // The registry-only tests never reach the network; leave headers as-is.
+    }
+  }
+  const response = await fetch(`${baseUrl()}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+    headers,
   });
   const text = await response.text();
   let body: any = null;
@@ -184,6 +276,7 @@ function testIntentToCapabilityMapping(): void {
 }
 
 export async function runOrchestrationAcceptanceTests(): Promise<void> {
+  registerCapabilitiesInProcess();
   testRegistryValidation();
   await testUnknownCapability();
   await testHandlerFailureIsHonest();
