@@ -112,8 +112,34 @@ const allowedOrigins = new Set([
   ...(process.env.NODE_ENV === 'production' ? [] : developmentOrigins),
   ...configuredOrigins,
 ]);
+
+// Vercel gives every preview deployment a fresh, unpredictable hostname
+// (`rareproject-<hash>-<team>.vercel.app`) plus a per-branch alias
+// (`rareproject-git-<branch>-<team>.vercel.app`). A static allowlist can never
+// keep up with those, so every new preview was rejected with
+// "This origin is not allowed." and the app could not even create a guest
+// session - the preview looked deployed but was unusable.
+//
+// This admits only this project's own preview hostnames, and only when the
+// process is actually running as a Vercel preview. It is deliberately narrow:
+// the prefix must be the project name and the suffix must be this team's
+// scope, so no other project or team can be reached. Production is unaffected
+// because VERCEL_ENV is 'production' there.
+const PREVIEW_ORIGIN_PATTERN =
+  /^https:\/\/rareproject(?:-git-[a-z0-9][a-z0-9-]*)?(?:-[a-z0-9]+)?-mypremierai-2827\.vercel\.app$/;
+
+function isPreviewDeploymentOrigin(origin: string): boolean {
+  if (process.env.VERCEL_ENV !== 'preview') return false;
+  return PREVIEW_ORIGIN_PATTERN.test(origin);
+}
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  return allowedOrigins.has(origin) || isPreviewDeploymentOrigin(origin);
+}
+
 app.use(cors({
-  origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)),
+  origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   exposedHeaders: ['X-CSRF-Token'],
@@ -495,7 +521,7 @@ const requireAuthenticatedSession: express.RequestHandler = async (
     if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
       const origin = req.headers.origin;
       const expectedCsrf = crypto.createHmac('sha256', cookieSessionToken).update('rare-csrf-v1').digest('base64url');
-      if (!origin || !allowedOrigins.has(origin) || !csrfCookie || !csrfHeader ||
+      if (!origin || !isAllowedOrigin(origin) || !csrfCookie || !csrfHeader ||
           csrfCookie.length !== csrfHeader.length ||
           csrfCookie.length !== expectedCsrf.length ||
           !crypto.timingSafeEqual(Buffer.from(csrfCookie), Buffer.from(csrfHeader)) ||
@@ -575,7 +601,7 @@ app.use('/api', async (req, res, next) => {
     }
   }
   const origin = req.headers.origin;
-  if (origin && !allowedOrigins.has(origin)) {
+  if (origin && !isAllowedOrigin(origin)) {
     return res.status(403).json({ error: { message: 'This origin is not allowed.' } });
   }
   if (PUBLIC_API_PATHS.has(req.originalUrl.split('?')[0])) return next();
