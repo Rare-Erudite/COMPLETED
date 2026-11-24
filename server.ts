@@ -68,6 +68,7 @@ import { capabilityRegistry } from './src/server/orchestration/CapabilityRegistr
 import { registerDepartmentCapabilities } from './src/server/orchestration/registerCapabilities.js';
 import { jobStore } from './src/server/orchestration/JobStore.js';
 import { startJob, resumeJob, shouldRunAsJob } from './src/server/orchestration/JobRunner.js';
+import { ModelCatalogue } from './src/server/intelligence/ModelCatalogue.js';
 
 const app = express();
 // Two roots, deliberately distinct: the deployment tree holds the bundle and
@@ -175,6 +176,7 @@ const benchmarkSuite = new BenchmarkSuite(toolExecutor, memoryStore, checkpointS
 // startServer(). The registry object itself exists immediately so routes can be
 // declared before boot completes.
 let capabilitiesRegistered = false;
+const modelCatalogue = new ModelCatalogue(path.join(PROJECT_ROOT, 'data', 'models'));
 function ensureCapabilitiesRegistered(): void {
   if (capabilitiesRegistered) return;
   registerDepartmentCapabilities({
@@ -185,6 +187,7 @@ function ensureCapabilitiesRegistered(): void {
     benchmark: benchmarkSuite,
     providers: providerRegistry,
     workspaceRoot: PROJECT_ROOT,
+    modelCatalogue,
   });
   capabilitiesRegistered = true;
 }

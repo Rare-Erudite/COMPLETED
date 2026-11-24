@@ -14,6 +14,7 @@
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { capabilityRegistry, type CapabilityDescriptor, type CapabilityResult } from './CapabilityRegistry.js';
 import type { DocumentsService } from '../services/DocumentsService.js';
@@ -34,6 +35,8 @@ import type { McpClientManager } from '../mcp/McpClientManager.js';
 import type { DevicePlanner } from '../device/DevicePlanner.js';
 import type { BenchmarkSuite } from '../evaluation/BenchmarkSuite.js';
 import type { ProviderRegistry } from '../providers/ProviderRegistry.js';
+import { ModelCatalogue, type ModelTask } from '../intelligence/ModelCatalogue.js';
+import { MODEL_CATALOGUE } from '../intelligence/ModelCatalogue.js';
 
 export interface DepartmentBindings {
   documents: () => DocumentsService | undefined;
@@ -44,6 +47,8 @@ export interface DepartmentBindings {
   providers: ProviderRegistry;
   /** Where scaffolded projects are written. */
   workspaceRoot: string;
+  /** Model catalogue for discovery, acquisition and routing. */
+  modelCatalogue: ModelCatalogue;
 }
 
 function ok(summary: string, data: unknown, started: number, limitations?: string[]): CapabilityResult {
@@ -73,7 +78,7 @@ function groundingProvider(providers: ProviderRegistry): GroundingProvider {
  * again replaces the descriptors (hot reload) rather than duplicating them.
  */
 export function registerDepartmentCapabilities(bindings: DepartmentBindings): void {
-  const { documents, research, mcp, devicePlanner, benchmark, providers, workspaceRoot } = bindings;
+  const { documents, research, mcp, devicePlanner, benchmark, providers, workspaceRoot, modelCatalogue } = bindings;
 
   const requireDocuments = (): DocumentsService => {
     const service = documents();
@@ -642,6 +647,79 @@ export function registerDepartmentCapabilities(bindings: DepartmentBindings): vo
           preferred: providers.getPreferredProvider(),
           lastUsed: providers.getLastUsed(),
         }, started);
+      },
+    },
+
+    // ------------------------------------------------------------- Model catalogue
+    {
+      id: 'intelligence.models',
+      department: 'intelligence',
+      title: 'List the model catalogue',
+      description: 'List every catalogued open-weight model with licence, format, size and tasks, plus what is installed.',
+      permission: 'read',
+      idempotent: true,
+      cost: 'free',
+      args: [],
+      async handler() {
+        const started = Date.now();
+        const installed = modelCatalogue.installed();
+        return ok(`${MODEL_CATALOGUE.length} model(s) catalogued, ${installed.length} installed locally.`, {
+          catalogue: modelCatalogue.list(),
+          installed,
+        }, started);
+      },
+    },
+    {
+      id: 'intelligence.acquire_model',
+      department: 'intelligence',
+      title: 'Acquire a model',
+      description: 'Download a catalogued model file into the local cache, verify its size and record its SHA-256.',
+      permission: 'write',
+      idempotent: true,
+      cost: 'network',
+      timeoutMs: 600_000,
+      args: [
+        { name: 'id', type: 'string', required: true, description: 'Catalogue model id.' },
+        { name: 'maxMb', type: 'number', required: false, description: 'Refuse downloads larger than this (default 2048).' },
+      ],
+      async handler(args) {
+        const started = Date.now();
+        const maxMb = typeof args.maxMb === 'number' ? args.maxMb : 2048;
+        const result = await modelCatalogue.acquire(String(args.id), {
+          token: process.env.HUGGINGFACE_TOKEN || process.env.HF_TOKEN,
+          maxBytes: maxMb * 1024 * 1024,
+        });
+        if (!result.ok) return fail(result.error || 'Acquisition failed.', 'acquire_failed', started);
+        return ok(
+          `${result.alreadyPresent ? 'Already present' : 'Downloaded'} ${result.id} (${((result.sizeBytes || 0) / 1024 / 1024).toFixed(1)} MB, sha256 ${result.sha256?.slice(0, 12)}…).`,
+          result,
+          started,
+        );
+      },
+    },
+    {
+      id: 'intelligence.route_model',
+      department: 'intelligence',
+      title: 'Route a task to a model',
+      description: 'Choose the best available model for a task kind and explain the decision.',
+      permission: 'read',
+      idempotent: true,
+      cost: 'free',
+      args: [{ name: 'task', type: 'string', required: true, description: 'chat|reasoning|coding|research|documents|speech|vision|embedding' }],
+      async handler(args) {
+        const started = Date.now();
+        const task = String(args.task) as ModelTask;
+        const installedIds = modelCatalogue.installed().map((m) => m.id);
+        const providerList = await providers.getAllProviders();
+        const providerIds = providerList.filter((p) => p.is_available).map((p) => p.id);
+        // The provider's real model identifier is what proves it serves a
+        // catalogued repository; `weights_location`/`name` carry it.
+        const providerModels = providerList
+          .filter((p) => p.is_available)
+          .flatMap((p) => [p.weights_location, p.name, p.architecture].filter(Boolean) as string[]);
+        const hostRamGb = Math.round(os.totalmem() / 1024 / 1024 / 1024);
+        const decision = modelCatalogue.route(task, { installedIds, providerIds, providerModels, hostRamGb });
+        return ok(decision.reason, decision, started);
       },
     },
 
