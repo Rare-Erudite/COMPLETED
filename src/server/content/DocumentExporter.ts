@@ -289,6 +289,50 @@ function splitCsvLine(line: string): string[] {
 }
 
 /** Lay text out as a paginated PDF. */
+
+/**
+ * Characters the standard PDF fonts cannot encode, mapped to safe equivalents.
+ * Anything not in this map and outside Latin-1 is dropped by `sanitiseForPdf`.
+ */
+const PDF_CHAR_MAP: Record<string, string> = {
+  '\u2190': '<-', '\u2191': '^', '\u2192': '->', '\u2193': 'v',
+  '\u21d0': '<=', '\u21d2': '=>', '\u21d4': '<=>',
+  '\u2018': "'", '\u2019': "'", '\u201a': ',', '\u201b': "'",
+  '\u201c': '"', '\u201d': '"', '\u201e': '"', '\u201f': '"',
+  '\u2013': '-', '\u2014': '--', '\u2015': '--', '\u2212': '-',
+  '\u2026': '...', '\u2022': '*', '\u00b7': '-', '\u2032': "'", '\u2033': '"',
+  '\u00a0': ' ', '\u2009': ' ', '\u200a': ' ', '\u202f': ' ', '\u2007': ' ',
+  '\u2264': '<=', '\u2265': '>=', '\u2260': '!=', '\u2248': '~', '\u221e': 'inf',
+  '\u00d7': 'x', '\u00f7': '/', '\u221a': 'sqrt', '\u03b1': 'alpha', '\u03b2': 'beta',
+  '\u03b3': 'gamma', '\u03b4': 'delta', '\u03bc': 'u', '\u03c0': 'pi', '\u03a3': 'Sum',
+  '\u2713': 'v', '\u2714': 'v', '\u2717': 'x', '\u2718': 'x', '\u2705': 'v', '\u274c': 'x',
+  '\u00ae': '(R)', '\u00a9': '(C)', '\u2122': '(TM)', '\u20ac': 'EUR', '\u00a3': 'GBP',
+};
+
+/**
+ * Make a string safe for a WinAnsi-encoded standard PDF font. Common
+ * typographic characters are transliterated; anything still outside the
+ * encodable range is removed so the export never fails on content.
+ */
+function sanitiseForPdf(value: string): string {
+  let out = '';
+  for (const char of value) {
+    const mapped = PDF_CHAR_MAP[char];
+    if (mapped !== undefined) {
+      out += mapped;
+      continue;
+    }
+    const code = char.codePointAt(0) ?? 0;
+    // WinAnsi covers Latin-1 plus a handful of 0x80-0x9F punctuation, all of
+    // which are already handled above. Keep printable ASCII and Latin-1.
+    if (code === 9) { out += '    '; continue; }
+    if (code >= 32 && code <= 126) { out += char; continue; }
+    if (code >= 160 && code <= 255) { out += char; continue; }
+    // Unencodable (CJK, emoji, control): drop it rather than fail the export.
+  }
+  return out;
+}
+
 async function buildPdf(text: string, title: string): Promise<Buffer> {
   const pdf = await PDFDocument.create();
   pdf.setTitle(title);
@@ -313,8 +357,15 @@ async function buildPdf(text: string, title: string): Promise<Buffer> {
   };
 
   const drawLine = (value: string, font: typeof body, size: number, indent = 0, spacing = 1.45) => {
+    // The standard PDF fonts are WinAnsi-encoded, so a character outside that
+    // set (an arrow, a smart quote, a CJK glyph, an emoji) makes pdf-lib throw
+    // "WinAnsi cannot encode ..." and the whole export fails. Research reports
+    // routinely contain such characters, so sanitise every string before it is
+    // measured or drawn: map the common typographic characters to ASCII and
+    // drop anything still unencodable rather than losing the document.
+    const safe = sanitiseForPdf(value);
     // Wrap by measuring real glyph widths, so nothing is cut off at the margin.
-    const words = value.split(/\s+/).filter(Boolean);
+    const words = safe.split(/\s+/).filter(Boolean);
     let line = '';
     const lines: string[] = [];
     for (const word of words) {

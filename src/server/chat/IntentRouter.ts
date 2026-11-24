@@ -253,3 +253,49 @@ function extractProjectName(text: string): string | undefined {
   if (bare) return bare[1].trim();
   return undefined;
 }
+
+/**
+ * Map a routed intent onto the concrete capabilities that must run for it.
+ *
+ * This is the join between "what the user asked for" and "what the system can
+ * actually do". It is deliberately a pure function over the IntentDecision so
+ * the mapping is inspectable and testable, and it is filtered against the live
+ * CapabilityRegistry by the caller — a capability that is not registered is
+ * never returned, so Chat can never claim to have routed work to a department
+ * that does not exist.
+ *
+ * Order matters: the returned list is a dependency-ordered plan. Research that
+ * must become a document runs research first, then the document write.
+ */
+export function capabilitiesForIntent(decision: IntentDecision): string[] {
+  switch (decision.intent) {
+    case 'research':
+      return ['research.run'];
+    case 'documents':
+      return ['documents.list'];
+    case 'build': {
+      const plan: string[] = ['builder.deliver'];
+      return plan;
+    }
+    case 'repository':
+      return ['repository.create'];
+    case 'deploy':
+      return ['deployment.static'];
+    case 'self_build':
+      return ['builder.toolchains'];
+    case 'conversation':
+    default:
+      return [];
+  }
+}
+
+/**
+ * True when the message asks for research *and* a document deliverable, e.g.
+ * "research this and prepare a PDF report". That combination is a single
+ * cross-department workflow, not two independent requests, so it maps to the
+ * one capability that performs both stages in order.
+ */
+export function isResearchToDocument(decision: IntentDecision, message: string): boolean {
+  if (decision.intent !== 'research') return false;
+  return /\b(pdf|report|document|write[- ]?up|memo|brief)\b/i.test(message);
+}

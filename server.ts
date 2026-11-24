@@ -64,6 +64,10 @@ import { googleTtsProvider } from './src/server/providers/GoogleTtsProvider.js';
 import { notificationDeliveryService } from './src/server/providers/NotificationDeliveryService.js';
 import { oAuthVerificationService } from './src/server/providers/OAuthVerificationService.js';
 import { resolveWritableAppRoot } from './src/server/storage/PersistentJsonStore.js';
+import { capabilityRegistry } from './src/server/orchestration/CapabilityRegistry.js';
+import { registerDepartmentCapabilities } from './src/server/orchestration/registerCapabilities.js';
+import { jobStore } from './src/server/orchestration/JobStore.js';
+import { startJob, resumeJob, shouldRunAsJob } from './src/server/orchestration/JobRunner.js';
 
 const app = express();
 // Two roots, deliberately distinct: the deployment tree holds the bundle and
@@ -161,6 +165,29 @@ const selfDevEngine = new SelfDevelopmentEngine(checkpointStore, trajectoryStore
 // It only plans; the device performs. See src/device/deviceAgent.ts.
 const devicePlanner = new DevicePlanner(engine.orchestrator);
 const benchmarkSuite = new BenchmarkSuite(toolExecutor, memoryStore, checkpointStore);
+
+// -----------------------------------------------------------------------------
+// Unified orchestration surface
+// -----------------------------------------------------------------------------
+// Every department registers its real capabilities into one registry, so Chat,
+// the Assistant, the job worker and the HTTP API all invoke the same handlers.
+// Registration is deferred until storage is ready (Documents needs it), see
+// startServer(). The registry object itself exists immediately so routes can be
+// declared before boot completes.
+let capabilitiesRegistered = false;
+function ensureCapabilitiesRegistered(): void {
+  if (capabilitiesRegistered) return;
+  registerDepartmentCapabilities({
+    documents: () => documentsService,
+    research: deepResearchEngine,
+    mcp: mcpManager,
+    devicePlanner,
+    benchmark: benchmarkSuite,
+    providers: providerRegistry,
+    workspaceRoot: PROJECT_ROOT,
+  });
+  capabilitiesRegistered = true;
+}
 
 // -----------------------------------------------------------------------------
 // Core System State & Config
@@ -6505,6 +6532,97 @@ app.post('/api/images/edit', async (req, res) => {
   });
 });
 
+// -----------------------------------------------------------------------------
+// Unified orchestration API
+// -----------------------------------------------------------------------------
+// One surface for every department. Chat, the Assistant and the job worker all
+// go through the same CapabilityRegistry, so a capability cannot work in one
+// screen and be missing in another.
+
+app.get('/api/capabilities', (req, res) => {
+  ensureCapabilitiesRegistered();
+  const department = typeof req.query.department === 'string' ? req.query.department : undefined;
+  res.json({
+    departments: capabilityRegistry.departments(),
+    capabilities: capabilityRegistry.list(department as any),
+    recentInvocations: capabilityRegistry.recentAudit(20),
+  });
+});
+
+app.post('/api/capabilities/invoke', async (req, res) => {
+  ensureCapabilitiesRegistered();
+  const { capabilityId, args } = req.body || {};
+  if (typeof capabilityId !== 'string' || !capabilityId.trim()) {
+    return res.status(400).json({ error: { message: 'capabilityId is required.' } });
+  }
+  const input = (args && typeof args === 'object' ? args : {}) as Record<string, unknown>;
+  const problems = capabilityRegistry.validateArgs(capabilityId, input);
+  if (problems.length) {
+    return res.status(400).json({ error: { message: problems.join(' '), code: 'invalid_arguments' } });
+  }
+
+  // Long capabilities become durable jobs so the request can return at once.
+  if (shouldRunAsJob(capabilityId)) {
+    try {
+      const { job } = await startJob({
+        ownerId: res.locals.rareUserId,
+        capabilityId,
+        args: input,
+      });
+      return res.status(202).json({ jobId: job.id, status: job.status, job });
+    } catch (error: any) {
+      return res.status(400).json({ error: { message: error?.message || 'Could not start job.' } });
+    }
+  }
+
+  const result = await capabilityRegistry.invoke(capabilityId, input, {
+    ownerId: res.locals.rareUserId,
+    correlationId: `http_${crypto.randomUUID()}`,
+  });
+  res.status(result.ok ? 200 : 422).json(result);
+});
+
+app.get('/api/jobs', async (req, res) => {
+  try {
+    res.json(await jobStore.list(res.locals.rareUserId));
+  } catch (error: any) {
+    res.status(503).json({ error: { message: error?.message || 'Job storage is unavailable.' } });
+  }
+});
+
+app.get('/api/jobs/:id', async (req, res) => {
+  try {
+    const job = await jobStore.get(res.locals.rareUserId, req.params.id);
+    if (!job) return res.status(404).json({ error: { message: 'Job not found.' } });
+    res.json({ ...job, live: jobStore.isLive(job.id) });
+  } catch (error: any) {
+    res.status(503).json({ error: { message: error?.message || 'Job storage is unavailable.' } });
+  }
+});
+
+app.post('/api/jobs/:id/cancel', async (req, res) => {
+  const cancelled = jobStore.cancel(req.params.id);
+  if (!cancelled) {
+    return res.status(409).json({ error: { message: 'That job is not running in this process.' } });
+  }
+  await jobStore.update(res.locals.rareUserId, req.params.id, (record) => {
+    record.log.push({ at: new Date().toISOString(), stage: 'cancel', detail: 'Cancellation requested.' });
+  });
+  res.json({ ok: true, jobId: req.params.id });
+});
+
+app.post('/api/jobs/:id/resume', async (req, res) => {
+  try {
+    const resumed = await resumeJob(res.locals.rareUserId, req.params.id);
+    if (!resumed) {
+      return res.status(409).json({ error: { message: 'That job is not resumable.' } });
+    }
+    res.status(202).json({ jobId: resumed.job.id, status: resumed.job.status, job: resumed.job });
+  } catch (error: any) {
+    res.status(400).json({ error: { message: error?.message || 'Could not resume job.' } });
+  }
+});
+
 // Unknown API routes must remain JSON 404s rather than falling through to the SPA.
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: { message: 'API endpoint not found.' } });
@@ -6526,6 +6644,11 @@ async function startServer() {
   // The Documents service shares the same owner-scoped store and the shared
   // content engine, so Documents and Research never diverge.
   documentsService = new DocumentsService(persistentStorage, searchIndexes);
+
+  // Jobs persist through the same store, and every department publishes its
+  // real capabilities to the one registry Chat and the Assistant both use.
+  jobStore.attach(persistentStorage);
+  ensureCapabilitiesRegistered();
 
   // Production must never start with local-only authentication sessions.
   if (isProduction) {
