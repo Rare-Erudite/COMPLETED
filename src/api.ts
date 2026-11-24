@@ -225,6 +225,19 @@ function captureCsrfToken(response: Response): void {
   csrfToken = response.headers.get('X-CSRF-Token') || csrfToken;
 }
 
+/**
+ * Cold-start budget for the first request of a session.
+ *
+ * A Vercel serverless function that has scaled to zero can take tens of seconds
+ * to answer its first request. Measured at 32s on a cold preview. The steady
+ * 6.5s timeout is right for a warm function and wrong for a cold one, and the
+ * failure mode was silent: the app rendered with no data and no error.
+ */
+const COLD_START_TIMEOUT_MS = 45000;
+
+/** Set once any request has completed, so only the first pays the cold budget. */
+let hasCompletedAnyRequest = false;
+
 /** Send a browser component request to the configured backend with cookie
  * credentials and the current CSRF token. Unlike safeFetch, this helper never
  * turns an unavailable online endpoint into a local mock response. */
@@ -994,6 +1007,16 @@ export async function safeFetch<T>(
   const configuredBackendUrl = getBackendUrl();
   const useLocalFirst = isStandaloneMobileApp() && !configuredBackendUrl;
 
+  // A cold serverless function can take far longer than the steady-state
+  // timeout to answer its first request — measured at 32s on a cold Vercel
+  // preview, against a 6.5s client timeout. The request was then aborted and
+  // the app silently rendered with no data at all, which looked like a broken
+  // deployment. The first request of a session therefore gets a cold-start
+  // budget, and a timeout is retried once rather than treated as final.
+  const isFirstRequest = !hasCompletedAnyRequest;
+  const effectiveTimeout = isFirstRequest ? Math.max(timeoutMs, COLD_START_TIMEOUT_MS) : timeoutMs;
+  const effectiveRetries = isFirstRequest ? Math.max(retries, 1) : retries;
+
   // Preserve explicit on-device standalone operation.
   if (useLocalFirst) {
     try {
@@ -1020,13 +1043,13 @@ export async function safeFetch<T>(
   let lastNetworkError: unknown;
   let receivedHttpResponse = false;
 
-  for (let i = 0; i <= retries; i++) {
+  for (let i = 0; i <= effectiveRetries; i++) {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     try {
       const fullUrl = resolveApiUrl(url);
       const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
       const headers = new Headers(options?.headers || {});
       const token = getStoredSessionToken();
@@ -1052,6 +1075,9 @@ export async function safeFetch<T>(
       captureCsrfToken(res);
 
       receivedHttpResponse = true;
+      // The function answered, so it is warm: later requests use the steady
+      // timeout rather than the cold-start budget.
+      hasCompletedAnyRequest = true;
 
       if (!res.ok) {
         updateConnectionState(false, `HTTP ${res.status}`);
