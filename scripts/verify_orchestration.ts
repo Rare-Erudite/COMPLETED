@@ -172,8 +172,8 @@ async function main(): Promise<void> {
   const pluginData = plugins.body?.data;
   check(
     'plugins.list reports real MCP state',
-    plugins.status === 200 && Array.isArray(pluginData?.servers),
-    `${pluginData?.servers?.length ?? 0} server(s) configured, ${pluginData?.tools?.length ?? 0} tool(s) discovered`,
+    plugins.status === 200 && Array.isArray(pluginData?.plugins),
+    `${pluginData?.plugins?.length ?? 0} plugin(s) known, ${pluginData?.tools?.length ?? 0} tool(s) discovered`,
   );
 
   // ---- 8. Intelligence surface reports real providers --------------------

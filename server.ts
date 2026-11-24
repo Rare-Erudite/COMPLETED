@@ -4,6 +4,7 @@ import http from 'http';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 import { MemoryStore, ConversationStore } from './src/server/storage/MemoryStore.js';
@@ -179,7 +180,21 @@ const benchmarkSuite = new BenchmarkSuite(toolExecutor, memoryStore, checkpointS
 // declared before boot completes.
 let capabilitiesRegistered = false;
 const modelCatalogue = new ModelCatalogue(path.join(PROJECT_ROOT, 'data', 'models'));
-const agentRuntime = new AgentRuntime(modelCatalogue);
+const agentRuntime = new AgentRuntime(modelCatalogue, {
+  // The agent's model choice is resolved against the providers that are really
+  // reachable right now, so a run records the model that would actually answer.
+  async providerModels() {
+    const list = await providerRegistry.getAllProviders();
+    const available = list.filter((p) => p.is_available);
+    return {
+      ids: available.map((p) => p.id),
+      models: available.flatMap((p) => [p.name, p.architecture, p.weights_location].filter(Boolean) as string[]),
+    };
+  },
+  hostRamGb() {
+    return Math.round(os.totalmem() / 1024 / 1024 / 1024);
+  },
+});
 // The plugin registry wraps the MCP client, which is constructed later in the
 // file; a lazy getter keeps the declaration order honest without a forward ref.
 let pluginRegistryInstance: PluginRegistry | undefined;

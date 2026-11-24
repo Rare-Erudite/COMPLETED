@@ -31,6 +31,16 @@ import { capabilityRegistry, type CapabilityPermission, type CapabilityResult } 
 import type { PersistentJsonStore } from '../storage/PersistentJsonStore.js';
 import type { ModelCatalogue, ModelTask } from '../intelligence/ModelCatalogue.js';
 
+/**
+ * How an agent asks the outside world which models are reachable. Injected so
+ * the runtime does not depend on the provider registry directly, and so a test
+ * can substitute a deterministic source.
+ */
+export interface ModelAvailabilitySource {
+  providerModels(): Promise<{ ids: string[]; models: string[] }>;
+  hostRamGb(): number;
+}
+
 export type AgentStatus = 'idle' | 'running' | 'blocked' | 'disabled';
 
 export interface AgentDefinition {
@@ -261,7 +271,10 @@ export class AgentRuntime {
   private storage: PersistentJsonStore | undefined;
   private readonly liveRuns = new Map<string, AgentRun>();
 
-  constructor(private readonly modelCatalogue: ModelCatalogue) {}
+  constructor(
+    private readonly modelCatalogue: ModelCatalogue,
+    private readonly availability?: ModelAvailabilitySource,
+  ) {}
 
   attach(storage: PersistentJsonStore): void {
     this.storage = storage;
@@ -366,11 +379,25 @@ export class AgentRuntime {
    */
   private async resolveModel(agent: AgentDefinition): Promise<{ model: string | null; reason: string }> {
     const installedIds = this.modelCatalogue.installed().map((m) => m.id);
+    let providerIds: string[] = [];
+    let providerModels: string[] = [];
+    let hostRamGb = 2;
+    if (this.availability) {
+      try {
+        const live = await this.availability.providerModels();
+        providerIds = live.ids;
+        providerModels = live.models;
+        hostRamGb = this.availability.hostRamGb();
+      } catch {
+        // Leave the defaults; the routing decision will then honestly report
+        // that nothing is reachable rather than inventing a model.
+      }
+    }
     const decision = this.modelCatalogue.route(agent.modelTask, {
       installedIds,
-      providerIds: [],
-      providerModels: [],
-      hostRamGb: 2,
+      providerIds,
+      providerModels,
+      hostRamGb,
     });
     return { model: decision.chosen, reason: decision.reason };
   }
