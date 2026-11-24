@@ -317,6 +317,18 @@ const PROBES: ToolchainProbe[] = [
     timeoutMs: 20_000,
   },
   {
+    id: 'sqlite3',
+    name: 'SQLite database engine',
+    command: 'sqlite3',
+    args: ['--version'],
+    domains: ['Databases', 'Data analysis', 'Local storage'],
+    parse: (out) => {
+      const match = out.match(/^(\d+\.\d+\.\d+)/);
+      return match ? `SQLite ${match[1]}` : null;
+    },
+    installHint: 'Install sqlite3 (apt-get install sqlite3) for local database work.',
+  },
+  {
     id: 'docker',
     name: 'Container runtime',
     command: 'docker',

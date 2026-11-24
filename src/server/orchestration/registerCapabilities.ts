@@ -39,6 +39,7 @@ import { ModelCatalogue, type ModelTask } from '../intelligence/ModelCatalogue.j
 import { MODEL_CATALOGUE } from '../intelligence/ModelCatalogue.js';
 import type { PluginRegistry } from '../plugins/PluginRegistry.js';
 import { ModelEvaluator } from '../intelligence/ModelEvaluator.js';
+import type { AgentRuntime } from '../agents/AgentRuntime.js';
 
 export interface DepartmentBindings {
   documents: () => DocumentsService | undefined;
@@ -53,6 +54,8 @@ export interface DepartmentBindings {
   modelCatalogue: ModelCatalogue;
   /** Plugin lifecycle registry (install/configure/execute/health). */
   pluginRegistry: PluginRegistry;
+  /** Multi-agent runtime (section 23). */
+  agentRuntime: AgentRuntime;
 }
 
 function ok(summary: string, data: unknown, started: number, limitations?: string[]): CapabilityResult {
@@ -82,7 +85,7 @@ function groundingProvider(providers: ProviderRegistry): GroundingProvider {
  * again replaces the descriptors (hot reload) rather than duplicating them.
  */
 export function registerDepartmentCapabilities(bindings: DepartmentBindings): void {
-  const { documents, research, mcp, devicePlanner, benchmark, providers, workspaceRoot, modelCatalogue, pluginRegistry } = bindings;
+  const { documents, research, mcp, devicePlanner, benchmark, providers, workspaceRoot, modelCatalogue, pluginRegistry, agentRuntime } = bindings;
 
   const requireDocuments = (): DocumentsService => {
     const service = documents();
@@ -854,6 +857,135 @@ export function registerDepartmentCapabilities(bindings: DepartmentBindings): vo
     },
 
     // ------------------------------------------------------------------- System
+    // ------------------------------------------------------------------- Agents
+    {
+      id: 'agents.list',
+      department: 'system',
+      title: 'List the agent roster',
+      description: 'Every agent with its role, status, permitted tools, model task and last run.',
+      permission: 'read',
+      idempotent: true,
+      cost: 'free',
+      args: [],
+      async handler(_args, ctx) {
+        const started = Date.now();
+        await agentRuntime.ensureDefaults(ctx.ownerId);
+        const agents = await agentRuntime.list(ctx.ownerId);
+        return ok(`${agents.length} agent(s) registered, ${agents.filter((a) => a.status === 'running').length} running.`, {
+          agents,
+        }, started);
+      },
+    },
+    {
+      id: 'agents.create',
+      department: 'system',
+      title: 'Create or update an agent',
+      description: 'Register a new specialised agent with its own instructions, permitted tools and model task.',
+      permission: 'write',
+      idempotent: false,
+      cost: 'free',
+      args: [
+        { name: 'name', type: 'string', required: true, description: 'Agent name.' },
+        { name: 'role', type: 'string', required: true, description: 'One-line responsibility.' },
+        { name: 'instructions', type: 'string', required: true, description: 'Written instructions the agent follows.' },
+        { name: 'allowedCapabilities', type: 'array', required: true, description: 'Capability ids this agent may invoke.' },
+        { name: 'maxPermission', type: 'string', required: false, description: 'read|write|execute|destructive (default execute).' },
+        { name: 'modelTask', type: 'string', required: false, description: 'chat|reasoning|coding|research|documents|speech|vision|embedding' },
+        { name: 'canDelegateTo', type: 'array', required: false, description: 'Agent ids this agent may delegate to.' },
+      ],
+      async handler(args, ctx) {
+        const started = Date.now();
+        const allowed = (args.allowedCapabilities as string[]) || [];
+        const unknown = allowed.filter((id) => !capabilityRegistry.has(id));
+        if (unknown.length) {
+          return fail(`Unknown capabilities: ${unknown.join(', ')}.`, 'invalid_capabilities', started);
+        }
+        const agent = await agentRuntime.createAgent(ctx.ownerId, {
+          id: '',
+          name: String(args.name),
+          role: String(args.role),
+          instructions: String(args.instructions),
+          allowedCapabilities: allowed,
+          maxPermission: (String(args.maxPermission || 'execute') as any),
+          modelTask: (String(args.modelTask || 'reasoning') as any),
+          canDelegateTo: Array.isArray(args.canDelegateTo) ? (args.canDelegateTo as string[]) : [],
+        });
+        return ok(`Agent "${agent.name}" registered with ${agent.allowedCapabilities.length} permitted tool(s).`, agent, started);
+      },
+    },
+    {
+      id: 'agents.run',
+      department: 'system',
+      title: 'Run one agent on an objective',
+      description: 'Execute an agent against an objective using only its permitted capabilities, and return the real results.',
+      permission: 'execute',
+      idempotent: false,
+      cost: 'compute',
+      timeoutMs: 900_000,
+      args: [
+        { name: 'agentId', type: 'string', required: true, description: 'Agent id.' },
+        { name: 'objective', type: 'string', required: true, description: 'What the agent should accomplish.' },
+        { name: 'capabilityPlan', type: 'array', required: false, description: 'Capabilities to run, in order.' },
+        { name: 'args', type: 'object', required: false, description: 'Arguments passed to each capability.' },
+      ],
+      async handler(args, ctx) {
+        const started = Date.now();
+        const run = await agentRuntime.run(ctx.ownerId, String(args.agentId), String(args.objective), {
+          capabilityPlan: Array.isArray(args.capabilityPlan) ? (args.capabilityPlan as string[]) : undefined,
+          args: (args.args as Record<string, unknown>) || {},
+        });
+        return {
+          ok: run.status === 'succeeded',
+          summary: `Agent "${args.agentId}" ${run.status}: ${run.steps.map((s) => `${s.capabilityId}=${s.ok ? 'ok' : 'failed'}`).join(', ') || run.error || 'no steps'}.`,
+          data: run,
+          durationMs: Date.now() - started,
+        };
+      },
+    },
+    {
+      id: 'agents.coordinate',
+      department: 'system',
+      title: 'Coordinate a team of agents',
+      description: 'Assign subtasks to several agents, run them in parallel, and aggregate the verified results.',
+      permission: 'execute',
+      idempotent: false,
+      cost: 'compute',
+      timeoutMs: 900_000,
+      args: [
+        { name: 'objective', type: 'string', required: true, description: 'The overall objective.' },
+        { name: 'assignments', type: 'array', required: true, description: 'Array of {agentId, capabilityPlan, args}.' },
+      ],
+      async handler(args, ctx) {
+        const started = Date.now();
+        const assignments = (args.assignments as any[]).map((a) => ({
+          agentId: String(a.agentId),
+          capabilityPlan: Array.isArray(a.capabilityPlan) ? a.capabilityPlan : [],
+          args: a.args || {},
+        }));
+        const result = await agentRuntime.coordinate(ctx.ownerId, String(args.objective), assignments);
+        return {
+          ok: result.failed === 0,
+          summary: result.summary,
+          data: result,
+          durationMs: Date.now() - started,
+        };
+      },
+    },
+    {
+      id: 'agents.runs',
+      department: 'system',
+      title: 'Agent execution history',
+      description: 'Every recorded agent run with its steps, model used and outcome.',
+      permission: 'read',
+      idempotent: true,
+      cost: 'free',
+      args: [],
+      async handler(_args, ctx) {
+        const started = Date.now();
+        const runs = await agentRuntime.runs(ctx.ownerId);
+        return ok(`${runs.length} agent run(s) recorded.`, { runs }, started);
+      },
+    },
     {
       id: 'system.capabilities',
       department: 'system',
