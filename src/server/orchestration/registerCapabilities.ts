@@ -38,6 +38,7 @@ import type { ProviderRegistry } from '../providers/ProviderRegistry.js';
 import { ModelCatalogue, type ModelTask } from '../intelligence/ModelCatalogue.js';
 import { MODEL_CATALOGUE } from '../intelligence/ModelCatalogue.js';
 import type { PluginRegistry } from '../plugins/PluginRegistry.js';
+import { ModelEvaluator } from '../intelligence/ModelEvaluator.js';
 
 export interface DepartmentBindings {
   documents: () => DocumentsService | undefined;
@@ -730,6 +731,33 @@ export function registerDepartmentCapabilities(bindings: DepartmentBindings): vo
         const started = Date.now();
         const report = await benchmark.runSuite(args.model ? String(args.model) : undefined);
         return ok(`Evaluation complete: ${report.passedTests}/${report.totalTests} case(s) passed (score ${report.overallScore}).`, report, started);
+      },
+    },
+    {
+      id: 'intelligence.evaluate_model',
+      department: 'intelligence',
+      title: 'Evaluate the model itself',
+      description: 'Send real prompts to the active model and score its actual replies (instruction, JSON, reasoning, tool selection, safety).',
+      permission: 'read',
+      idempotent: false,
+      cost: 'compute',
+      timeoutMs: 600_000,
+      args: [
+        { name: 'modelLabel', type: 'string', required: false, description: 'Label for the report.' },
+        { name: 'caseIds', type: 'array', required: false, description: 'Run only these case ids.' },
+      ],
+      async handler(args) {
+        const started = Date.now();
+        const evaluator = new ModelEvaluator(providers);
+        const report = await evaluator.evaluate({
+          modelLabel: args.modelLabel ? String(args.modelLabel) : undefined,
+          caseIds: Array.isArray(args.caseIds) ? (args.caseIds as string[]) : undefined,
+        });
+        return ok(
+          `Model evaluation: ${report.passed}/${report.total} case(s) passed (${report.score}%) via ${report.providerName}.`,
+          report,
+          started,
+        );
       },
     },
     {
