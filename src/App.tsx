@@ -89,7 +89,6 @@ import {
 } from './api';
 
 import { ImageStudioWorkspaceView } from './ImageStudioWorkspaceView';
-import { DownloadAppModal } from './DownloadAppModal';
 import { UpdateModal, AppUpdate } from './UpdateModal';
 import { DeveloperAuthModal } from './DeveloperAuthModal';
 import { AuthModal, UserAccount, getUserInitials } from './AuthModal';
@@ -380,7 +379,6 @@ export default function App() {
   const [shareModalData, setShareModalData] = useState<{ id: string; title: string; messages?: ChatMessage[] } | null>(null);
 
   // Download & Dual-Channel OTA Update state
-  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
   const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const [availableUpdate, setAvailableUpdate] = useState<AppUpdate | null>(null);
   const [clientVersion, setClientVersion] = useState<string>(() => {
@@ -1294,13 +1292,12 @@ useEffect(() => {
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="font-medium text-[11px]">System Ready</span>
             </button>
-            <button
-              onClick={() => setDownloadModalOpen(true)}
-              className={`text-[10px] font-mono ${t.textDim} hover:text-white transition hover:underline cursor-pointer`}
-              title="Click to download APK, Windows EXE, or PWA"
+            <span
+              className={`text-[10px] font-mono ${t.textDim}`}
+              title="Installed client version"
             >
               v{clientVersion}
-            </button>
+            </span>
           </div>
         </div>
       </aside>
@@ -1341,17 +1338,6 @@ useEffect(() => {
                 <span>Login / Sign Up</span>
               </button>
             )}
-
-            {/* Phone Icon: Download Android APK & Install to Phone */}
-            <button
-              onClick={() => setDownloadModalOpen(true)}
-              className="px-2.5 sm:px-3 py-1 rounded-full text-xs bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25 active:scale-95 flex items-center space-x-1.5 transition shadow-xs cursor-pointer"
-              title="Download the Android APK or share the file"
-              aria-label="Download Android APK and install to phone"
-            >
-              <Smartphone className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span className="font-semibold text-emerald-300">Get APK / Phone App</span>
-            </button>
 
             {/* Dynamic Update Notification Pill */}
             {availableUpdate && (
@@ -1437,19 +1423,10 @@ useEffect(() => {
               onDeveloperLogout={() => setIsDeveloperAuthed(false)}
               clientVersion={clientVersion}
               onCheckForUpdates={() => checkForUpdates(true)}
-              onOpenDownloadModal={() => setDownloadModalOpen(true)}
             />
           )}
         </div>
       </main>
-
-      {/* Download, install, and APK sharing */}
-      <DownloadAppModal
-        t={t}
-        isOpen={downloadModalOpen}
-        onClose={() => setDownloadModalOpen(false)}
-        assistantName={assistantName}
-      />
 
       {/* Over-The-Air System Update Modal */}
       <UpdateModal
@@ -1975,14 +1952,6 @@ function CollaborativeBuildWorkspaceView({ t }: { t: ThemeConfig }) {
                   <span className="font-mono text-emerald-300">{selectedRun.artifacts[0].name} ({selectedRun.artifacts[0].size})</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <a
-                    href="/api/download/apk"
-                    download="RARE-release.apk"
-                    className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center space-x-1.5 shadow-sm transition"
-                  >
-                    <Smartphone className="w-3.5 h-3.5" />
-                    <span>Download Android APK</span>
-                  </a>
                   <a
                     href="/api/download/source"
                     download="RARE-source.tar.gz"
@@ -5666,7 +5635,6 @@ function CleanSettingsWorkspaceView({
   onDeveloperLogout,
   clientVersion,
   onCheckForUpdates,
-  onOpenDownloadModal,
 }: {
   t: ThemeConfig;
   assistantName: string;
@@ -5680,7 +5648,6 @@ function CleanSettingsWorkspaceView({
   onDeveloperLogout: () => void;
   clientVersion: string;
   onCheckForUpdates: () => void;
-  onOpenDownloadModal: () => void;
 }) {
   const [nameInput, setNameInput] = useState(assistantName);
   const [saved, setSaved] = useState(false);
@@ -6036,14 +6003,6 @@ function CleanSettingsWorkspaceView({
               <span>Check for Updates</span>
             </button>
 
-            <button
-              type="button"
-              onClick={onOpenDownloadModal}
-              className={`px-3.5 py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer`}
-            >
-              <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Install & Share APK</span>
-            </button>
           </div>
         </div>
 
@@ -6469,6 +6428,18 @@ function DeveloperSpaceView({
             </button>
           );
         })}
+
+        {/* Single APK download entry — link-style, developer space only.
+            Serves the currently published release via /api/download/apk, which
+            resolves the live GitHub release at request time (never a stale file). */}
+        <a
+          href="/api/download/apk"
+          className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl underline decoration-dotted underline-offset-4 transition ${t.textMuted} hover:${t.textPrimary}`}
+          title="Download the current RARE Android APK build"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span>Download APK</span>
+        </a>
       </div>
 
       {/* 0. RARE Intelligence Core & Trajectories View */}
