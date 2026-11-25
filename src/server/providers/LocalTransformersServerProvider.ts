@@ -1,4 +1,5 @@
 import { IModelProvider, ModelInfo, GenerationOptions, GenerationResult } from '../types.js';
+import { buildPersonaSystemInstruction } from '../../engine/persona.js';
 import { engine } from '../../engine/engine.js';
 import { LocalTransformersProvider } from '../../engine/providers/transformers-local.js';
 
@@ -76,13 +77,7 @@ export class LocalTransformersServerProvider implements IModelProvider {
     }
 
     const systemInstruction = options?.systemPrompt || 'You are RARE-INTELLIGENCE, a helpful AI assistant.';
-    const personaTone = options?.persona === 'professional'
-      ? 'Use a rigorous, professional, technically precise tone.'
-      : options?.persona === 'creative'
-      ? 'Use an imaginative, expressive tone.'
-      : options?.persona === 'concise'
-      ? 'Be concise and direct.'
-      : 'Be warm, natural, and conversational.';
+    const personaTone = buildPersonaSystemInstruction(options?.persona);
     const systemContext = `${systemInstruction}\n${personaTone}${options?.thinkHarder ? ' Analyze the request carefully before composing the answer.' : ''}${context ? `\n\nRelevant user memory:\n${context}` : ''}`;
     const history = options?.conversationHistory || [];
     const messages = history.length > 0

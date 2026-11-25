@@ -56,6 +56,8 @@ import { runNavigationTests } from './test_navigation.js';
 import { runSessionBootstrapTests } from './test_session_bootstrap.js';
 import { runSelfBuildTests } from './test_self_build_real.js';
 import { runIntentRouterTests } from './test_intent_router.js';
+import { runPersonaModeTests } from './test_persona_modes.js';
+import { runAuthInterfaceTests } from './test_auth_interface.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -205,6 +207,16 @@ async function main() {
     await runSessionBootstrapTests();
     await runSelfBuildTests();
     runIntentRouterTests();
+    console.log();
+    const persona = await runPersonaModeTests();
+    if (persona.failed > 0) {
+      throw new Error(`Conversation modes: ${persona.failed} assertion(s) failed.`);
+    }
+    console.log();
+    const authInterface = await runAuthInterfaceTests();
+    if (authInterface.failed > 0) {
+      throw new Error(`Authentication interface: ${authInterface.failed} assertion(s) failed.`);
+    }
     console.log();
     await runKeepAliveTests();
     console.log();

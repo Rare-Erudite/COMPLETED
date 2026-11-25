@@ -49,13 +49,47 @@ export interface KnownDeviceAccount {
 }
 
 /**
- * Calculates 1 or 2 letter initials dynamically from the actual user's name or email.
- * Never hardcoded — strictly derived from the current user credentials.
+ * Calculates 1 or 2 letter initials from the account's real identity.
+ *
+ * Priority is deliberate: an email address is the most reliable, stable
+ * identifier an account has, so it wins over a display name (which may be a
+ * nickname, a full name, or a provider-supplied label). Only when no email
+ * exists do we fall back to the phone number, then to a generic marker.
+ *
+ *   daniel@example.com        -> DA
+ *   daniel.james@example.com  -> DJ
+ *   john_smith@example.com    -> JS
+ *   mary-ann.lee@example.com  -> ML
  */
 export function getUserInitials(user: { name?: string; email?: string; phone?: string } | null): string {
   if (!user) return 'U';
 
-  // 1. From real display name if two or more words
+  // 1. Email address — the primary identity source.
+  if (user.email && user.email.includes('@')) {
+    const local = user.email.split('@')[0].trim();
+    if (local) {
+      // Split on the separators people actually use in addresses.
+      const parts = local.split(/[._\-+]+/).filter(Boolean);
+      if (parts.length >= 2 && parts[0] && parts[1]) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+      }
+      if (parts.length === 1 && parts[0].length >= 2) {
+        return parts[0].slice(0, 2).toUpperCase();
+      }
+      if (parts[0]) {
+        return parts[0][0].toUpperCase();
+      }
+    }
+  }
+
+  // 2. Phone number fallback — last two significant digits read as initials.
+  if (user.phone) {
+    const digits = user.phone.replace(/\D/g, '');
+    if (digits.length >= 2) return digits.slice(-2);
+    if (digits.length === 1) return digits;
+  }
+
+  // 3. Display name — only when there is no email or phone to derive from.
   if (user.name && user.name.trim().length > 0) {
     const parts = user.name.trim().split(/\s+/).filter(Boolean);
     if (parts.length >= 2 && parts[0] && parts[1]) {
@@ -67,24 +101,6 @@ export function getUserInitials(user: { name?: string; email?: string; phone?: s
     if (parts[0]) {
       return parts[0][0].toUpperCase();
     }
-  }
-
-  // 2. From email address prefix
-  if (user.email && user.email.includes('@')) {
-    const local = user.email.split('@')[0];
-    const parts = local.split(/[._-]/).filter(Boolean);
-    if (parts.length >= 2 && parts[0] && parts[1]) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    if (local.length >= 2) {
-      return local.slice(0, 2).toUpperCase();
-    }
-    return local[0].toUpperCase();
-  }
-
-  // 3. Fallback for phone
-  if (user.phone) {
-    return 'PH';
   }
 
   return 'U';

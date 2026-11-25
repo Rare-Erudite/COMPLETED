@@ -8,6 +8,8 @@
  * conversational flexibility.
  */
 
+import { applyPersonaShaping, normalizePersonaMode, type PersonaMode } from './persona.js';
+
 export interface EnvironmentContext {
   periodOfDay: 'morning' | 'afternoon' | 'evening' | 'night';
   greetingPrefix: string;
@@ -459,7 +461,7 @@ export function shouldUseLiveWebResearch(query: string): boolean {
  * Never returns rigid hardcoded boilerplate; adapts phrasing, checks live environment
  * (time, weather, web knowledge), evaluates math/code, and maintains conversational continuity.
  */
-export async function generateDynamicBrainReply(options: {
+export interface DynamicBrainOptions {
   prompt: string;
   assistantName?: string;
   personaMode?: string;
@@ -467,7 +469,29 @@ export async function generateDynamicBrainReply(options: {
   isVoiceCall?: boolean;
   recentMessages?: Array<{ role: string; content: string }>;
   memories?: Array<{ topic: string; content: string }>;
-}): Promise<{ content: string; thought?: string }> {
+}
+
+/**
+ * Public entry point for the standalone cognitive engine.
+ *
+ * The conversation mode is applied HERE, at the single exit point, so every
+ * branch of the rule-based engine (greeting, identity, math, memory, research,
+ * honest fallback) is shaped by the selected mode. Previously `personaMode` was
+ * destructured and then never used, so the standalone path ignored the user's
+ * choice entirely while the model-backed providers honoured it.
+ */
+export async function generateDynamicBrainReply(
+  options: DynamicBrainOptions
+): Promise<{ content: string; thought?: string }> {
+  const result = await generateDynamicBrainReplyUnshaped(options);
+  const mode: PersonaMode = normalizePersonaMode(options.personaMode);
+  return {
+    ...result,
+    content: applyPersonaShaping(result.content, mode, { isVoiceCall: options.isVoiceCall }),
+  };
+}
+
+async function generateDynamicBrainReplyUnshaped(options: DynamicBrainOptions): Promise<{ content: string; thought?: string }> {
   const {
     prompt,
     assistantName = 'RARE',
