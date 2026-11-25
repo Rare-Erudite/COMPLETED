@@ -580,8 +580,8 @@ const requireAuthenticatedSession: express.RequestHandler = async (
 
 const PUBLIC_API_PATHS = new Set([
   '/api/health', '/api/status',
-  '/api/download/source', '/api/download/bundle', '/api/download/apk/info',
-  '/api/download/apk/chunk', '/api/download/apk', '/api/download/exe',
+  '/api/download/source', '/api/download/bundle',
+  '/api/download/exe',
   '/api/updates/check', '/api/updates/list',
   '/api/intelligence/status', '/api/integration/rare-intelligence',
   '/api/v1/engine/health', '/api/v1/engine/status', '/api/v1/providers/available',
@@ -1866,7 +1866,10 @@ app.get('/api/download/bundle', (req, res) => {
 });
 
 // APK Metadata & Chunked Streaming Endpoints (Guarantees zero proxy payload limit errors)
-app.get('/api/download/apk/info', async (_req, res) => {
+app.get('/api/download/apk/info', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) {
+    return res.status(403).json({ ok: false, error: 'Developer authorization required to download the APK.' });
+  }
   const apk = await resolvePublishedApk();
   if (!apk) {
     return res.status(404).json({ ok: false, error: 'APK deliverable not found' });
@@ -1883,6 +1886,9 @@ app.get('/api/download/apk/info', async (_req, res) => {
 });
 
 app.get('/api/download/apk/chunk', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) {
+    return res.status(403).json({ error: 'Developer authorization required to download the APK.' });
+  }
   const apk = await resolvePublishedApk();
   if (!apk) {
     return res.status(404).json({ error: 'APK deliverable not found' });
@@ -1928,7 +1934,10 @@ app.get('/api/download/apk/chunk', async (req, res) => {
 });
 
 // Download Packaged Android APK
-app.get('/api/download/apk', async (_req, res) => {
+app.get('/api/download/apk', async (req, res) => {
+  if (!(await isDeveloperSessionAuthorized(req))) {
+    return res.status(403).json({ error: { message: 'Developer authorization required to download the APK.' } });
+  }
   const apk = await resolvePublishedApk();
   if (!apk) return res.status(404).json({ error: { message: 'No verified RARE APK release is currently published.' } });
   res.setHeader('Cache-Control', 'no-store');
@@ -1966,7 +1975,7 @@ function asPublishedAndroidUpdate(apk: PublishedApk): AppUpdate {
     description: 'Verified Android release downloaded from the official RARE GitHub release.',
     changelog: ['Signed with the current RARE release identity.', 'SHA-256 checksum is verified before installation.'],
     mandatory: false,
-    packageUrl: '/api/download/apk',
+    packageUrl: apk.url,
     platform: 'android',
     artifactSizeBytes: apk.size,
     apkSize: `${(apk.size / (1024 * 1024)).toFixed(2)} MB`,

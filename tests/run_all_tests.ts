@@ -36,6 +36,7 @@ import { runProjectBuildTests } from './test_project_build.js';
 import { runMediaBinaryTests } from './test_media_binaries.js';
 import { runUpdateStoreTests } from './test_update_store.js';
 import { runPublishedReleaseTests } from './test_published_release.js';
+import { runApkEntryTests } from './test_apk_entry.js';
 import { runKeepAliveTests } from './test_keepalive.js';
 import { runServerlessFrontendAvailabilityTests } from './test_serverless_frontend.js';
 import { runContentEngineTests } from './test_content_engine.js';
@@ -188,6 +189,8 @@ async function main() {
     await runUpdateStoreTests();
     console.log();
     await runPublishedReleaseTests();
+    console.log();
+    await runApkEntryTests();
     console.log();
     await runRepoHygieneTests();
     console.log();
