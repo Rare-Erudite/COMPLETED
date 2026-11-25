@@ -6946,11 +6946,23 @@ async function startServer() {
     if (!fs.existsSync(path.join(frontendRoot, 'index.html'))) {
       throw new Error('Production frontend build is missing. Run "npm run build" before "npm start".');
     }
-    app.use(express.static(frontendRoot));
+    app.use('/assets', express.static(path.join(frontendRoot, 'assets'), {
+      fallthrough: false,
+      immutable: true,
+      maxAge: '1y',
+    }));
+    app.use(express.static(frontendRoot, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        }
+      },
+    }));
     // On Vercel the SPA catch-all was already registered at module scope so it
     // survives an API boot failure; registering it twice would shadow later routes.
     if (process.env.VERCEL !== '1') {
       app.get('*', (_req, res) => {
+        res.setHeader('Cache-Control', 'no-cache, must-revalidate');
         res.sendFile(path.join(frontendRoot, 'index.html'));
       });
     }
@@ -7030,8 +7042,30 @@ if (process.env.VERCEL === '1') {
   // and every URL fell through to Express's bare "Cannot GET /".
   const frontendRoot = path.resolve(APP_ROOT, 'public');
   if (fs.existsSync(path.join(frontendRoot, 'index.html'))) {
-    app.use(express.static(frontendRoot));
+    // Hashed build assets must never fall through to the SPA catch-all.
+    //
+    // A browser (or CDN edge) holding an older index.html asks for a bundle
+    // hash that this deployment no longer has. The catch-all used to answer
+    // that request with index.html and a 200 text/html, so the module script
+    // was rejected on MIME grounds and the app rendered a blank white page
+    // with no visible error. A missing asset is a 404, not a page.
+    app.use('/assets', express.static(path.join(frontendRoot, 'assets'), {
+      fallthrough: false,
+      immutable: true,
+      maxAge: '1y',
+    }));
+    app.use(express.static(frontendRoot, {
+      setHeaders: (res, filePath) => {
+        // index.html must always be revalidated: it is the only file that
+        // names the current asset hashes. Caching it is what strands a client
+        // on a bundle that no longer exists.
+        if (filePath.endsWith('index.html')) {
+          res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+        }
+      },
+    }));
     app.get('*', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
       res.sendFile(path.join(frontendRoot, 'index.html'));
     });
   }

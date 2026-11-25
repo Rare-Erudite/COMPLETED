@@ -37,6 +37,7 @@ import { runMediaBinaryTests } from './test_media_binaries.js';
 import { runUpdateStoreTests } from './test_update_store.js';
 import { runPublishedReleaseTests } from './test_published_release.js';
 import { runApkEntryTests } from './test_apk_entry.js';
+import { runBlankScreenGuardTests } from './test_blank_screen_guard.js';
 import { runKeepAliveTests } from './test_keepalive.js';
 import { runServerlessFrontendAvailabilityTests } from './test_serverless_frontend.js';
 import { runContentEngineTests } from './test_content_engine.js';
@@ -191,6 +192,8 @@ async function main() {
     await runPublishedReleaseTests();
     console.log();
     await runApkEntryTests();
+    console.log();
+    await runBlankScreenGuardTests();
     console.log();
     await runRepoHygieneTests();
     console.log();
