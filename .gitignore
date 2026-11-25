@@ -25,6 +25,11 @@ test-results/
 # Full source snapshots written by the checkpoint tool. Unbounded growth, and
 # they duplicate the entire tree on every checkpoint.
 .rare/checkpoints/
+# Everything else under .rare/ is runtime state too: checkpoint holds, browser
+# screenshots from the E2E run, and any future store. Ignoring the directory
+# wholesale is the only rule that cannot be outgrown by a new subdirectory —
+# the three entries above were each added after a specific leak.
+.rare/
 
 # Runtime memory/trajectory stores. These are written by the running server and
 # by the test suite, so they change on every run. Tracking them meant `npm test`
@@ -53,3 +58,9 @@ Thumbs.db
 
 # Old release artifacts
 public/rare-v1.0.0-release.apk
+
+# Scaffolded demo projects from evidence runs
+projects/
+
+# Downloaded model weights — never commit large binaries.
+data/models/

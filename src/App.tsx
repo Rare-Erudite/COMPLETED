@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Activity,
   Terminal,
@@ -94,6 +94,8 @@ import { UpdateModal, AppUpdate } from './UpdateModal';
 import { DeveloperAuthModal } from './DeveloperAuthModal';
 import { AuthModal, UserAccount, getUserInitials } from './AuthModal';
 import { ShareChatModal } from './ShareChatModal';
+import { useNavigation, useAndroidBack } from './navigation/useNavigation';
+import { navigationStack } from './navigation/navigationStack';
 import {
   HUMAN_VOICE_PERSONAS,
   VoicePersona,
@@ -309,7 +311,22 @@ async function generateStandaloneCognitiveReply(
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<string>('chat');
+  // Navigation lives in a real stack (src/navigation) rather than a bare
+  // useState, so Android Back, browser Back and deep links all pop the previous
+  // screen instead of closing the application.
+  const nav = useNavigation();
+  const activeTab = nav.current.tab;
+  const setActiveTab = useCallback((tab: string) => nav.navigate(tab), [nav]);
+
+  // Back at the root asks before exiting; a single stray press never closes
+  // RARE or cancels a running task.
+  const [exitHint, setExitHint] = useState(false);
+  useAndroidBack(
+    useCallback(() => {
+      setExitHint(true);
+      window.setTimeout(() => setExitHint(false), 2500);
+    }, []),
+  );
   const [health, setHealth] = useState<any>(null);
   const [assistantName, setAssistantName] = useState('RARE');
   const [autonomyLevel, setAutonomyLevel] = useState(2);
@@ -789,6 +806,14 @@ useEffect(() => {
           onClick={() => setSidebarOpen(false)}
           className="fixed inset-0 bg-black/60 backdrop-blur-xs z-40 md:hidden"
         />
+      )}
+
+      {/* Root Back hint — shown when Back is pressed at the root instead of
+          silently closing the app. */}
+      {exitHint && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] px-4 py-2 rounded-full bg-slate-900/95 border border-white/15 text-xs text-slate-200 shadow-xl pointer-events-none">
+          Press back again to exit RARE
+        </div>
       )}
 
       {/* Responsive Sidebar Navigation Drawer */}

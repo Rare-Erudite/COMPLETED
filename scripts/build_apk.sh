@@ -297,6 +297,8 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
+import android.os.SystemClock;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -897,13 +899,72 @@ public class MainActivity extends Activity {
         mSplashLayout.addView(mStatusText);
     }
 
+    /**
+     * Back handling for the hosted SPA.
+     *
+     * The web app owns an in-app navigation stack (viewer → department → root,
+     * plus modals). The old implementation only asked the WebView
+     * `canGoBack()`, which was permanently false because the SPA never pushes
+     * `history` entries — so Back fell through to `super.onBackPressed()` and
+     * finished the activity on every press, closing RARE from deep inside a
+     * screen.
+     *
+     * The page now exposes `window.RareHandleBack`, which pops one in-app entry
+     * and returns true when it consumed the event. We evaluate it on the UI
+     * thread and only act on an explicit boolean, so a page that has not loaded
+     * yet cannot accidentally swallow or forward a Back press.
+     *
+     * Order of precedence:
+     *   1. In-app entry to pop (viewer / sub-screen / modal) -> pop it.
+     *   2. WebView history we did not create (external navigation) -> goBack.
+     *   3. Root reached -> require a second Back within 2s to exit, so a single
+     *      stray press never terminates the app or its running tasks.
+     */
+    private static final long EXIT_CONFIRM_WINDOW_MS = 2000L;
+    private long mLastRootBackAt = 0L;
+
+    private void performBack() {
+        if (mWebView == null) {
+            finishAfterRootBack();
+            return;
+        }
+        // An anonymous class, not a lambda: this project's build path failed
+        // desugaring lambdas (LambdaMetafactory.java:102 cannot find symbol).
+        mWebView.evaluateJavascript(
+            "(function(){try{"
+                + "if(typeof window.RareHandleBack==='function'){"
+                + "return window.RareHandleBack()===true;}"
+                + "return false;}catch(e){return false;}})()",
+            new ValueCallback<String>() {
+                @Override
+                public void onReceiveValue(String value) {
+                    boolean consumed = value != null && value.contains("true");
+                    if (consumed) {
+                        return;
+                    }
+                    if (mWebView != null && mWebView.canGoBack()) {
+                        mWebView.goBack();
+                        return;
+                    }
+                    finishAfterRootBack();
+                }
+            });
+    }
+
+    /** At the root: the first Back arms an exit prompt, the second exits. */
+    private void finishAfterRootBack() {
+        long now = SystemClock.elapsedRealtime();
+        if (now - mLastRootBackAt <= EXIT_CONFIRM_WINDOW_MS) {
+            super.onBackPressed();
+            return;
+        }
+        mLastRootBackAt = now;
+        Toast.makeText(this, "Press back again to exit RARE", Toast.LENGTH_SHORT).show();
+    }
+
     @Override
     public void onBackPressed() {
-        if (mWebView != null && mWebView.canGoBack()) {
-            mWebView.goBack();
-        } else {
-            super.onBackPressed();
-        }
+        performBack();
     }
 }
 EOF

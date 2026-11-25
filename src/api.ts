@@ -225,6 +225,19 @@ function captureCsrfToken(response: Response): void {
   csrfToken = response.headers.get('X-CSRF-Token') || csrfToken;
 }
 
+/**
+ * Cold-start budget for the first request of a session.
+ *
+ * A Vercel serverless function that has scaled to zero can take tens of seconds
+ * to answer its first request. Measured at 32s on a cold preview. The steady
+ * 6.5s timeout is right for a warm function and wrong for a cold one, and the
+ * failure mode was silent: the app rendered with no data and no error.
+ */
+const COLD_START_TIMEOUT_MS = 45000;
+
+/** Set once any request has completed, so only the first pays the cold budget. */
+let hasCompletedAnyRequest = false;
+
 /** Send a browser component request to the configured backend with cookie
  * credentials and the current CSRF token. Unlike safeFetch, this helper never
  * turns an unavailable online endpoint into a local mock response. */
@@ -269,7 +282,32 @@ function isTrustedBackendRequest(url: string): boolean {
   }
 }
 
-function isConversationApiRequest(url: string): boolean {
+// Endpoints the server serves without a session. This mirrors PUBLIC_API_PATHS
+// in server.ts. Everything else under /api is session-gated, so the client must
+// have a session before calling it.
+const PUBLIC_API_PATHS = new Set([
+  '/api/health', '/api/status',
+  '/api/download/source', '/api/download/bundle', '/api/download/apk/info',
+  '/api/download/apk/chunk', '/api/download/apk', '/api/download/exe',
+  '/api/updates/check', '/api/updates/list',
+  '/api/intelligence/status', '/api/integration/rare-intelligence',
+  '/api/v1/engine/health', '/api/v1/engine/status', '/api/v1/providers/available',
+  '/api/developer/status',
+  '/api/user/guest-session', '/api/user/signup', '/api/user/login',
+  '/api/user/oauth', '/api/user/send-otp', '/api/user/verify-otp',
+  '/api/user/send-email-otp', '/api/user/verify-email-otp',
+]);
+
+/**
+ * True when this request needs a server-issued session.
+ *
+ * This used to match only /api/conversations, so the very first /api/settings
+ * call on a cold load raced the guest-session bootstrap and came back 401 -
+ * a console error on every fresh visit, and a settings panel that briefly
+ * showed defaults. Any session-gated endpoint has the same requirement, so the
+ * check is now driven by the public-path list rather than one hardcoded route.
+ */
+function isSessionGatedApiRequest(url: string): boolean {
   if (
     /^https?:\/\//i.test(url) &&
     !isTrustedBackendRequest(url)
@@ -277,17 +315,19 @@ function isConversationApiRequest(url: string): boolean {
     return false;
   }
 
+  let pathname: string;
   try {
     const base =
       typeof window !== 'undefined'
         ? window.location.origin
         : 'http://localhost';
-
-    const pathname = new URL(url, base).pathname;
-    return /^\/api\/conversations(?:\/|$)/.test(pathname);
+    pathname = new URL(url, base).pathname;
   } catch {
-    return /^\/api\/conversations(?:\/|$)/.test(url.split('?')[0]);
+    pathname = url.split('?')[0];
   }
+
+  if (!/^\/api(?:\/|$)/.test(pathname)) return false;
+  return !PUBLIC_API_PATHS.has(pathname);
 }
 
 let guestSessionInitialization: Promise<string | null> | null = null;
@@ -967,6 +1007,16 @@ export async function safeFetch<T>(
   const configuredBackendUrl = getBackendUrl();
   const useLocalFirst = isStandaloneMobileApp() && !configuredBackendUrl;
 
+  // A cold serverless function can take far longer than the steady-state
+  // timeout to answer its first request — measured at 32s on a cold Vercel
+  // preview, against a 6.5s client timeout. The request was then aborted and
+  // the app silently rendered with no data at all, which looked like a broken
+  // deployment. The first request of a session therefore gets a cold-start
+  // budget, and a timeout is retried once rather than treated as final.
+  const isFirstRequest = !hasCompletedAnyRequest;
+  const effectiveTimeout = isFirstRequest ? Math.max(timeoutMs, COLD_START_TIMEOUT_MS) : timeoutMs;
+  const effectiveRetries = isFirstRequest ? Math.max(retries, 1) : retries;
+
   // Preserve explicit on-device standalone operation.
   if (useLocalFirst) {
     try {
@@ -980,11 +1030,11 @@ export async function safeFetch<T>(
     }
   }
 
-  // Conversation requests require a server-issued session when using a backend.
+  // Session-gated requests need a server-issued session when using a backend.
   // Call fetch directly in the initializer so this cannot recurse through safeFetch.
   if (
     !useLocalFirst &&
-    isConversationApiRequest(url) &&
+    isSessionGatedApiRequest(url) &&
     !getStoredSessionToken()
   ) {
     await initializeGuestSessionToken();
@@ -993,13 +1043,13 @@ export async function safeFetch<T>(
   let lastNetworkError: unknown;
   let receivedHttpResponse = false;
 
-  for (let i = 0; i <= retries; i++) {
+  for (let i = 0; i <= effectiveRetries; i++) {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     try {
       const fullUrl = resolveApiUrl(url);
       const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
       const headers = new Headers(options?.headers || {});
       const token = getStoredSessionToken();
@@ -1025,6 +1075,9 @@ export async function safeFetch<T>(
       captureCsrfToken(res);
 
       receivedHttpResponse = true;
+      // The function answered, so it is warm: later requests use the steady
+      // timeout rather than the cold-start budget.
+      hasCompletedAnyRequest = true;
 
       if (!res.ok) {
         updateConnectionState(false, `HTTP ${res.status}`);

@@ -320,6 +320,12 @@ export class ToolExecutor {
     private documentsService?: DocumentsService,
     private searchIndexes?: OwnerSearchIndexRegistry,
     private researchEngine?: DeepResearchEngine,
+    /**
+     * Workspace root this executor may read and write. Defaults to the app root
+     * resolved at construction time. Injectable so a test can point the executor
+     * at a throwaway workspace instead of the real repository.
+     */
+    private root: string = PROJECT_ROOT,
   ) {}
 
   /**
@@ -373,10 +379,10 @@ export class ToolExecutor {
 
   public resolveSafePath(relPath: string): { fullPath: string; isSafe: boolean; isCoreProtected: boolean } {
     const cleaned = path.normalize(relPath).replace(/^(\.\.(\/|\\|$))+/, '');
-    const fullPath = path.resolve(PROJECT_ROOT, cleaned);
-    const isSafe = fullPath.startsWith(PROJECT_ROOT);
+    const fullPath = path.resolve(this.root, cleaned);
+    const isSafe = fullPath.startsWith(this.root);
 
-    const relativeToRoot = path.relative(PROJECT_ROOT, fullPath);
+    const relativeToRoot = path.relative(this.root, fullPath);
     const isCoreProtected = PROTECTED_CORE_PATHS.some((p) =>
       relativeToRoot === p || relativeToRoot.startsWith(p + path.sep)
     );

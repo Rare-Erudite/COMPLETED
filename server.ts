@@ -4,6 +4,7 @@ import http from 'http';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 import { MemoryStore, ConversationStore } from './src/server/storage/MemoryStore.js';
@@ -46,7 +47,15 @@ import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
 import { extractMemories } from './src/server/chat/MemoryExtractor.js';
-import { routeChatIntent } from './src/server/chat/IntentRouter.js';
+import { routeChatIntent, capabilitiesForIntent } from './src/server/chat/IntentRouter.js';
+import {
+  runDeliveryWorkflow,
+  summariseDelivery,
+  inferTemplate,
+  inferName,
+  type DeliveryReport,
+} from './src/server/builder/DeliveryOrchestrator.js';
+import { provisionToolchains, summariseProvisioning } from './src/server/builder/EnvironmentProvisioner.js';
 import { SelfDevelopmentEngine } from './src/server/development/SelfDevelopmentEngine.js';
 import { DevicePlanner } from './src/server/device/DevicePlanner.js';
 import { DEVICE_ACTIONS } from './src/device/deviceActions.js';
@@ -56,6 +65,13 @@ import { googleTtsProvider } from './src/server/providers/GoogleTtsProvider.js';
 import { notificationDeliveryService } from './src/server/providers/NotificationDeliveryService.js';
 import { oAuthVerificationService } from './src/server/providers/OAuthVerificationService.js';
 import { resolveWritableAppRoot } from './src/server/storage/PersistentJsonStore.js';
+import { capabilityRegistry } from './src/server/orchestration/CapabilityRegistry.js';
+import { registerDepartmentCapabilities } from './src/server/orchestration/registerCapabilities.js';
+import { jobStore } from './src/server/orchestration/JobStore.js';
+import { startJob, resumeJob, shouldRunAsJob } from './src/server/orchestration/JobRunner.js';
+import { ModelCatalogue } from './src/server/intelligence/ModelCatalogue.js';
+import { PluginRegistry } from './src/server/plugins/PluginRegistry.js';
+import { AgentRuntime } from './src/server/agents/AgentRuntime.js';
 
 const app = express();
 // Two roots, deliberately distinct: the deployment tree holds the bundle and
@@ -96,8 +112,34 @@ const allowedOrigins = new Set([
   ...(process.env.NODE_ENV === 'production' ? [] : developmentOrigins),
   ...configuredOrigins,
 ]);
+
+// Vercel gives every preview deployment a fresh, unpredictable hostname
+// (`rareproject-<hash>-<team>.vercel.app`) plus a per-branch alias
+// (`rareproject-git-<branch>-<team>.vercel.app`). A static allowlist can never
+// keep up with those, so every new preview was rejected with
+// "This origin is not allowed." and the app could not even create a guest
+// session - the preview looked deployed but was unusable.
+//
+// This admits only this project's own preview hostnames, and only when the
+// process is actually running as a Vercel preview. It is deliberately narrow:
+// the prefix must be the project name and the suffix must be this team's
+// scope, so no other project or team can be reached. Production is unaffected
+// because VERCEL_ENV is 'production' there.
+const PREVIEW_ORIGIN_PATTERN =
+  /^https:\/\/rareproject(?:-git-[a-z0-9][a-z0-9-]*)?(?:-[a-z0-9]+)?-mypremierai-2827\.vercel\.app$/;
+
+function isPreviewDeploymentOrigin(origin: string): boolean {
+  if (process.env.VERCEL_ENV !== 'preview') return false;
+  return PREVIEW_ORIGIN_PATTERN.test(origin);
+}
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return true;
+  return allowedOrigins.has(origin) || isPreviewDeploymentOrigin(origin);
+}
+
 app.use(cors({
-  origin: (origin, callback) => callback(null, !origin || allowedOrigins.has(origin)),
+  origin: (origin, callback) => callback(null, isAllowedOrigin(origin)),
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
   exposedHeaders: ['X-CSRF-Token'],
@@ -153,6 +195,55 @@ const selfDevEngine = new SelfDevelopmentEngine(checkpointStore, trajectoryStore
 // It only plans; the device performs. See src/device/deviceAgent.ts.
 const devicePlanner = new DevicePlanner(engine.orchestrator);
 const benchmarkSuite = new BenchmarkSuite(toolExecutor, memoryStore, checkpointStore);
+
+// -----------------------------------------------------------------------------
+// Unified orchestration surface
+// -----------------------------------------------------------------------------
+// Every department registers its real capabilities into one registry, so Chat,
+// the Assistant, the job worker and the HTTP API all invoke the same handlers.
+// Registration is deferred until storage is ready (Documents needs it), see
+// startServer(). The registry object itself exists immediately so routes can be
+// declared before boot completes.
+let capabilitiesRegistered = false;
+const modelCatalogue = new ModelCatalogue(path.join(PROJECT_ROOT, 'data', 'models'));
+const agentRuntime = new AgentRuntime(modelCatalogue, {
+  // The agent's model choice is resolved against the providers that are really
+  // reachable right now, so a run records the model that would actually answer.
+  async providerModels() {
+    const list = await providerRegistry.getAllProviders();
+    const available = list.filter((p) => p.is_available);
+    return {
+      ids: available.map((p) => p.id),
+      models: available.flatMap((p) => [p.name, p.architecture, p.weights_location].filter(Boolean) as string[]),
+    };
+  },
+  hostRamGb() {
+    return Math.round(os.totalmem() / 1024 / 1024 / 1024);
+  },
+});
+// The plugin registry wraps the MCP client, which is constructed later in the
+// file; a lazy getter keeps the declaration order honest without a forward ref.
+let pluginRegistryInstance: PluginRegistry | undefined;
+function getPluginRegistry(): PluginRegistry {
+  if (!pluginRegistryInstance) pluginRegistryInstance = new PluginRegistry(mcpManager);
+  return pluginRegistryInstance;
+}
+function ensureCapabilitiesRegistered(): void {
+  if (capabilitiesRegistered) return;
+  registerDepartmentCapabilities({
+    documents: () => documentsService,
+    research: deepResearchEngine,
+    mcp: mcpManager,
+    devicePlanner,
+    benchmark: benchmarkSuite,
+    providers: providerRegistry,
+    workspaceRoot: PROJECT_ROOT,
+    modelCatalogue,
+    pluginRegistry: getPluginRegistry(),
+    agentRuntime,
+  });
+  capabilitiesRegistered = true;
+}
 
 // -----------------------------------------------------------------------------
 // Core System State & Config
@@ -430,7 +521,7 @@ const requireAuthenticatedSession: express.RequestHandler = async (
     if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
       const origin = req.headers.origin;
       const expectedCsrf = crypto.createHmac('sha256', cookieSessionToken).update('rare-csrf-v1').digest('base64url');
-      if (!origin || !allowedOrigins.has(origin) || !csrfCookie || !csrfHeader ||
+      if (!origin || !isAllowedOrigin(origin) || !csrfCookie || !csrfHeader ||
           csrfCookie.length !== csrfHeader.length ||
           csrfCookie.length !== expectedCsrf.length ||
           !crypto.timingSafeEqual(Buffer.from(csrfCookie), Buffer.from(csrfHeader)) ||
@@ -510,7 +601,7 @@ app.use('/api', async (req, res, next) => {
     }
   }
   const origin = req.headers.origin;
-  if (origin && !allowedOrigins.has(origin)) {
+  if (origin && !isAllowedOrigin(origin)) {
     return res.status(403).json({ error: { message: 'This origin is not allowed.' } });
   }
   if (PUBLIC_API_PATHS.has(req.originalUrl.split('?')[0])) return next();
@@ -1494,6 +1585,154 @@ app.post('/api/conversations/:id/stream', async (req, res) => {
       return;
     }
 
+    // A build / repository / deploy instruction is a multi-department workflow,
+    // not a chat answer. It runs the real pipeline (provision -> scaffold ->
+    // build -> test -> repository -> deploy -> verify) and streams each stage's
+    // actual outcome. Nothing here is a simulated success message.
+    if (decision.intent === 'build') {
+      send('intent', { intent: decision.intent, reason: decision.reason, actions: decision.actions });
+      const report = await runDeliveryWorkflow(PROJECT_ROOT, {
+        instruction: text,
+        name: decision.projectName ? inferName(decision.projectName) : inferName(text),
+        template: inferTemplate(text),
+        createRepository: Boolean(decision.actions?.repository),
+        deploy: Boolean(decision.actions?.deploy),
+      });
+
+      for (const stage of report.steps) {
+        send('progress', { stage: stage.id, title: stage.title, status: stage.status, summary: stage.summary });
+      }
+
+      const reply = summariseDelivery(report);
+      for (let offset = 0; offset < reply.length; offset += 400) {
+        send('delta', { text: reply.slice(offset, offset + 400) });
+      }
+
+      const deliveryMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: reply, timestamp: new Date().toISOString() };
+      let deliveryUpdated: any = null;
+      await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
+        if (item.id !== conversation.id) return item;
+        const title = !item.customTitle && (!item.title || item.title === 'New Chat') ? text.replace(/[^\w\s]/g, '').trim().slice(0, 34) || 'Chat' : item.title;
+        deliveryUpdated = { ...item, title, messages: [...item.messages, userMessage, deliveryMessage], messageCount: item.messages.length + 2 };
+        return deliveryUpdated;
+      }));
+
+      send('done', {
+        user_message: userMessage,
+        assistant_message: deliveryMessage,
+        reply: deliveryMessage,
+        conversationTitle: deliveryUpdated?.title,
+        memoriesStored: 0,
+        delivery: {
+          project: report.project,
+          template: report.template,
+          ok: report.ok,
+          liveUrl: report.liveUrl,
+          repoUrl: report.repoUrl,
+          limitations: report.limitations,
+          steps: report.steps.map((s) => ({ id: s.id, status: s.status, summary: s.summary })),
+        },
+      });
+      res.end();
+      return;
+    }
+
+    // A self-build instruction changes RARE itself. It is routed to the
+    // developer-gated self-development engine rather than to a user project.
+    //
+    // This used to deflect in BOTH cases: an authorized developer was told to
+    // "open Self-Build and submit this instruction there", which is exactly the
+    // "abandon the Assistant and repeat the task elsewhere" behaviour the
+    // requirement forbids. An authorized developer now gets the real engine run
+    // here, with the real diffs and verification results streamed back.
+    if (decision.intent === 'self_build') {
+      send('intent', { intent: decision.intent, reason: decision.reason });
+
+      if (!(await isDeveloperSessionAuthorized(req))) {
+        const reply =
+          'Changing RARE\'s own source requires the developer passkey. ' +
+          'Open the developer sign-in and authenticate — then ask me again and I will run the change here.';
+        send('delta', { text: reply });
+        const gateMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: reply, timestamp: new Date().toISOString() };
+        await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
+          if (item.id !== conversation.id) return item;
+          return { ...item, messages: [...item.messages, userMessage, gateMessage], messageCount: item.messages.length + 2 };
+        }));
+        send('done', { user_message: userMessage, assistant_message: gateMessage, reply: gateMessage, memoriesStored: 0 });
+        res.end();
+        return;
+      }
+
+      // Authorized: run the real self-development cycle.
+      send('progress', { stage: 'self_build', message: 'Planning a grounded change against the real source…' });
+      let selfDevResult: any;
+      try {
+        selfDevResult = await selfDevEngine.executeCycle({ instruction: text }, true);
+      } catch (error: any) {
+        const reply = `The self-build could not run: ${error?.message || String(error)}. No files were changed.`;
+        send('delta', { text: reply });
+        const errMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: reply, timestamp: new Date().toISOString() };
+        await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
+          if (item.id !== conversation.id) return item;
+          return { ...item, messages: [...item.messages, userMessage, errMessage], messageCount: item.messages.length + 2 };
+        }));
+        send('done', { user_message: userMessage, assistant_message: errMessage, reply: errMessage, memoriesStored: 0 });
+        res.end();
+        return;
+      }
+
+      // Report what actually happened, including the real diff.
+      const lines: string[] = [];
+      lines.push(`**Self-build ${selfDevResult.status}**`);
+      lines.push('');
+      for (const step of selfDevResult.steps || []) {
+        lines.push(`${step.step}. ${step.title} — ${step.outcome}${step.details ? `: ${step.details}` : ''}`);
+      }
+      if (selfDevResult.blocker) {
+        lines.push('');
+        lines.push(`**Blocked:** ${selfDevResult.blocker}`);
+      }
+      const diffs = selfDevResult.diffs || [];
+      if (diffs.length > 0) {
+        lines.push('');
+        lines.push(`**Changed files (${diffs.length}):**`);
+        for (const d of diffs) {
+          lines.push(`- \`${d.file}\``);
+        }
+        lines.push('');
+        lines.push('```diff');
+        for (const d of diffs) {
+          const beforeLines = d.before.split('\n');
+          const afterLines = d.after.split('\n');
+          let i = 0;
+          while (i < beforeLines.length && i < afterLines.length && beforeLines[i] === afterLines[i]) i++;
+          let j = 0;
+          while (
+            j < beforeLines.length - i &&
+            j < afterLines.length - i &&
+            beforeLines[beforeLines.length - 1 - j] === afterLines[afterLines.length - 1 - j]
+          ) j++;
+          lines.push(`--- ${d.file}`);
+          lines.push(`+++ ${d.file}`);
+          for (const l of beforeLines.slice(i, beforeLines.length - j)) lines.push(`-${l}`);
+          for (const l of afterLines.slice(i, afterLines.length - j)) lines.push(`+${l}`);
+        }
+        lines.push('```');
+      }
+      const reply = lines.join('\n');
+      for (let offset = 0; offset < reply.length; offset += 400) {
+        send('delta', { text: reply.slice(offset, offset + 400) });
+      }
+      const selfBuildMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: reply, timestamp: new Date().toISOString() };
+      await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
+        if (item.id !== conversation.id) return item;
+        return { ...item, messages: [...item.messages, userMessage, selfBuildMessage], messageCount: item.messages.length + 2 };
+      }));
+      send('done', { user_message: userMessage, assistant_message: selfBuildMessage, reply: selfBuildMessage, memoriesStored: 0 });
+      res.end();
+      return;
+    }
+
     let fullReply = '';
     const gemini = providerRegistry.getGeminiProvider();
     if (await gemini.isAvailable()) {
@@ -2314,6 +2553,42 @@ app.get('/api/v1/providers/available', async (_req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: { message: err.message } });
   }
+});
+
+// The canonical routing decision for a natural-language request.
+//
+// Chat, the Assistant and any other surface ask this instead of each keeping its
+// own keyword list, so a request cannot be classified one way in Chat and
+// another in the Assistant. It reports the decision and whether the caller is
+// currently authorized for the privileged branch — it does NOT execute anything.
+// The mutating routes re-check authorization themselves; this is a preview, not
+// a permission grant.
+app.post('/api/orchestrator/route', async (req, res) => {
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+  if (!text) {
+    return res.status(400).json({ error: { message: 'text is required.' } });
+  }
+
+  const decision = routeChatIntent(text);
+  const requiresDeveloper = decision.intent === 'self_build';
+  const developerAuthorized = requiresDeveloper
+    ? await isDeveloperSessionAuthorized(req)
+    : false;
+
+  return res.json({
+    intent: decision.intent,
+    reason: decision.reason,
+    requiresDeveloper,
+    developerAuthorized,
+    // What the caller should do next, stated plainly so the UI does not have to
+    // re-derive it from the intent name.
+    nextAction: requiresDeveloper
+      ? developerAuthorized
+        ? 'run_self_build'
+        : 'request_developer_auth'
+      : 'execute_normally',
+    capabilities: capabilitiesForIntent(decision),
+  });
 });
 
 // The intelligence layer's own health: what every provider really reports, what
@@ -6427,6 +6702,97 @@ app.post('/api/images/edit', async (req, res) => {
   });
 });
 
+// -----------------------------------------------------------------------------
+// Unified orchestration API
+// -----------------------------------------------------------------------------
+// One surface for every department. Chat, the Assistant and the job worker all
+// go through the same CapabilityRegistry, so a capability cannot work in one
+// screen and be missing in another.
+
+app.get('/api/capabilities', (req, res) => {
+  ensureCapabilitiesRegistered();
+  const department = typeof req.query.department === 'string' ? req.query.department : undefined;
+  res.json({
+    departments: capabilityRegistry.departments(),
+    capabilities: capabilityRegistry.list(department as any),
+    recentInvocations: capabilityRegistry.recentAudit(20),
+  });
+});
+
+app.post('/api/capabilities/invoke', async (req, res) => {
+  ensureCapabilitiesRegistered();
+  const { capabilityId, args } = req.body || {};
+  if (typeof capabilityId !== 'string' || !capabilityId.trim()) {
+    return res.status(400).json({ error: { message: 'capabilityId is required.' } });
+  }
+  const input = (args && typeof args === 'object' ? args : {}) as Record<string, unknown>;
+  const problems = capabilityRegistry.validateArgs(capabilityId, input);
+  if (problems.length) {
+    return res.status(400).json({ error: { message: problems.join(' '), code: 'invalid_arguments' } });
+  }
+
+  // Long capabilities become durable jobs so the request can return at once.
+  if (shouldRunAsJob(capabilityId)) {
+    try {
+      const { job } = await startJob({
+        ownerId: res.locals.rareUserId,
+        capabilityId,
+        args: input,
+      });
+      return res.status(202).json({ jobId: job.id, status: job.status, job });
+    } catch (error: any) {
+      return res.status(400).json({ error: { message: error?.message || 'Could not start job.' } });
+    }
+  }
+
+  const result = await capabilityRegistry.invoke(capabilityId, input, {
+    ownerId: res.locals.rareUserId,
+    correlationId: `http_${crypto.randomUUID()}`,
+  });
+  res.status(result.ok ? 200 : 422).json(result);
+});
+
+app.get('/api/jobs', async (req, res) => {
+  try {
+    res.json(await jobStore.list(res.locals.rareUserId));
+  } catch (error: any) {
+    res.status(503).json({ error: { message: error?.message || 'Job storage is unavailable.' } });
+  }
+});
+
+app.get('/api/jobs/:id', async (req, res) => {
+  try {
+    const job = await jobStore.get(res.locals.rareUserId, req.params.id);
+    if (!job) return res.status(404).json({ error: { message: 'Job not found.' } });
+    res.json({ ...job, live: jobStore.isLive(job.id) });
+  } catch (error: any) {
+    res.status(503).json({ error: { message: error?.message || 'Job storage is unavailable.' } });
+  }
+});
+
+app.post('/api/jobs/:id/cancel', async (req, res) => {
+  const cancelled = jobStore.cancel(req.params.id);
+  if (!cancelled) {
+    return res.status(409).json({ error: { message: 'That job is not running in this process.' } });
+  }
+  await jobStore.update(res.locals.rareUserId, req.params.id, (record) => {
+    record.log.push({ at: new Date().toISOString(), stage: 'cancel', detail: 'Cancellation requested.' });
+  });
+  res.json({ ok: true, jobId: req.params.id });
+});
+
+app.post('/api/jobs/:id/resume', async (req, res) => {
+  try {
+    const resumed = await resumeJob(res.locals.rareUserId, req.params.id);
+    if (!resumed) {
+      return res.status(409).json({ error: { message: 'That job is not resumable.' } });
+    }
+    res.status(202).json({ jobId: resumed.job.id, status: resumed.job.status, job: resumed.job });
+  } catch (error: any) {
+    res.status(400).json({ error: { message: error?.message || 'Could not resume job.' } });
+  }
+});
+
 // Unknown API routes must remain JSON 404s rather than falling through to the SPA.
 app.use('/api', (_req, res) => {
   res.status(404).json({ error: { message: 'API endpoint not found.' } });
@@ -6448,6 +6814,13 @@ async function startServer() {
   // The Documents service shares the same owner-scoped store and the shared
   // content engine, so Documents and Research never diverge.
   documentsService = new DocumentsService(persistentStorage, searchIndexes);
+
+  // Jobs persist through the same store, and every department publishes its
+  // real capabilities to the one registry Chat and the Assistant both use.
+  jobStore.attach(persistentStorage);
+  getPluginRegistry().attach(persistentStorage);
+  agentRuntime.attach(persistentStorage);
+  ensureCapabilitiesRegistered();
 
   // Production must never start with local-only authentication sessions.
   if (isProduction) {

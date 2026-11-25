@@ -1,0 +1,87 @@
+{
+  "model": "onnx-community/SmolLM2-135M-Instruct-ONNX",
+  "weights_file": "onnx/model_q4.onnx",
+  "weights_bytes": 180581125,
+  "parameters": "135M",
+  "load_ms": 2379,
+  "total_cases": 8,
+  "passed": 3,
+  "failed": 5,
+  "score_pct": 38,
+  "avg_latency_ms": 79849,
+  "run_at": "2026-11-23T12:06:37.009Z",
+  "results": [
+    {
+      "id": "instruction_following",
+      "capability": "Natural-language instruction understanding",
+      "prompt": "Open the Settings app and then tell me the battery percentage.",
+      "output": "I'm sorry for any confusion, but as an AI, I don't have access to personal data unless it's explicitly stated on my profile or by asking a friend. I'll do my best to help you with that.",
+      "pass": false,
+      "detail": "mentions open+settings=false, battery=false",
+      "latency_ms": 42995
+    },
+    {
+      "id": "json_action",
+      "capability": "Structured JSON / action generation",
+      "prompt": "Return JSON with keys \"action\" and \"target\" for the request: open the camera app.",
+      "output": "{\n  \"action\": \"open_camera\",\n  \"target\": \"your-app/12345678901234567890123456789012345678901234567890123456789012345678901234567",
+      "pass": false,
+      "detail": "unbalanced JSON",
+      "latency_ms": 102696
+    },
+    {
+      "id": "function_calling",
+      "capability": "Function / tool call generation",
+      "prompt": "Tools: open_app(name), set_alarm(time). User says: \"set an alarm for 7am\".",
+      "output": "I'm glad I could help! Here's the response to your question:\n\n1. Open_app(): This one takes you to the app that you're trying to access. You can type in the name of the application or just hit enter on the keyboard.\n\n2. Set_alarm(time): This one takes you to the settings where you can set an alarm up to 7 am. You'll need to input the time as a string (in this case",
+      "pass": false,
+      "detail": "no JSON delimiter",
+      "latency_ms": 102405
+    },
+    {
+      "id": "multi_step_planning",
+      "capability": "Multi-step planning",
+      "prompt": "Plan how to send a photo from the gallery to a contact on WhatsApp.",
+      "output": "To send a photo to a contact on WhatsApp, you can use the following steps:\n\n1. Open WhatsApp and log in if not already done so.\n2. Navigate to the post where you want to send the photo (e.g., \"sms/wins-me@got_email\").\n3. In the post, type your photo details such as the date, time, location, and any relevant information about the event or person.",
+      "pass": true,
+      "detail": "numbered_steps=3, key_concepts=2/3",
+      "latency_ms": 100103
+    },
+    {
+      "id": "tool_result_interpretation",
+      "capability": "Tool-result interpretation",
+      "prompt": "Tool result: {\"tool\":\"open_app\",\"ok\":false,\"error\":\"app_not_found\",\"name\":\"Snapchat\"}. What happened?",
+      "output": "The app was closed by the user, but the error message \"app_not_found\" was reported to the system. The error occurred because the user had not set up an account on Snapchat.",
+      "pass": true,
+      "detail": "reports_failure=true, names_app=true",
+      "latency_ms": 47996
+    },
+    {
+      "id": "error_recovery",
+      "capability": "Error recovery / next action",
+      "prompt": "Action \"open_app(Snapchat)\" failed with app_not_found. What do you do next?",
+      "output": "I will try to open the app again and see if it's still available.",
+      "pass": true,
+      "detail": "proposes_corrective_step=true",
+      "latency_ms": 21502
+    },
+    {
+      "id": "short_reasoning",
+      "capability": "Short conversational reasoning",
+      "prompt": "If I have 3 alarms at 6am, 7am and 8am and I delete the middle one, how many alarms remain and at what times?",
+      "output": "To find the number of alarms remaining:\n\n1. The first alarm is 0 hours (24-hour clock) + 1 hour = 25 hours\n2. The second alarm is 1/2 * 25 hours = 1 hour - 25 hours = 9 hours\n3. The third alarm is 1/2 * 1 hour = 1 hour - 25 hours = 9 hours\n4. The fourth",
+      "pass": false,
+      "detail": "count_two=true, times_6_and_8=false, excludes_7=true",
+      "latency_ms": 107898
+    },
+    {
+      "id": "device_planning",
+      "capability": "Device-planning accuracy (RARE action catalogue)",
+      "prompt": "Task: open WhatsApp and send \"on my way\" to Mum.",
+      "output": "I'm glad you're doing well! I can help you by sending a message on your behalf using the WhatsApp app. Here's how it works:\n\n1. You'll be asked to sign in with your account if not already done so.\n2. You will then be prompted to enter your current location (if you haven't already).\n3. Once entered, you will be able to view all messages from your friends and family members.\n4. To add",
+      "pass": false,
+      "detail": "no JSON delimiter",
+      "latency_ms": 113200
+    }
+  ]
+}

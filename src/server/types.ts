@@ -145,7 +145,10 @@ export interface DevelopmentTrajectory {
   failureDiagnosed?: string;
   repairApplied?: string;
   repairAttempts: number;
-  testOutcome: 'passed' | 'failed';
+  // 'not_run' is a real outcome: a run blocked before verification (no grounded
+  // patch, or a refused permission) never executed the checks, and reporting it
+  // as 'failed' would imply tests ran and failed.
+  testOutcome: 'passed' | 'failed' | 'not_run';
   status: 'VERIFIED_SUCCESS' | 'REVERTED_ON_FAILURE';
   timestamp: string;
   auditTrail: string[];
