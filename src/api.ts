@@ -225,6 +225,44 @@ function captureCsrfToken(response: Response): void {
   csrfToken = response.headers.get('X-CSRF-Token') || csrfToken;
 }
 
+// ---------------------------------------------------------------------------
+// Session-expiry signal
+// ---------------------------------------------------------------------------
+// When the server rejects a session-gated request with 401, the account the UI
+// is showing no longer exists server-side. Without this, the interface keeps
+// rendering a signed-in user whose every action fails. The app subscribes here
+// and drops to the guest state, which restores the Login / Sign Up control.
+type SessionExpiredListener = () => void;
+const sessionExpiredListeners = new Set<SessionExpiredListener>();
+
+export function onSessionExpired(listener: SessionExpiredListener): () => void {
+  sessionExpiredListeners.add(listener);
+  return () => sessionExpiredListeners.delete(listener);
+}
+
+function notifySessionExpired(): void {
+  for (const listener of sessionExpiredListeners) {
+    try {
+      listener();
+    } catch { /* A failing listener must not break the request path. */ }
+  }
+}
+
+/**
+ * True when this 401 means "your session is gone" rather than "this endpoint
+ * needs a session you have not created yet". The guest-session bootstrap and
+ * the sign-in endpoints legitimately answer 401/403 during normal startup, so
+ * they must not be treated as an expiry.
+ */
+function isSessionExpiry(url: string, status: number): boolean {
+  if (status !== 401) return false;
+  const path = url.split('?')[0];
+  if (path.endsWith('/api/user/guest-session')) return false;
+  if (path.endsWith('/api/user/login') || path.endsWith('/api/user/signup')) return false;
+  if (path.endsWith('/api/user/session')) return false;
+  return true;
+}
+
 /**
  * Cold-start budget for the first request of a session.
  *
@@ -1081,6 +1119,13 @@ export async function safeFetch<T>(
 
       if (!res.ok) {
         updateConnectionState(false, `HTTP ${res.status}`);
+
+        // A 401 on a session-gated endpoint means the session is gone. Tell the
+        // app so it can drop to the guest state instead of showing a signed-in
+        // account whose requests all fail.
+        if (isSessionExpiry(fullUrl, res.status)) {
+          notifySessionExpired();
+        }
 
         // An HTTP denial or missing endpoint is not an offline fallback signal.
         // Preserve a structured server error so forms can show actionable

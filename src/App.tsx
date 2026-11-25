@@ -85,6 +85,7 @@ import {
   normalizeBackendUrl,
   setBackendUrl,
   testBackendConnection,
+  onSessionExpired,
   BackendConnectionState
 } from './api';
 
@@ -394,6 +395,20 @@ export default function App() {
   useEffect(() => {
     return subscribeConnectionState((state) => {
       setConnectionStatus(state);
+    });
+  }, []);
+
+  // A 401 from a session-gated endpoint means the account is gone server-side.
+  // Drop to the guest state so the Login / Sign Up control returns and the
+  // sidebar stops claiming a signed-in user whose requests all fail.
+  useEffect(() => {
+    return onSessionExpired(() => {
+      setCurrentUser(null);
+      setIsDeveloperAuthed(false);
+      setAccountMenuOpen(false);
+      try {
+        localStorage.removeItem('rare_user_account');
+      } catch { /* Storage may be disabled. */ }
     });
   }, []);
 
@@ -2814,6 +2829,48 @@ function CleanChatWorkspaceView({
   const [personaMode, setPersonaMode] = useState<'casual' | 'professional' | 'creative' | 'concise'>('casual');
   const [attachedFile, setAttachedFile] = useState<{ name: string; content: string } | null>(null);
 
+  // Conversation mode persistence.
+  //
+  // Two layers, both reusing existing storage rather than adding a table:
+  //   - the last-used mode, so a refresh does not silently reset the choice;
+  //   - a per-conversation mode, so reopening a chat restores the mode it was
+  //     actually held in.
+  // The server stores `persona` on the conversation record, which is the
+  // authoritative per-conversation value; localStorage is the fast path that
+  // avoids a flash of the wrong mode while the conversation loads.
+  const PERSONA_STORAGE_KEY = 'rare_persona_mode';
+  const personaStoreKey = (convId: string) => `rare_persona_conv_${convId}`;
+
+  const readStoredPersona = (convId: string): 'casual' | 'professional' | 'creative' | 'concise' | null => {
+    try {
+      const perConv = convId ? localStorage.getItem(personaStoreKey(convId)) : null;
+      const raw = perConv || localStorage.getItem(PERSONA_STORAGE_KEY);
+      if (raw === 'casual' || raw === 'professional' || raw === 'creative' || raw === 'concise') return raw;
+    } catch { /* Storage may be disabled. */ }
+    return null;
+  };
+
+  const persistPersona = (mode: 'casual' | 'professional' | 'creative' | 'concise', convId: string) => {
+    try {
+      localStorage.setItem(PERSONA_STORAGE_KEY, mode);
+      if (convId) localStorage.setItem(personaStoreKey(convId), mode);
+    } catch { /* Storage may be disabled. */ }
+  };
+
+  const handlePersonaChange = (mode: 'casual' | 'professional' | 'creative' | 'concise') => {
+    setPersonaMode(mode);
+    persistPersona(mode, activeConvId);
+    // Persist to the conversation record so the choice survives a device change
+    // and is restored by any client, not just this browser.
+    if (activeConvId) {
+      void safeFetch<any>(`/api/conversations/${activeConvId}/persona`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ persona: mode }),
+      });
+    }
+  };
+
   // High-accuracy Voice Recording & Real-time Live Transcription States
   const [isRecordingVoiceNote, setIsRecordingVoiceNote] = useState(false);
   const [liveInterimTranscript, setLiveInterimTranscript] = useState('');
@@ -2908,6 +2965,10 @@ function CleanChatWorkspaceView({
     stopHumanVoice();
     setSpeakingMsgId(null);
     if (activeConvId) {
+      // Restore this conversation's mode before the messages render, so the
+      // selector never shows a mode the conversation was not held in.
+      const stored = readStoredPersona(activeConvId);
+      if (stored) setPersonaMode(stored);
       loadMessages(activeConvId);
     }
   }, [activeConvId]);
@@ -3559,7 +3620,7 @@ function CleanChatWorkspaceView({
         <div className="flex items-center space-x-2">
           <select
             value={personaMode}
-            onChange={(e) => setPersonaMode(e.target.value as any)}
+            onChange={(e) => handlePersonaChange(e.target.value as any)}
             className="text-xs bg-slate-900/60 text-slate-200 font-medium border border-white/10 rounded-xl px-3 py-1.5 focus:outline-none cursor-pointer"
             title="Mode of Discussion"
             aria-label="Mode of Discussion"

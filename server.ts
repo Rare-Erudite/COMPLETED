@@ -61,6 +61,7 @@ import { DevicePlanner } from './src/server/device/DevicePlanner.js';
 import { DEVICE_ACTIONS } from './src/device/deviceActions.js';
 import { BenchmarkSuite } from './src/server/evaluation/BenchmarkSuite.js';
 import { engine } from './src/engine/engine.ts';
+import { normalizePersonaMode } from './src/engine/persona.ts';
 import { googleTtsProvider } from './src/server/providers/GoogleTtsProvider.js';
 import { notificationDeliveryService } from './src/server/providers/NotificationDeliveryService.js';
 import { oAuthVerificationService } from './src/server/providers/OAuthVerificationService.js';
@@ -1227,6 +1228,9 @@ app.post('/api/conversations', async (req, res) => {
       title: typeof req.body?.title === 'string' ? req.body.title.trim().slice(0, 120) || 'New Chat' : 'New Chat',
       created_at: now,
       userId: ownerId,
+      // The conversation's conversation-mode. Stored on the record so it is
+      // restored by any client, not only the browser that set it.
+      persona: normalizePersonaMode(req.body?.persona),
       messages: [{ id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: `Hello! I am ${appSettings.assistantName} — your personal AI companion and software builder. What would you like to work on today?`, timestamp: now }],
     };
     await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => {
@@ -1248,6 +1252,27 @@ app.get('/api/conversations/:id', async (req, res) => {
     return conversation ? res.json(conversation) : res.status(404).json({ error: { message: 'Conversation not found' } });
   } catch (error) {
     console.error('[Conversations] Private conversation read failed:', error);
+    return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
+  }
+});
+
+// Persist the conversation's mode. Reuses the conversation record rather than
+// adding a preference table, and is scoped to the owner by updateOwnedState.
+app.patch('/api/conversations/:id/persona', async (req, res) => {
+  const persona = normalizePersonaMode(req.body?.persona);
+  try {
+    let found = false;
+    await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'conversations', [], (current) =>
+      current.map((item) => {
+        if (item.id !== req.params.id) return item;
+        found = true;
+        return { ...item, persona };
+      })
+    );
+    if (!found) return res.status(404).json({ error: { message: 'Conversation not found' } });
+    return res.json({ success: true, persona });
+  } catch (error) {
+    console.error('[Conversations] Conversation mode update failed:', error);
     return res.status(503).json({ error: { message: 'Private conversation storage is unavailable.' } });
   }
 });
@@ -1410,7 +1435,7 @@ app.post('/api/conversations/:id', async (req, res) => {
       });
     }
 
-    const generated = await generateAssistantReply(text, Boolean(req.body?.think_harder), conversation.id, typeof req.body?.persona === 'string' ? req.body.persona.slice(0, 40) : undefined, contextMessages as any, false, res.locals.rareUserId);
+    const generated = await generateAssistantReply(text, Boolean(req.body?.think_harder), conversation.id, normalizePersonaMode(typeof req.body?.persona === 'string' ? req.body.persona : conversation.persona), contextMessages as any, false, res.locals.rareUserId);
     if (typeof generated.reply !== 'string' || !generated.reply.trim()) return res.status(502).json({ error: { message: 'The AI provider returned an empty response.' } });
     const assistantMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: generated.reply.trim(), timestamp: new Date().toISOString(), ...(generated.thought ? { thought: generated.thought } : {}) };
     let updated: any = null;
@@ -1497,7 +1522,7 @@ app.post('/api/conversations/:id/stream', async (req, res) => {
     const combinedContext = prepared.memoryContext ? `Relevant User Memory:\n${prepared.memoryContext}` : '';
     const options = {
       temperature: req.body?.think_harder ? 0.2 : 0.7,
-      persona: typeof req.body?.persona === 'string' ? req.body.persona.slice(0, 40) : undefined,
+      persona: normalizePersonaMode(typeof req.body?.persona === 'string' ? req.body.persona : conversation.persona),
       thinkHarder: Boolean(req.body?.think_harder),
       systemPrompt: buildRareSystemPrompt(appSettings.assistantName || 'RARE', false),
       conversationHistory: prepared.history,

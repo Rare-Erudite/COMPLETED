@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { IModelProvider, ModelInfo, GenerationOptions, GenerationResult } from '../types.js';
+import { buildPersonaSystemInstruction } from '../../engine/persona.js';
 
 /**
  * Gemini model ids, overridable per deployment.
@@ -171,14 +172,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
   ): Promise<GenerationResult> {
     const ai = this.getClient();
 
-    const personaTone =
-      options?.persona === 'professional'
-        ? 'Adopt a rigorous, professional, and technically precise tone.'
-        : options?.persona === 'creative'
-        ? 'Adopt an imaginative, expressive, and creative tone.'
-        : options?.persona === 'concise'
-        ? 'Be extremely concise, direct, and to the point.'
-        : 'Be warm, natural, friendly, and conversational.';
+    const personaTone = buildPersonaSystemInstruction(options?.persona);
 
     const systemInstruction = `${
       options?.systemPrompt ||
@@ -281,14 +275,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
     options?: GenerationOptions & { thinkHarder?: boolean; persona?: string }
   ): AsyncGenerator<string, string, void> {
     const ai = this.getClient();
-    const personaTone =
-      options?.persona === 'professional'
-        ? 'Adopt a rigorous, professional, and technically precise tone.'
-        : options?.persona === 'creative'
-        ? 'Adopt an imaginative, expressive, and creative tone.'
-        : options?.persona === 'concise'
-        ? 'Be extremely concise, direct, and to the point.'
-        : 'Be warm, natural, friendly, and conversational.';
+    const personaTone = buildPersonaSystemInstruction(options?.persona);
 
     const systemInstruction = `${
       options?.systemPrompt ||

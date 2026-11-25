@@ -1,4 +1,5 @@
 import { IModelProvider, ModelInfo, GenerationOptions, GenerationResult } from '../types.js';
+import { buildPersonaSystemInstruction } from '../../engine/persona.js';
 
 export class OllamaProvider implements IModelProvider {
   private baseUrl: string;
@@ -53,13 +54,7 @@ export class OllamaProvider implements IModelProvider {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s for local generation
     try {
-      const personaTone = options?.persona === 'professional'
-        ? 'Use a rigorous, professional, technically precise tone.'
-        : options?.persona === 'creative'
-        ? 'Use an imaginative, expressive tone.'
-        : options?.persona === 'concise'
-        ? 'Be concise and direct.'
-        : 'Be warm, natural, and conversational.';
+      const personaTone = buildPersonaSystemInstruction(options?.persona);
       const systemPrompt = `${options?.systemPrompt || 'You are RARE, a helpful personal assistant and software builder.'}\n${personaTone}${context ? `\n\nRelevant user memory:\n${context}` : ''}`;
       const history = (options?.conversationHistory || []).map((message) => ({
         role: message.role,
