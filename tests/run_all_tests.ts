@@ -58,6 +58,7 @@ import { runSelfBuildTests } from './test_self_build_real.js';
 import { runIntentRouterTests } from './test_intent_router.js';
 import { runPersonaModeTests } from './test_persona_modes.js';
 import { runAuthInterfaceTests } from './test_auth_interface.js';
+import { runPersonaPropagationTests } from './test_persona_propagation.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -212,6 +213,8 @@ async function main() {
     if (persona.failed > 0) {
       throw new Error(`Conversation modes: ${persona.failed} assertion(s) failed.`);
     }
+    console.log();
+    await runPersonaPropagationTests();
     console.log();
     const authInterface = await runAuthInterfaceTests();
     if (authInterface.failed > 0) {
