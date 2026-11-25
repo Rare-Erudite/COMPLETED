@@ -13,7 +13,7 @@
  *    of RARE uses (documents, research, build tasks) — no duplicated logic and
  *    no fabricated results.
  *
- * Wake-word ("Hey Rae") is intentionally NOT claimed: it requires always-on
+ * Wake-word ("Hey RARE") is intentionally NOT claimed: it requires always-on
  * microphone access that no browser permits while the tab is backgrounded or
  * the device is locked. The panel says so instead of pretending.
  */
@@ -156,7 +156,7 @@ function buildCapabilities(platform: AssistantPlatform): AssistantCapability[] {
     },
     {
       id: 'wake_word',
-      label: 'Wake word ("Hey Rae")',
+      label: 'Wake word ("Hey RARE")',
       available: false,
       detail: isAndroid
         ? 'Needs background microphone access, which Android only grants to a native foreground service (not a browser/PWA tab).'
@@ -262,7 +262,7 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
   const [taskError, setTaskError] = useState('');
   const taskAbortRef = useRef<AbortController | null>(null);
 
-  // Wake word ("Hey Rae") — a foreground service on Android.
+  // Wake word ("Hey RARE") — a foreground service on Android.
   const [wakeStatus, setWakeStatus] = useState(() => getWakeStatus());
   // Optional offline engine (Vosk). Reports the real state of the model on disk.
   const [offlineWake, setOfflineWake] = useState<OfflineWakeStatus>(() => getOfflineWakeStatus());
@@ -783,11 +783,11 @@ export function AssistantStudioView({ onNavigate, assistantName = 'Rare' }: Assi
               <div className="text-[10px] text-slate-500 font-mono">Foreground: {deviceCaps.foregroundPackage}</div>
             )}
 
-            {/* Wake word ("Hey Rae") — foreground service on Android. */}
+            {/* Wake word ("Hey RARE") — foreground service on Android. */}
             <div className="pt-3 mt-1 border-t border-slate-800 space-y-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-xs font-semibold text-white">Wake word — "Hey Rae"</div>
+                  <div className="text-xs font-semibold text-white">Wake word — "Hey RARE"</div>
                   <div className="text-[11px] text-slate-500">{wakeStatus.detail}</div>
                 </div>
                 <button

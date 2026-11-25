@@ -35,6 +35,7 @@ import { runToolchainRegistryTests, runToolchainRouteTests, runAssistantCommandT
 import { runProjectBuildTests } from './test_project_build.js';
 import { runMediaBinaryTests } from './test_media_binaries.js';
 import { runUpdateStoreTests } from './test_update_store.js';
+import { runToolchainProvisioningTests } from './test_toolchain_provisioning.js';
 import { runPublishedReleaseTests } from './test_published_release.js';
 import { runApkEntryTests } from './test_apk_entry.js';
 import { runBlankScreenGuardTests } from './test_blank_screen_guard.js';
@@ -191,6 +192,11 @@ async function main() {
     await runMediaBinaryTests();
     console.log();
     await runUpdateStoreTests();
+    console.log();
+    const provisioning = await runToolchainProvisioningTests();
+    if (provisioning.failed > 0) {
+      throw new Error(`Toolchain provisioning: ${provisioning.failed} assertion(s) failed.`);
+    }
     console.log();
     await runPublishedReleaseTests();
     console.log();

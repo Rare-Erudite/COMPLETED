@@ -151,9 +151,13 @@ def main():
     results.append(("research without a session (must be refused)", status, short(body)))
 
     # --- updater ----------------------------------------------------------
+    # The APK download is developer-gated by design (consolidated to a single
+    # Developer Space entry). An unauthenticated request must therefore be
+    # refused, not served. This assertion previously expected 200 from the era
+    # before that consolidation, so it reported a correct refusal as a failure.
     plain = Client()
     status, body = plain.get("/api/download/apk/info")
-    results.append(("APK metadata (public)", status, short(body)))
+    results.append(("APK metadata (must be gated)", status, short(body)))
 
     status, body = plain.get("/api/updates/check?clientVersion=1.0.0&channel=public")
     results.append(("update check (public)", status, short(body)))
@@ -188,7 +192,7 @@ def main():
         "create document (Alice)": {200, 201},
         "research search (real connectors)": {200},
         "builder toolchains (real probes)": {200},
-        "APK metadata (public)": {200},
+        "APK metadata (must be gated)": {401, 403},
     }
 
     failures = []

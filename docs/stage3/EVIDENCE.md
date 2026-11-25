@@ -1,6 +1,6 @@
 # RARE Stage 3 — end-to-end delivery evidence
 
-Run: 2026-11-23T12:30:44.756Z → 2026-11-23T12:31:05.576Z
+Run: 2026-11-25T16:18:19.343Z → 2026-11-25T16:18:50.734Z
 
 ## Toolchains
 
@@ -13,20 +13,21 @@ Run: 2026-11-23T12:30:44.756Z → 2026-11-23T12:31:05.576Z
 | git | ready | Git 2.39.5 |
 | rust_cargo | ready | Cargo 1.65.0 |
 | go_toolchain | ready | Go 1.19.8 |
-| java_toolchain | ready | Java 17.0.21 |
+| java_toolchain | ready | Java 17.0.21.1 |
 | android_gradle | missing | — |
 | gcc | ready | gcc 12.2.0 |
 | gpp | ready | g++ 12.2.0 |
 | make | ready | make 4.3 |
-| php | ready | PHP 8.2.36 |
-| maven | ready | Maven 3.8.7 |
+| php | ready | PHP 8.2.35 |
+| maven | missing | — |
 | dotnet | missing | — |
-| ruby | ready | Ruby 3.1.2 |
-| ffmpeg | ready | ffmpeg 5.1.9-0+deb12u1 |
-| psql | ready | psql 15.18 |
+| ruby | missing | — |
+| ffmpeg | missing | — |
+| psql | ready | psql 15.20 |
 | kotlinc | missing | — |
 | swift | missing | — |
 | dart | missing | — |
+| sqlite3 | ready | SQLite 3.40.1 |
 | docker | missing | — |
 
 ## Provisioning
@@ -46,14 +47,15 @@ Run: 2026-11-23T12:30:44.756Z → 2026-11-23T12:31:05.576Z
 | gpp | already_ready | — | — |
 | make | already_ready | — | — |
 | php | already_ready | — | — |
-| maven | already_ready | — | — |
+| maven | installed | apt-get install -y maven | 0 |
 | dotnet | unavailable_from_archive | — | — |
-| ruby | already_ready | — | — |
-| ffmpeg | already_ready | — | — |
+| ruby | installed | apt-get install -y ruby-full | 0 |
+| ffmpeg | installed | apt-get install -y ffmpeg | 0 |
 | psql | already_ready | — | — |
 | kotlinc | unavailable_from_archive | — | — |
 | swift | unavailable_from_archive | — | — |
 | dart | unavailable_from_archive | — | — |
+| sqlite3 | already_ready | — | — |
 | docker | unavailable_from_archive | — | — |
 
 ## Intent routing
@@ -78,12 +80,12 @@ Run: 2026-11-23T12:30:44.756Z → 2026-11-23T12:31:05.576Z
 | build | passed | Build and tests passed for small-static-website (static-web).
 - build: skipped — `n/a` exit n/a
 - test: skipped — `n/a` exit n/a |
-| repository | passed | Committed 5 files to Rare-Erudite/COMPLETED@rare-stage3-demo as 7c918c0f. |
-| deploy | passed | Deployed and verified: https://small-static-website-g4p6it2fi-mypremierai-2827.vercel.app returned HTTP 200 (state READY, 9s). |
+| repository | skipped | GITHUB_TOKEN is not configured. |
+| deploy | skipped | VERCEL_TOKEN is not configured. |
 
-Repository: https://github.com/Rare-Erudite/COMPLETED/tree/rare-stage3-demo
-
-Live: https://small-static-website-g4p6it2fi-mypremierai-2827.vercel.app
+Limitations:
+- Repository creation was skipped: GITHUB_TOKEN is not set.
+- Deployment was skipped: VERCEL_TOKEN is not set.
 
 ### python-command-line (python-cli) — ok=true
 
@@ -109,15 +111,15 @@ Repaired build passed: true
 ```json
 {
   "github": {
-    "ok": true,
-    "login": "Rare-Erudite",
-    "error": null
+    "ok": false,
+    "login": null,
+    "error": "GITHUB_TOKEN is not set, so no repository operation can be authenticated."
   },
   "vercel": {
-    "ok": true,
-    "username": "mypremierai-2827",
-    "limited": true,
-    "error": null
+    "ok": false,
+    "username": null,
+    "limited": false,
+    "error": "VERCEL_TOKEN is not set."
   }
 }
 ```

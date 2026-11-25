@@ -1,5 +1,5 @@
 {
-  "runAt": "2026-11-23T12:35:30.107Z",
+  "runAt": "2026-11-25T16:15:39.081Z",
   "total": 9,
   "passed": 9,
   "results": [
@@ -12,13 +12,13 @@
         "command": "npm install @types/node && npx tsc -p tsconfig.json (install exit 0)",
         "exitCode": 0,
         "output": "",
-        "durationMs": 1068
+        "durationMs": 1106
       },
       "test": {
         "command": "npx tsx src/sum.test.ts",
         "exitCode": 0,
         "output": "ts tests passed",
-        "durationMs": 918
+        "durationMs": 891
       },
       "passed": true,
       "note": ""
@@ -32,13 +32,13 @@
         "command": "python3 -m py_compile",
         "exitCode": 0,
         "output": "",
-        "durationMs": 26
+        "durationMs": 28
       },
       "test": {
         "command": "python3 test_sum.py",
         "exitCode": 0,
         "output": "python tests passed",
-        "durationMs": 36
+        "durationMs": 12
       },
       "passed": true,
       "note": ""
@@ -52,13 +52,13 @@
         "command": "gcc -O2 -o sum sum.c",
         "exitCode": 0,
         "output": "",
-        "durationMs": 36
+        "durationMs": 56
       },
       "test": {
         "command": "./sum",
         "exitCode": 0,
         "output": "c tests passed",
-        "durationMs": 2
+        "durationMs": 3
       },
       "passed": true,
       "note": ""
@@ -72,7 +72,7 @@
         "command": "g++ -O2 -std=c++17 -o sum sum.cpp",
         "exitCode": 0,
         "output": "",
-        "durationMs": 294
+        "durationMs": 334
       },
       "test": {
         "command": "./sum",
@@ -92,13 +92,13 @@
         "command": "javac Sum.java",
         "exitCode": 0,
         "output": "",
-        "durationMs": 902
+        "durationMs": 1034
       },
       "test": {
         "command": "java Sum",
         "exitCode": 0,
         "output": "java tests passed",
-        "durationMs": 82
+        "durationMs": 36
       },
       "passed": true,
       "note": ""
@@ -112,13 +112,13 @@
         "command": "go build -o sum .",
         "exitCode": 0,
         "output": "",
-        "durationMs": 376
+        "durationMs": 525
       },
       "test": {
         "command": "./sum",
         "exitCode": 0,
         "output": "go tests passed",
-        "durationMs": 4
+        "durationMs": 3
       },
       "passed": true,
       "note": ""
@@ -132,13 +132,13 @@
         "command": "rustc -O -o sum sum.rs",
         "exitCode": 0,
         "output": "",
-        "durationMs": 295
+        "durationMs": 326
       },
       "test": {
         "command": "./sum",
         "exitCode": 0,
         "output": "rust tests passed",
-        "durationMs": 3
+        "durationMs": 2
       },
       "passed": true,
       "note": ""
@@ -152,13 +152,13 @@
         "command": "php -l sum.php",
         "exitCode": 0,
         "output": "No syntax errors detected in sum.php",
-        "durationMs": 16
+        "durationMs": 24
       },
       "test": {
         "command": "php sum.php",
         "exitCode": 0,
         "output": "php tests passed",
-        "durationMs": 15
+        "durationMs": 18
       },
       "passed": true,
       "note": ""
@@ -171,14 +171,14 @@
       "build": {
         "command": "psql -c \"create/insert/select\"",
         "exitCode": 0,
-        "output": "CREATE TABLE\nINSERT 0 1\n count \n-------\n     4\n(1 row)\nNOTICE:  relation \"rare_stage3_probe\" already exists, skipping",
-        "durationMs": 740
+        "output": "CREATE TABLE\nINSERT 0 1\n count \n-------\n     5\n(1 row)\nNOTICE:  relation \"rare_stage3_probe\" already exists, skipping",
+        "durationMs": 790
       },
       "test": {
         "command": "select count(*)",
         "exitCode": 0,
-        "output": "CREATE TABLE\nINSERT 0 1\n count \n-------\n     4\n(1 row)\nNOTICE:  relation \"rare_stage3_probe\" already exists, skipping",
-        "durationMs": 740
+        "output": "CREATE TABLE\nINSERT 0 1\n count \n-------\n     5\n(1 row)\nNOTICE:  relation \"rare_stage3_probe\" already exists, skipping",
+        "durationMs": 790
       },
       "passed": true,
       "note": ""

@@ -28,7 +28,7 @@ import java.util.Locale;
  *    always-on DSP. It costs battery and Android may throttle it.
  *  - It does not run when the phone is locked or the app is force-stopped.
  *  - The small model is accurate for the wake phrase but is not a dictation
- *    model; it is used only to detect "hey rae".
+ *    model; it is used only to detect "hey rare".
  */
 public final class VoskWakeEngine {
     private static final String TAG = "RARE_VOSK";
@@ -55,7 +55,7 @@ public final class VoskWakeEngine {
         this.model = new Model(VoskModelManager.modelDir(context).getAbsolutePath());
         this.recognizer = new Recognizer(model, SAMPLE_RATE);
         // Only the wake phrase matters; a grammar keeps it fast and accurate.
-        this.recognizer.setGrammar("[\"hey rae\", \"hey ray\", \"hi rae\", \"ok rae\", \"[unk]\"]");
+        this.recognizer.setGrammar("[\"hey rare\", \"hey rae\", \"hey ray\", \"hi rare\", \"hi rae\", \"ok rare\", \"ok rae\", \"[unk]\"]");
     }
 
     /** True when the wake phrase appears in a transcript. Mirrors the online matcher. */
@@ -65,10 +65,12 @@ public final class VoskWakeEngine {
                 .replaceAll("[^a-z ]", " ")
                 .replaceAll("\\s+", " ")
                 .trim();
-        return normalized.contains("hey rae")
+        return normalized.contains("hey rare")
+                || normalized.contains("hey rae")
                 || normalized.contains("hey ray")
-                || normalized.contains("hey rare")
+                || normalized.contains("hi rare")
                 || normalized.contains("hi rae")
+                || normalized.contains("ok rare")
                 || normalized.contains("ok rae");
     }
 

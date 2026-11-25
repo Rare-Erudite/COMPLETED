@@ -1,7 +1,7 @@
 /**
  * RARE — Wake-word bridge (web side).
  *
- * Talks to the native `window.RareWake` bridge, which controls the "Hey Rae"
+ * Talks to the native `window.RareWake` bridge, which controls the "Hey RARE"
  * foreground service. In a browser tab there is no bridge, so this reports
  * unavailable rather than pretending to listen.
  *
@@ -51,7 +51,7 @@ export function getWakeStatus(): WakeStatus {
     return {
       available: true,
       running: parsed.running === true,
-      detail: parsed.detail || (parsed.running ? 'Listening for "Hey Rae".' : 'Not listening.'),
+      detail: parsed.detail || (parsed.running ? 'Listening for "Hey RARE".' : 'Not listening.'),
       engine: parsed.engine,
     };
   } catch {

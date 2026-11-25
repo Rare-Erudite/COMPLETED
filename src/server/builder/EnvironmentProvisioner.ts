@@ -77,6 +77,13 @@ const PACKAGE_MAP: Record<string, string[]> = {
   python_runtime: ['python3'],
   node_ts: ['nodejs'],
   npm: ['npm'],
+  // These three are genuinely in the Debian archive, so they can be installed
+  // rather than reported as missing. Leaving them out of this map made the
+  // provisioner refuse to install a toolchain it could have provided.
+  go_toolchain: ['golang-go'],
+  rust_cargo: ['rustc', 'cargo'],
+  java_toolchain: ['default-jdk-headless'],
+  sqlite3: ['sqlite3'],
 };
 
 /**
@@ -186,7 +193,19 @@ export async function provisionToolchains(ids?: string[]): Promise<ProvisionRepo
     }
 
     const command = `apt-get install -y ${packages.join(' ')}`;
-    const result = await run('apt-get', ['install', '-y', ...packages], APT_TIMEOUT_MS);
+    let result = await run('apt-get', ['install', '-y', ...packages], APT_TIMEOUT_MS);
+
+    // A stale package index is the single most common reason an install fails
+    // with "404 Not Found" for a package that plainly exists: the index still
+    // points at a version the mirror has since replaced. Refresh the index and
+    // retry once before declaring the toolchain uninstallable. Without this the
+    // provisioner reported a real, installable toolchain as permanently missing.
+    if (result.code !== 0 && /404\s+Not Found|Failed to fetch|Unable to fetch some archives/i.test(result.output)) {
+      const refresh = await run('apt-get', ['update'], APT_TIMEOUT_MS);
+      if (refresh.code === 0) {
+        result = await run('apt-get', ['install', '-y', ...packages], APT_TIMEOUT_MS);
+      }
+    }
 
     // Re-probe: the exit code is not evidence, the probe is.
     const after = await detectToolchains(true);

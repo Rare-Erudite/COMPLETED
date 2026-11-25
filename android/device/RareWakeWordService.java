@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.Locale;
 
 /**
- * RARE wake-word service ("Hey Rae").
+ * RARE wake-word service ("Hey RARE").
  *
  * A foreground service that keeps a SpeechRecognizer listening in short cycles
  * and looks for the wake phrase in each partial/final transcript. When it hears
@@ -223,10 +223,15 @@ public class RareWakeWordService extends Service {
     static boolean matchesWakePhrase(String text) {
         if (text == null) return false;
         String normalized = text.toLowerCase(Locale.ROOT).replaceAll("[^a-z ]", " ").replaceAll("\\s+", " ").trim();
-        return normalized.contains("hey rae")
+        // "Hey RARE" is the required default phrase. The homophones are kept as
+        // aliases because speech recognisers routinely transcribe "RARE" as
+        // "rae" or "ray"; dropping them would make the required phrase fail.
+        return normalized.contains("hey rare")
+                || normalized.contains("hey rae")
                 || normalized.contains("hey ray")
-                || normalized.contains("hey rare")
+                || normalized.contains("hi rare")
                 || normalized.contains("hi rae")
+                || normalized.contains("ok rare")
                 || normalized.contains("ok rae");
     }
 
@@ -304,7 +309,7 @@ public class RareWakeWordService extends Service {
         if (manager == null) return;
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID, "RARE wake word", NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("Listens for \"Hey Rae\" while RARE is running.");
+        channel.setDescription("Listens for \"Hey RARE\" while RARE is running.");
         manager.createNotificationChannel(channel);
     }
 
@@ -316,8 +321,8 @@ public class RareWakeWordService extends Service {
             builder = new Notification.Builder(this);
         }
         return builder
-                .setContentTitle("RARE is listening for \"Hey Rae\"")
-                .setContentText("Say \"Hey Rae\" to start a request. Tap to open RARE.")
+                .setContentTitle("RARE is listening for \"Hey RARE\"")
+                .setContentText("Say \"Hey RARE\" to start a request. Tap to open RARE.")
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .setOngoing(true)
                 .build();
