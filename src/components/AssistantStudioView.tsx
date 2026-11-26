@@ -157,10 +157,16 @@ function buildCapabilities(platform: AssistantPlatform): AssistantCapability[] {
     {
       id: 'wake_word',
       label: 'Wake word ("Hey RARE")',
-      available: false,
-      detail: isAndroid
-        ? 'Needs background microphone access, which Android only grants to a native foreground service (not a browser/PWA tab).'
-        : 'Needs an always-on microphone, which the browser does not permit in a backgrounded tab.',
+      // Report the real bridge state instead of a hardcoded false. The native
+      // foreground service exists (android/device/RareWakeWordService.java) and
+      // the JS bridge exposes it; claiming "unavailable" while the Start button
+      // next to it works was a misleading badge.
+      available: isWakeWordAvailable(),
+      detail: isWakeWordAvailable()
+        ? 'Native foreground service detected. Say "Hey RARE" to start a request.'
+        : isAndroid
+          ? 'Needs the RARE Android app: the wake service is a native foreground service, not a browser/PWA tab.'
+          : 'Needs an always-on microphone, which the browser does not permit in a backgrounded tab.',
     },
   ];
 }

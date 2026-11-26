@@ -2907,6 +2907,16 @@ function CleanChatWorkspaceView({
   const loadMessages = async (convId: string) => {
     if (!convId) return;
     const data = await safeFetch<any>(`/api/conversations/${convId}`);
+    // The conversation record is the authoritative per-conversation mode: it is
+    // what the server actually uses to generate replies. localStorage is only a
+    // fast path that avoids a flash of the wrong mode. Reading it here is what
+    // makes the mode survive a different device or a cleared browser cache —
+    // before this, the server's value was fetched and then thrown away.
+    const serverPersona = data?.persona;
+    if (serverPersona === 'casual' || serverPersona === 'professional' || serverPersona === 'creative' || serverPersona === 'concise') {
+      setPersonaMode(serverPersona);
+      persistPersona(serverPersona, convId);
+    }
     const localStore = loadLocalConversationsStore();
     if (data && Array.isArray(data.messages) && data.messages.length > 0) {
       setMessages(data.messages);
