@@ -43,6 +43,12 @@ import { type ProjectTemplate } from './src/server/builder/ProjectScaffolder.js'
 import { detectToolchains, type ToolchainCapability } from './src/server/builder/ToolchainRegistry.js';
 import { ToolExecutor } from './src/server/tools/ToolExecutor.js';
 import { McpClientManager } from './src/server/mcp/McpClientManager.js';
+import { ScheduleEngine, initialiseTask } from './src/server/scheduler/ScheduleEngine.js';
+import type { SchedulePersistence } from './src/server/scheduler/ScheduleEngine.js';
+import { createScheduleStore } from './src/server/scheduler/ScheduleStore.js';
+import { StoreDeviceCommandQueue } from './src/server/scheduler/DeviceCommandQueue.js';
+import { createDispatcher } from './src/server/scheduler/dispatcher.js';
+import { parseSchedule, nextRunAfter, isValidTimeZone } from './src/server/scheduler/cron.js';
 import { ProviderRegistry } from './src/server/providers/ProviderRegistry.js';
 import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
@@ -1190,7 +1196,26 @@ const allMessages = recentMessages || [];
     activeAgentRuns.unshift(result.actionDetected.data);
   } else if (result.actionDetected?.type === 'schedule_create' && result.actionDetected.data && ownerId && persistentStorage) {
     const task = { ...result.actionDetected.data, id: `sch_${crypto.randomUUID()}` };
-    await persistentStorage.updateOwnedState<ScheduledTask[]>(ownerId, 'schedules', [], (items) => [task, ...items].slice(0, 100));
+    // Chat can create a schedule inline. Route it through the real engine so
+    // the task gets a due time and actually runs, instead of being a dead row.
+    if (scheduleStore) {
+      const init = initialiseTask({
+        id: task.id,
+        title: String(task.title ?? 'Scheduled task').slice(0, 160),
+        time: String(task.time ?? 'every day at 09:00').slice(0, 80),
+        type: 'recurring',
+        action: String(task.action ?? 'Execute scheduled action').slice(0, 2000),
+        enabled: true,
+        repeat: String(task.repeat ?? 'Once').slice(0, 120),
+        created_at: new Date().toISOString(),
+        schedule: String(task.schedule ?? task.time ?? 'every day at 09:00'),
+        timezone: 'UTC',
+        action_kind: 'report',
+        action_config: {},
+        owner_id: ownerId,
+      } as any);
+      if (!('error' in init)) await scheduleStore.save(init.task as any);
+    }
   }
 
   return {
@@ -6018,113 +6043,386 @@ app.get('/api/tools/selftest', async (req, res) => {
 // -----------------------------------------------------------------------------
 // Scheduled Tasks & Automation Engine
 // -----------------------------------------------------------------------------
-interface ScheduledTask {
+//
+// The engine itself lives in src/server/scheduler/. This section is the HTTP
+// surface plus the wiring that gives the engine its real dependencies.
+//
+// What changed from the previous implementation: schedules used to be stored
+// and never evaluated. They are now executed by ScheduleEngine, which ticks on
+// a durable interval, claims each due task atomically, dispatches a REAL action
+// and records what actually happened.
+
+interface ScheduledTaskView {
   id: string;
   title: string;
-  time: string; // e.g. "10:00", "Every day at 09:00", "Tomorrow at 13:00"
+  time: string;
   type: 'alarm' | 'recurring' | 'reminder' | 'automation';
   action: string;
   enabled: boolean;
   repeat: string;
   created_at: string;
+  schedule?: string;
+  timezone?: string;
+  status?: string;
+  next_run_at?: string | null;
+  last_run_at?: string | null;
+  last_status?: string | null;
+  last_error?: string | null;
+  run_count?: number;
+  failure_count?: number;
+  consecutive_failures?: number;
+  action_kind?: string;
+  action_config?: Record<string, unknown>;
+  checkpoint?: Record<string, unknown>;
+  history?: unknown[];
 }
 
-const scheduledTasks: ScheduledTask[] = [
-  {
-    id: 'sch_01',
-    title: 'Daily Standup Summary & System Health',
-    time: '09:00',
-    type: 'recurring',
-    action: 'Compile project runs status and notify active agents',
-    enabled: true,
-    repeat: 'Every day',
-    created_at: new Date(Date.now() - 86400000).toISOString(),
-  },
-  {
-    id: 'sch_02',
-    title: 'Code Build Alarm & Test Verification',
-    time: '13:00',
-    type: 'alarm',
-    action: 'Trigger verification pass and chime release alarm',
-    enabled: true,
-    repeat: 'Tomorrow at 1:00 PM',
-    created_at: new Date(Date.now() - 43200000).toISOString(),
-  },
-  {
-    id: 'sch_03',
-    title: 'Nightly Memory Index & Archive Consolidation',
-    time: '23:30',
-    type: 'automation',
-    action: 'Consolidate long-term discussion memory and sync to disk',
-    enabled: true,
-    repeat: 'Every night',
-    created_at: new Date(Date.now() - 172800000).toISOString(),
-  },
-];
+let scheduleEngine: ScheduleEngine | null = null;
+let scheduleStore: SchedulePersistence | null = null;
+let deviceCommandQueue: StoreDeviceCommandQueue | null = null;
+
+/** Build the engine once the storage layer is ready. */
+async function initialiseScheduler(): Promise<void> {
+  if (!persistentStorage) return;
+
+  deviceCommandQueue = new StoreDeviceCommandQueue(persistentStorage as any);
+
+  const created = await createScheduleStore(process.env.DATABASE_URL, persistentStorage as any);
+  scheduleStore = created.store;
+  console.log(`[Scheduler] ${created.note}`);
+
+  const dispatcher = createDispatcher({
+    deviceQueue: deviceCommandQueue,
+    callMcpTool: async (qualifiedName, args) => {
+      await ensureMcpConnected();
+      const result = await mcpManager.callTool(qualifiedName, args);
+      return { ok: result.ok, result: result.content, error: result.error };
+    },
+    runTool: async (name, inputs, ownerId) => {
+      const result = await toolExecutor.execute(name as any, inputs, { ownerId });
+      return { success: result.success, output: result.output, error: result.error };
+    },
+    startAgentRun: async (ownerId, title, objective) => {
+      const runId = `run_${crypto.randomUUID()}`;
+      await persistentStorage!.updateOwnedState<any[]>(ownerId, 'agent_runs', [], (items) => [
+        {
+          id: runId,
+          ownerId,
+          title,
+          objective,
+          status: 'queued',
+          source: 'scheduler',
+          created_at: new Date().toISOString(),
+        },
+        ...items,
+      ].slice(0, 100));
+      return { id: runId };
+    },
+  });
+
+  scheduleEngine = new ScheduleEngine(scheduleStore, dispatcher, {
+    tickMs: Number(process.env.RARE_SCHEDULER_TICK_MS) || 15_000,
+    leaseMs: Number(process.env.RARE_SCHEDULER_LEASE_MS) || 120_000,
+  });
+
+  // Serverless platforms cannot hold a timer; there the tick is driven by the
+  // cron endpoint below instead. Everywhere else the engine runs in-process.
+  if (!process.env.VERCEL) {
+    scheduleEngine.start();
+  } else {
+    console.log('[Scheduler] serverless mode: tick is driven by /api/scheduler/tick');
+  }
+}
+
+/** Owner-scoped read of this owner's tasks. */
+async function listOwnerSchedules(ownerId: string): Promise<ScheduledTaskView[]> {
+  if (!scheduleStore) return [];
+  const all = await scheduleStore.listAll();
+  return all
+    .filter((task) => (task as any).owner_id === ownerId)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+}
 
 app.get('/api/schedules', async (req, res) => {
   try {
-    res.json(await persistentStorage!.getOwnedState<ScheduledTask[]>(res.locals.rareUserId, 'schedules', []));
+    res.json(await listOwnerSchedules(res.locals.rareUserId));
   } catch (error) {
     console.error('[Schedules] Private schedule read failed:', error);
     res.status(503).json({ error: { message: 'Schedule storage is unavailable.' } });
   }
 });
 
+app.get('/api/scheduler/status', (_req, res) => {
+  res.json({
+    engine: scheduleEngine ? scheduleEngine.status() : { running: false, mode: 'uninitialised' },
+    deviceQueue: Boolean(deviceCommandQueue),
+  });
+});
+
+/**
+ * Serverless tick. Safe to call repeatedly: the engine's own lease prevents
+ * double execution, so an overlapping invocation is a no-op rather than a
+ * duplicate run.
+ */
+app.post('/api/scheduler/tick', async (req, res) => {
+  const secret = process.env.RARE_SCHEDULER_SECRET;
+  if (secret) {
+    const provided = req.header('x-rare-scheduler-secret');
+    if (provided !== secret) return res.status(403).json({ error: { message: 'Invalid scheduler secret.' } });
+  }
+  if (!scheduleEngine) return res.status(503).json({ error: { message: 'Scheduler is not initialised.' } });
+  try {
+    const report = await scheduleEngine.tick();
+    res.json({ success: true, report });
+  } catch (error) {
+    console.error('[Scheduler] tick failed:', error);
+    res.status(500).json({ error: { message: 'Scheduler tick failed.' } });
+  }
+});
+
 app.post('/api/schedules', async (req, res) => {
-  const { title, time, type, action, repeat } = req.body;
-  if (typeof title !== 'string' || !title.trim() || title.length > 160) return res.status(400).json({ error: { message: 'A title of at most 160 characters is required.' } });
-  const newTask: ScheduledTask = {
+  const { title, time, type, action, repeat, schedule, timezone, action_kind, action_config } = req.body ?? {};
+  if (typeof title !== 'string' || !title.trim() || title.length > 160) {
+    return res.status(400).json({ error: { message: 'A title of at most 160 characters is required.' } });
+  }
+  if (!scheduleStore) return res.status(503).json({ error: { message: 'Scheduler is not initialised.' } });
+
+  const expression = typeof schedule === 'string' && schedule.trim()
+    ? schedule.trim()
+    : (typeof time === 'string' && time.trim() ? time.trim() : 'every day at 09:00');
+
+  const kind = ['mcp_tool', 'tool', 'device', 'agent', 'notification_check', 'report'].includes(action_kind)
+    ? action_kind
+    : 'report';
+
+  const init = initialiseTask({
     id: `sch_${crypto.randomUUID()}`,
     title: title.trim(),
-    time: typeof time === 'string' ? time.slice(0, 80) : '12:00',
+    time: expression.slice(0, 80),
     type: ['alarm', 'recurring', 'reminder', 'automation'].includes(type) ? type : 'reminder',
     action: typeof action === 'string' ? action.slice(0, 2000) : 'Execute scheduled action',
     enabled: true,
-    repeat: typeof repeat === 'string' ? repeat.slice(0, 120) : 'Once',
+    repeat: typeof repeat === 'string' ? repeat.slice(0, 120) : expression.slice(0, 120),
     created_at: new Date().toISOString(),
-  };
+    schedule: expression,
+    timezone: typeof timezone === 'string' && timezone.trim() ? timezone.trim() : 'UTC',
+    action_kind: kind,
+    action_config: (action_config && typeof action_config === 'object') ? action_config : {},
+    owner_id: res.locals.rareUserId,
+  } as any);
+
+  if ('error' in init) return res.status(400).json({ error: { message: init.error } });
+
   try {
-    await persistentStorage!.updateOwnedState<ScheduledTask[]>(res.locals.rareUserId, 'schedules', [], (items) => {
-      if (res.locals.rareIsGuest && items.length >= 20) throw new Error('RARE_GUEST_LIMIT');
-      return [newTask, ...items].slice(0, 100);
-    });
-    res.status(201).json(newTask);
+    const existing = await listOwnerSchedules(res.locals.rareUserId);
+    if (res.locals.rareIsGuest && existing.length >= 20) {
+      return res.status(429).json({ error: { message: 'Guest schedule limit reached. Create an account to continue.' } });
+    }
+    await scheduleStore.save(init.task as any);
+    res.status(201).json(init.task);
   } catch (error) {
-    if (error instanceof Error && error.message === 'RARE_GUEST_LIMIT') return res.status(429).json({ error: { message: 'Guest schedule limit reached. Create an account to continue.' } });
     console.error('[Schedules] Private schedule write failed:', error);
     res.status(503).json({ error: { message: 'Schedule storage is unavailable.' } });
   }
 });
 
+/** Pause / resume. */
 app.post('/api/schedules/:id/toggle', async (req, res) => {
+  if (!scheduleStore) return res.status(503).json({ error: { message: 'Scheduler is not initialised.' } });
   try {
-    let task: ScheduledTask | undefined;
-    await persistentStorage!.updateOwnedState<ScheduledTask[]>(res.locals.rareUserId, 'schedules', [], (items) => items.map((entry) => {
-      if (entry.id !== req.params.id) return entry;
-      task = { ...entry, enabled: !entry.enabled };
-      return task;
-    }));
+    const all = await scheduleStore.listAll();
+    const task = all.find((item) => item.id === req.params.id && (item as any).owner_id === res.locals.rareUserId);
     if (!task) return res.status(404).json({ error: { message: 'Schedule not found' } });
-    res.json({ success: true, task });
+
+    const nextStatus = (task.status ?? 'active') === 'paused' ? 'active' : 'paused';
+    const updated = { ...task, status: nextStatus, enabled: nextStatus === 'active' } as any;
+    // Resuming a task whose next run is in the past would fire immediately;
+    // recompute from now so a resume is a fresh start, not a backlog replay.
+    if (nextStatus === 'active') {
+      const parsed = parseSchedule(updated.schedule ?? updated.time ?? '');
+      if (parsed.ok) {
+        const tz = updated.timezone && isValidTimeZone(updated.timezone) ? updated.timezone : 'UTC';
+        const next = nextRunAfter(parsed, Date.now(), tz);
+        updated.next_run_at = next ? new Date(next).toISOString() : null;
+      }
+    }
+    await scheduleStore.save(updated);
+    res.json({ success: true, task: updated });
   } catch (error) {
     console.error('[Schedules] Private schedule update failed:', error);
     res.status(503).json({ error: { message: 'Schedule storage is unavailable.' } });
   }
 });
 
-app.delete('/api/schedules/:id', async (req, res) => {
+/** Edit a schedule's instruction, expression, timezone or action. */
+app.patch('/api/schedules/:id', async (req, res) => {
+  if (!scheduleStore) return res.status(503).json({ error: { message: 'Scheduler is not initialised.' } });
   try {
-    let removed = false;
-    await persistentStorage!.updateOwnedState<ScheduledTask[]>(res.locals.rareUserId, 'schedules', [], (items) => items.filter((entry) => {
-      if (entry.id === req.params.id) { removed = true; return false; }
-      return true;
-    }));
+    const all = await scheduleStore.listAll();
+    const task = all.find((item) => item.id === req.params.id && (item as any).owner_id === res.locals.rareUserId);
+    if (!task) return res.status(404).json({ error: { message: 'Schedule not found' } });
+
+    const body = req.body ?? {};
+    const updated: any = { ...task };
+    if (typeof body.title === 'string' && body.title.trim()) updated.title = body.title.trim().slice(0, 160);
+    if (typeof body.action === 'string' && body.action.trim()) updated.action = body.action.trim().slice(0, 2000);
+    if (typeof body.timezone === 'string' && body.timezone.trim()) {
+      if (!isValidTimeZone(body.timezone.trim())) {
+        return res.status(400).json({ error: { message: `Unknown timezone "${body.timezone}".` } });
+      }
+      updated.timezone = body.timezone.trim();
+    }
+    if (body.action_config && typeof body.action_config === 'object') updated.action_config = body.action_config;
+
+    const newExpression = typeof body.schedule === 'string' && body.schedule.trim() ? body.schedule.trim() : null;
+    if (newExpression) {
+      const parsed = parseSchedule(newExpression);
+      if (!parsed.ok) return res.status(400).json({ error: { message: parsed.error } });
+      const tz = updated.timezone && isValidTimeZone(updated.timezone) ? updated.timezone : 'UTC';
+      const next = nextRunAfter(parsed, Date.now(), tz);
+      if (next === null) return res.status(400).json({ error: { message: 'That schedule has no future occurrence.' } });
+      updated.schedule = newExpression;
+      updated.time = newExpression.slice(0, 80);
+      updated.next_run_at = new Date(next).toISOString();
+      updated.status = 'active';
+      updated.enabled = true;
+      updated.consecutive_failures = 0;
+    }
+
+    await scheduleStore.save(updated);
+    res.json({ success: true, task: updated });
+  } catch (error) {
+    console.error('[Schedules] Private schedule edit failed:', error);
+    res.status(503).json({ error: { message: 'Schedule storage is unavailable.' } });
+  }
+});
+
+/** Run now, regardless of the next due time. */
+app.post('/api/schedules/:id/run-now', async (req, res) => {
+  if (!scheduleEngine || !scheduleStore) return res.status(503).json({ error: { message: 'Scheduler is not initialised.' } });
+  try {
+    const all = await scheduleStore.listAll();
+    const task = all.find((item) => item.id === req.params.id && (item as any).owner_id === res.locals.rareUserId);
+    if (!task) return res.status(404).json({ error: { message: 'Schedule not found' } });
+    const execution = await scheduleEngine.runNow(task.id);
+    if (!execution) return res.status(409).json({ error: { message: 'The task is currently leased by another worker.' } });
+    res.json({ success: true, execution });
+  } catch (error) {
+    console.error('[Schedules] run-now failed:', error);
+    res.status(500).json({ error: { message: 'The scheduled action could not be run.' } });
+  }
+});
+
+/** Execution history for one task. */
+app.get('/api/schedules/:id/history', async (req, res) => {
+  if (!scheduleStore) return res.status(503).json({ error: { message: 'Scheduler is not initialised.' } });
+  try {
+    const all = await scheduleStore.listAll();
+    const task = all.find((item) => item.id === req.params.id && (item as any).owner_id === res.locals.rareUserId);
+    if (!task) return res.status(404).json({ error: { message: 'Schedule not found' } });
+    res.json({ taskId: task.id, history: task.history ?? [] });
+  } catch (error) {
+    console.error('[Schedules] history read failed:', error);
+    res.status(503).json({ error: { message: 'Schedule storage is unavailable.' } });
+  }
+});
+
+app.delete('/api/schedules/:id', async (req, res) => {
+  if (!scheduleStore) return res.status(503).json({ error: { message: 'Scheduler is not initialised.' } });
+  try {
+    const removed = await (scheduleStore as any).delete(req.params.id, res.locals.rareUserId);
     if (removed) return res.json({ success: true });
     res.status(404).json({ error: { message: 'Schedule not found' } });
   } catch (error) {
     console.error('[Schedules] Private schedule delete failed:', error);
     res.status(503).json({ error: { message: 'Schedule storage is unavailable.' } });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// Device command channel
+// -----------------------------------------------------------------------------
+//
+// The Android app polls for queued commands and posts results back. This is the
+// transport that lets a scheduled device action actually reach the phone.
+
+app.post('/api/device/poll', async (req, res) => {
+  if (!deviceCommandQueue) return res.status(503).json({ error: { message: 'Device channel is not initialised.' } });
+  try {
+    const info = (req.body && typeof req.body === 'object') ? req.body : {};
+    await deviceCommandQueue.recordPresence(res.locals.rareUserId, {
+      platform: typeof info.platform === 'string' ? info.platform.slice(0, 40) : 'android',
+      sdk: Number.isFinite(info.sdk) ? Number(info.sdk) : undefined,
+      accessibility: info.accessibility === true,
+      notifications: info.notifications === true,
+    });
+    const commands = await deviceCommandQueue.claimPending(res.locals.rareUserId, 5);
+    res.json({ commands });
+  } catch (error) {
+    console.error('[Device] poll failed:', error);
+    res.status(503).json({ error: { message: 'Device channel is unavailable.' } });
+  }
+});
+
+app.post('/api/device/result', async (req, res) => {
+  if (!deviceCommandQueue) return res.status(503).json({ error: { message: 'Device channel is not initialised.' } });
+  const { commandId, ok, result, error } = req.body ?? {};
+  if (typeof commandId !== 'string' || !commandId) {
+    return res.status(400).json({ error: { message: 'commandId is required.' } });
+  }
+  try {
+    const finished = await deviceCommandQueue.complete(res.locals.rareUserId, commandId, {
+      ok: ok === true,
+      result,
+      error: typeof error === 'string' ? error.slice(0, 2000) : null,
+    });
+    if (!finished) return res.status(404).json({ error: { message: 'Command not found.' } });
+    res.json({ success: true, command: finished });
+  } catch (err) {
+    console.error('[Device] result failed:', err);
+    res.status(503).json({ error: { message: 'Device channel is unavailable.' } });
+  }
+});
+
+app.get('/api/device/status', async (req, res) => {
+  if (!deviceCommandQueue) return res.status(503).json({ error: { message: 'Device channel is not initialised.' } });
+  try {
+    const online = await deviceCommandQueue.isDeviceOnline(res.locals.rareUserId);
+    const recent = await deviceCommandQueue.listRecent(res.locals.rareUserId, 10);
+    res.json({ online, recent });
+  } catch (error) {
+    console.error('[Device] status failed:', error);
+    res.status(503).json({ error: { message: 'Device channel is unavailable.' } });
+  }
+});
+
+/**
+ * Enqueue a device action. Used by the Android MCP server and by anything else
+ * that needs to drive the phone without going through a schedule.
+ */
+app.post('/api/device/enqueue', async (req, res) => {
+  if (!deviceCommandQueue) return res.status(503).json({ error: { message: 'Device channel is not initialised.' } });
+  const { action, args } = req.body ?? {};
+  if (typeof action !== 'string' || !action.trim()) {
+    return res.status(400).json({ error: { message: 'action is required.' } });
+  }
+  const known = new Set([
+    'describe_screen', 'list_apps', 'notifications', 'tap_text', 'tap_id', 'tap_at',
+    'swipe', 'type_text', 'scroll', 'global_action', 'open_app',
+  ]);
+  if (!known.has(action)) {
+    return res.status(400).json({ error: { message: `Unknown device action "${action}".` } });
+  }
+  try {
+    const command = await deviceCommandQueue.enqueue(
+      res.locals.rareUserId,
+      action,
+      (args && typeof args === 'object' ? args : {}) as Record<string, unknown>,
+    );
+    res.status(201).json({ success: true, command });
+  } catch (error) {
+    console.error('[Device] enqueue failed:', error);
+    res.status(503).json({ error: { message: 'Device channel is unavailable.' } });
   }
 });
 
@@ -6852,6 +7150,9 @@ async function startServer() {
   // Jobs persist through the same store, and every department publishes its
   // real capabilities to the one registry Chat and the Assistant both use.
   jobStore.attach(persistentStorage);
+  // The scheduler needs the storage layer, the MCP manager and the tool
+  // executor, so it is wired here — after all three exist.
+  await initialiseScheduler();
   getPluginRegistry().attach(persistentStorage);
   agentRuntime.attach(persistentStorage);
   ensureCapabilitiesRegistered();
