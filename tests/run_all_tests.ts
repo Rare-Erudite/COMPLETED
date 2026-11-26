@@ -60,6 +60,7 @@ import { runIntentRouterTests } from './test_intent_router.js';
 import { runPersonaModeTests } from './test_persona_modes.js';
 import { runAuthInterfaceTests } from './test_auth_interface.js';
 import { runPersonaPropagationTests } from './test_persona_propagation.js';
+import { runGeminiModelSelectionTests } from './test_gemini_model_selection.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -221,6 +222,11 @@ async function main() {
     }
     console.log();
     await runPersonaPropagationTests();
+    console.log();
+    const modelSelection = await runGeminiModelSelectionTests();
+    if (modelSelection.failed > 0) {
+      throw new Error(`Gemini model selection: ${modelSelection.failed} assertion(s) failed.`);
+    }
     console.log();
     const authInterface = await runAuthInterfaceTests();
     if (authInterface.failed > 0) {

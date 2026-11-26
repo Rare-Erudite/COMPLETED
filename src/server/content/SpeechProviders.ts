@@ -194,7 +194,15 @@ export class LocalWhisperProvider implements RichSpeechProvider {
 // ---------------------------------------------------------------------------
 
 export class GeminiSpeechProvider implements RichSpeechProvider {
-  constructor(private readonly gemini: { transcribeAudio: (b: string, m: string, o?: any) => Promise<{ text: string; model: string }> }) {}
+  constructor(
+    private readonly gemini: {
+      transcribeAudio: (
+        b: string,
+        m: string,
+        o?: any,
+      ) => Promise<{ text: string; model: string; segments?: Array<{ start: number; end: number; text: string }> }>;
+    },
+  ) {}
 
   async info(): Promise<SpeechProviderInfo> {
     const configured = Boolean(process.env.GEMINI_API_KEY?.trim());
@@ -210,7 +218,14 @@ export class GeminiSpeechProvider implements RichSpeechProvider {
 
   async transcribeAudio(audioBase64: string, mimeType: string, options?: any): Promise<SpeechResponse> {
     const result = await this.gemini.transcribeAudio(audioBase64, mimeType, options);
-    return { text: result.text || '', model: result.model || 'gemini' };
+    // Pass the provider's own utterance timings through. Dropping them here is
+    // what made every transcript collapse to one turn per segment, so every
+    // timestamp inside a segment was wrong.
+    return {
+      text: result.text || '',
+      model: result.model || 'gemini',
+      ...(result.segments && result.segments.length > 0 ? { segments: result.segments } : {}),
+    };
   }
 }
 

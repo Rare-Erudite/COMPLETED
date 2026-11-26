@@ -29,6 +29,84 @@ const KNOWN_GEMINI_FALLBACKS = [
   'gemini-1.5-flash',
 ];
 
+/**
+ * Model families that cannot answer a text prompt, or that are far too slow to
+ * sit in a chat request path.
+ *
+ * The catalog probe returns every model the key can call — image generators,
+ * TTS voices, music models, robotics and computer-use previews. Feeding that
+ * list straight into the retry loop meant a plain chat message tried
+ * `gemini-2.5-flash-preview-tts`, `gemma-4-31b-it` and friends first, each
+ * costing a failed round-trip. Measured on a real key: 7 dead models before the
+ * first success, 28.6s for a one-word reply.
+ *
+ * `gemini-3.8-flash` is excluded for a different reason: it is a valid text
+ * model but measured 92s for "reply with OK" on this account, which no chat
+ * request can wait for. It stays reachable through GEMINI_MODEL if an operator
+ * explicitly pins it.
+ */
+const NON_TEXT_MODEL_PATTERN =
+  /-tts\b|-tts-|image|imagen|lyria|embedding|aqa|robotics|computer-use|nano-banana|deep-research|antigravity|veo|gemma/i;
+
+/** Models measured as too slow for an interactive request path. */
+const SLOW_MODEL_PATTERN = /^gemini-3\.8-flash$/i;
+
+/**
+ * Preference order for interactive text generation.
+ *
+ * Ordered by measured latency on a real key, fastest first, so the common case
+ * is one request rather than a walk down a list. A model that is not in the
+ * catalog is skipped before any request is made.
+ */
+const PREFERRED_TEXT_MODELS = [
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+  'gemini-3.7-flash',
+  'gemini-3.8-flash',
+];
+
+/**
+ * Parse `[MM:SS] Speaker N: text` lines into timed segments.
+ *
+ * Returns an empty array when the model did not follow the format, so the
+ * caller falls back to its own segmentation rather than receiving invented
+ * timings. A wrong timestamp is worse than an honest coarse one.
+ */
+export function parseTimedUtterances(
+  raw: string,
+): Array<{ start: number; end: number; text: string }> {
+  const lines = raw.replace(/\r\n/g, '\n').split('\n');
+  const parsed: Array<{ start: number; text: string }> = [];
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    // [MM:SS] or [HH:MM:SS], optionally followed by a speaker label.
+    const match = line.match(/^\[?(\d{1,2}):(\d{2})(?::(\d{2}))?\]?\s*(?:Speaker\s*\d+\s*:\s*)?(.*)$/i);
+    if (!match) continue;
+    const hasHours = match[3] !== undefined;
+    const start = hasHours
+      ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
+      : Number(match[1]) * 60 + Number(match[2]);
+    const text = (match[4] || '').trim();
+    if (!text) continue;
+    parsed.push({ start, text });
+  }
+
+  if (parsed.length === 0) return [];
+
+  // Each utterance ends where the next begins; the last one gets a short
+  // nominal duration because the model does not report an end time.
+  return parsed.map((item, index) => {
+    const next = parsed[index + 1];
+    const end = next ? next.start : item.start + Math.max(2, Math.round(item.text.length / 14));
+    return { start: item.start, end: Math.max(end, item.start + 1), text: item.text };
+  });
+}
+
 export class GeminiCoprocessorProvider implements IModelProvider {
   private apiKey: string | null = null;
   private client: GoogleGenAI | null = null;
@@ -118,22 +196,64 @@ export class GeminiCoprocessorProvider implements IModelProvider {
   }
 
   /**
+   * True when a model id can plausibly answer a text prompt at interactive
+   * speed. Image, TTS, music, robotics and research models are rejected, as is
+   * any model measured as too slow for a chat request.
+   */
+  private isTextModel(modelId: string): boolean {
+    if (!modelId) return false;
+    if (NON_TEXT_MODEL_PATTERN.test(modelId)) return false;
+    if (SLOW_MODEL_PATTERN.test(modelId)) return false;
+    return true;
+  }
+
+  /**
    * The model ids to try, in order.
    *
-   * Configured ids first (an operator may pin a specific model), then whatever
-   * the catalog probe actually found for this key, then the known-good list.
-   * Deduplicated so a model is never requested twice in one call.
+   * Configured ids first (an operator may pin a specific model), then the
+   * measured-fast preference list, then whatever else the catalog probe found
+   * for this key, then the known-good list. Non-text and slow models are
+   * filtered out, and a model the catalog did not list is skipped before any
+   * request is made — so the common case is a single successful call instead of
+   * a walk through every model the account can reach.
    */
   private candidateModelIds(): string[] {
-    // When the catalog probe has run, it is the only trustworthy source: the
-    // hardcoded ids go stale as Google retires models, and trying them first
-    // burned a request per retired id on every call (five 404s before reaching
-    // a live model). Discovered ids lead; the configured/known ids remain only
-    // as a last resort for a deployment where the probe could not run.
-    const ordered = this.discoveredModels.length > 0
-      ? [...this.discoveredModels, GEMINI_MODEL, GEMINI_MODEL_LITE, ...KNOWN_GEMINI_FALLBACKS]
-      : [GEMINI_MODEL, GEMINI_MODEL_LITE, ...KNOWN_GEMINI_FALLBACKS];
-    return [...new Set(ordered.filter((id): id is string => Boolean(id && id.trim())))];
+    const catalog = this.discoveredModels;
+    const catalogSet = new Set(catalog);
+
+    const ordered = [
+      GEMINI_MODEL,
+      GEMINI_MODEL_LITE,
+      ...PREFERRED_TEXT_MODELS,
+      ...catalog,
+      ...KNOWN_GEMINI_FALLBACKS,
+    ];
+
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const raw of ordered) {
+      const id = (raw || '').trim();
+      if (!id || seen.has(id)) continue;
+      if (!this.isTextModel(id)) continue;
+      // When the probe ran, trust it: a model absent from the catalog would
+      // only cost a 404 round-trip. This applies to the configured ids too —
+      // a deployment whose GEMINI_MODEL names a model the key cannot reach
+      // (e.g. gemini-3.8-flash-lite, which is not in the catalog at all) was
+      // paying a failed request on every single turn before reaching a live
+      // model. The configured id is still honoured when the probe could not
+      // run, which is the only case where its reachability is unknown.
+      if (catalog.length > 0 && !catalogSet.has(id)) continue;
+      seen.add(id);
+      result.push(id);
+    }
+
+    // Never return an empty chain: if every filter removed everything, fall
+    // back to the configured ids so the caller still gets a real error from
+    // Google rather than a silent "no models".
+    if (result.length === 0) {
+      return [...new Set([GEMINI_MODEL, GEMINI_MODEL_LITE].filter(Boolean))];
+    }
+    return result;
   }
 
   /**
@@ -293,6 +413,18 @@ export class GeminiCoprocessorProvider implements IModelProvider {
       : prompt;
 
     let lastError: any = null;
+    // The streaming path must honour the same reasoning-effort switch as the
+    // non-streaming one. It previously dropped `thinkHarder` entirely, so a
+    // streamed turn silently ignored the Think Harder control.
+    const isDeepReasoning = options?.thinkHarder === true;
+    const streamConfig: any = {
+      systemInstruction,
+      temperature: options?.temperature ?? 0.7,
+    };
+    if (isDeepReasoning) {
+      streamConfig.thinkingConfig = { thinkingBudget: 4096 };
+    }
+
     for (const modelId of this.candidateModelIds()) {
       // Once any token has been yielded, a retry would duplicate text the caller
       // has already rendered, so the fallback is only safe before the first token.
@@ -301,7 +433,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
         const stream = await ai.models.generateContentStream({
           model: modelId,
           contents: contentsPayload,
-          config: { systemInstruction, temperature: options?.temperature ?? 0.7 },
+          config: streamConfig,
         });
         let full = '';
         for await (const chunk of stream) {
@@ -324,7 +456,10 @@ export class GeminiCoprocessorProvider implements IModelProvider {
     throw lastError || new Error('All Gemini neural models failed to stream.');
   }
 
-  public async transcribeAudio(audioBase64: string, mimeType: string): Promise<{ text: string; model: string }> {
+  public async transcribeAudio(
+    audioBase64: string,
+    mimeType: string,
+  ): Promise<{ text: string; model: string; segments?: Array<{ start: number; end: number; text: string }> }> {
     if (!audioBase64 || audioBase64.length > 14_000_000) {
       throw new Error('Audio data is missing or exceeds the 10 MB limit.');
     }
@@ -356,7 +491,16 @@ export class GeminiCoprocessorProvider implements IModelProvider {
             model: modelId,
             contents: [
               {
-                text: 'Transcribe the supplied audio verbatim. Preserve speaker changes when clear. Mark uncertain or inaudible speech as [inaudible]; do not infer words from context.',
+                // Ask for timed utterances, not a flat paragraph. A flat
+                // transcript forces the caller to collapse the whole segment
+                // into one turn, which makes every timestamp inside it wrong.
+                // The format is stated explicitly so it can be parsed.
+                text:
+                  'Transcribe the supplied audio verbatim. Preserve speaker changes when clear. ' +
+                  'Mark uncertain or inaudible speech as [inaudible]; do not infer words from context. ' +
+                  'Return one line per utterance in exactly this format:\n' +
+                  '[MM:SS] Speaker N: text\n' +
+                  'Use the real start time of each utterance in the audio. Do not merge separate utterances into one line.',
               },
               { inlineData: { mimeType, data: audioBase64 } },
             ],
@@ -365,7 +509,7 @@ export class GeminiCoprocessorProvider implements IModelProvider {
           if (typeof text !== 'string' || text.trim().length === 0) {
             throw new Error('Gemini returned an empty audio transcription.');
           }
-          return { text, model: modelId };
+          return { text, model: modelId, segments: parseTimedUtterances(text) };
         } catch (error) {
           lastError = error;
           // Log the real reason. Swallowing it turned a diagnosable API error

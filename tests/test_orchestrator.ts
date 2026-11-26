@@ -81,9 +81,41 @@ class FakeProvider implements IModelProvider {
   }
 }
 
+/**
+ * A provider that is registered but never available.
+ *
+ * Used to shadow the real providers ProviderManager installs in its
+ * constructor, so a test can never accidentally reach a live model.
+ */
+class UnavailableProvider implements IModelProvider {
+  public readonly name = 'unavailable';
+  public readonly modelIdentifier = 'unavailable';
+  constructor(public readonly id: ModelProviderType) {}
+  async checkAvailability(): Promise<ModelProviderInfo> {
+    return info(this.id, false);
+  }
+  async generate(): Promise<ModelGenerationResult> {
+    throw new Error(`Provider "${this.id}" is not available in this test.`);
+  }
+}
+
 function buildOrchestrator(providers: IModelProvider[]): RareOrchestrator {
   const manager = new ProviderManager();
   for (const provider of providers) manager.registerProvider(provider);
+
+  // Make the test hermetic. ProviderManager's constructor registers the real
+  // providers, and `resolveProviderForTask` marks Gemini eligible whenever
+  // GEMINI_API_KEY is set and the network is online. Earlier tests in the suite
+  // boot a server, which flips the network manager to ONLINE — so this test
+  // would then route to the REAL Gemini provider and make a live API call
+  // instead of using the fake. That is why it passed alone and failed in the
+  // suite. Every provider id the orchestrator can select is now pinned to an
+  // unavailable stub unless the test supplied its own.
+  const supplied = new Set(providers.map((p) => p.id));
+  for (const id of ['local-transformers', 'ollama', 'gemini', 'openai-compatible', 'diagnostic-mock'] as const) {
+    if (!supplied.has(id)) manager.registerProvider(new UnavailableProvider(id));
+  }
+
   const tools = new ToolRegistry();
   tools.register({
     name: 'calculator_eval',
