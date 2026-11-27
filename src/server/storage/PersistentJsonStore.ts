@@ -1192,6 +1192,29 @@ export class PersistentJsonStore {
     }
   }
 
+  /**
+   * True when a real PostgreSQL pool is connected.
+   *
+   * The BlobStore uses this to choose between the durable database path and
+   * the local filesystem fallback, rather than guessing from configuration.
+   */
+  hasDatabase(): boolean {
+    return this.pool !== null;
+  }
+
+  /**
+   * Run a query against the pool.
+   *
+   * Exposed for the BlobStore, which needs BYTEA reads and writes that do not
+   * fit the JSON-document model. Throws when no pool is configured so a caller
+   * cannot silently fall through to a no-op.
+   */
+  async query<T = any>(sql: string, params: unknown[] = []): Promise<{ rows: T[] }> {
+    if (!this.pool) throw new Error('No PostgreSQL pool is configured.');
+    const result = await this.pool.query(sql, params as any[]);
+    return { rows: result.rows as T[] };
+  }
+
   private enqueue(key: string, write: () => Promise<void>): void {
     const previous = this.pendingWrites.get(key);
     const next = (previous ? previous.catch(() => undefined) : Promise.resolve())

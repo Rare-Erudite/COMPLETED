@@ -19,6 +19,22 @@ CREATE TABLE IF NOT EXISTS rare_checkpoint_files (
   PRIMARY KEY (checkpoint_id, relative_path)
 );
 
+-- Out-of-line binary payloads for Documents (images, PDFs, audio, video).
+-- Keeping the bytes here rather than inline in the document record stops a
+-- large file from bloating every listing that only needs metadata.
+CREATE TABLE IF NOT EXISTS rare_blobs (
+  blob_id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  content BYTEA NOT NULL,
+  size BIGINT NOT NULL,
+  mime_type TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  sha256 TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS rare_blobs_owner_idx ON rare_blobs (owner_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   owner_id TEXT,

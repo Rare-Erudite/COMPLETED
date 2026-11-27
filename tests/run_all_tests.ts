@@ -62,6 +62,8 @@ import { runAuthInterfaceTests } from './test_auth_interface.js';
 import { runPersonaPropagationTests } from './test_persona_propagation.js';
 import { runGeminiModelSelectionTests } from './test_gemini_model_selection.js';
 import { runSchedulerCapabilityTests } from './test_scheduler_capability.js';
+import { runCompletionPhaseTests } from './test_completion_phase.js';
+import { runNaturalLanguageTests } from './test_natural_language_e2e.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -272,6 +274,16 @@ async function main() {
     const schedulerCapability = await runSchedulerCapabilityTests();
     if (schedulerCapability.failed > 0) {
       throw new Error(`Scheduler capability: ${schedulerCapability.failed} assertion(s) failed.`);
+    }
+    console.log();
+    const completionPhase = await runCompletionPhaseTests();
+    if (completionPhase.failed > 0) {
+      throw new Error(`Completion phase: ${completionPhase.failed} assertion(s) failed.`);
+    }
+    console.log();
+    const naturalLanguage = await runNaturalLanguageTests();
+    if (naturalLanguage.failed > 0) {
+      throw new Error(`Natural language: ${naturalLanguage.failed} assertion(s) failed.`);
     }
     console.log();
     console.log('=====================================================');

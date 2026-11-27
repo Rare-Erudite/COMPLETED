@@ -11,6 +11,7 @@
 import path from 'path';
 import { ContentResult, chunkContent, processBuffer, processUrl } from '../content/ContentEngine.js';
 import { IndexedDocument, OwnerSearchIndexRegistry } from '../content/SearchIndex.js';
+import type { BlobStore } from '../storage/BlobStore.js';
 
 export interface DocumentRecord {
   path: string;
@@ -57,6 +58,15 @@ export interface DocumentRecord {
   binarySize?: number;
   /** MIME type of the binary payload, as sniffed from the bytes. */
   mimeType?: string;
+  /**
+   * Id of the out-of-line blob holding this document's bytes.
+   *
+   * Large payloads live in the BlobStore rather than inline in `binaryData`,
+   * so a listing that only needs metadata does not carry a 20 MB video with it.
+   * When set, `binaryData` is absent and readBinary() resolves through the
+   * blob store instead.
+   */
+  blobId?: string;
 }
 
 export interface DocumentSummary {
@@ -97,6 +107,16 @@ const GUEST_DOCUMENT_LIMIT = 20;
  * document list is one JSON value, so this stays modest on purpose.
  */
 const MAX_BINARY_BYTES = 6 * 1024 * 1024;
+
+/**
+ * Above this size a binary document's bytes move out of the record and into
+ * the BlobStore. Below it, inline base64 is simpler and keeps a small image
+ * readable in one round trip.
+ */
+const INLINE_BINARY_THRESHOLD_BYTES = 256 * 1024;
+
+/** Ceiling for a blob-backed document, matching the BlobStore's own limit. */
+const MAX_BLOB_BACKED_BYTES = 64 * 1024 * 1024;
 
 /** Extensions we can store as editable text. */
 const TEXT_EXTENSIONS = new Set([
@@ -183,6 +203,11 @@ export class DocumentsService {
   constructor(
     private readonly storage: { getOwnedState: <T>(ownerId: string, key: string, initial: T) => Promise<T>; updateOwnedState: <T>(ownerId: string, key: string, initial: T, update: (current: T) => T) => Promise<T> },
     private readonly indexes: OwnerSearchIndexRegistry,
+    /**
+     * Out-of-line storage for large payloads. Optional so existing callers and
+     * tests keep working; when absent, every binary document stays inline.
+     */
+    private readonly blobs?: BlobStore,
   ) {}
 
   private async all(ownerId: string): Promise<DocumentRecord[]> {
@@ -312,13 +337,32 @@ export class DocumentsService {
       throw new DocumentPathError('The uploaded file was empty.');
     }
     if (buffer.length > MAX_BINARY_BYTES) {
-      throw new DocumentPathError(
-        `The file is ${(buffer.length / 1024 / 1024).toFixed(1)} MB; the limit is ` +
-        `${MAX_BINARY_BYTES / 1024 / 1024} MB.`,
-      );
+      // With a blob store the ceiling is the blob limit, not the inline one:
+      // the bytes no longer sit inside the document record.
+      const ceiling = this.blobs ? MAX_BLOB_BACKED_BYTES : MAX_BINARY_BYTES;
+      if (buffer.length > ceiling) {
+        throw new DocumentPathError(
+          `The file is ${(buffer.length / 1024 / 1024).toFixed(1)} MB; the limit is ` +
+          `${ceiling / 1024 / 1024} MB.`,
+        );
+      }
     }
 
     const mimeType = options.mimeType || 'application/octet-stream';
+
+    // Large payloads go out of line. Inline base64 is fine for a small image,
+    // but a 20 MB video would inflate to ~27 MB inside a single JSON value that
+    // every listing reads. Above the threshold the bytes move to the BlobStore
+    // and the record keeps only the id.
+    let blobId: string | undefined;
+    if (this.blobs && buffer.length > INLINE_BINARY_THRESHOLD_BYTES) {
+      const stored = await this.blobs.put(ownerId, buffer, {
+        mimeType,
+        filename: path.posix.basename(documentPath),
+      });
+      blobId = stored.blobId;
+    }
+
     let saved: DocumentRecord | undefined;
     await this.storage.updateOwnedState<DocumentRecord[]>(ownerId, 'documents', [], (documents) => {
       const existing = documents.find((document) => document.path === documentPath);
@@ -336,9 +380,12 @@ export class DocumentsService {
         version,
         history: [],
         origin: options.origin || existing?.origin || 'upload',
-        binaryData: buffer.toString('base64'),
-        binarySize: buffer.length,
-        mimeType,
+        // Either the bytes are inline, or the record points at a blob. Never
+        // both — a record carrying a stale inline copy after moving to a blob
+        // would double the storage and could serve the wrong version.
+        ...(blobId
+          ? { blobId, binarySize: buffer.length, mimeType }
+          : { binaryData: buffer.toString('base64'), binarySize: buffer.length, mimeType }),
         ...(options.title ? { title: options.title } : {}),
         // Extraction metadata travels with the file. A PDF that kept its bytes
         // but lost its pages would be a worse document than the text-only one
@@ -370,7 +417,22 @@ export class DocumentsService {
     rawPath: string,
   ): Promise<{ buffer: Buffer; mimeType: string; record: DocumentRecord } | null> {
     const document = await this.read(ownerId, rawPath);
-    if (!document || !document.binaryData) return null;
+    if (!document) return null;
+
+    // Out-of-line payload: resolve through the blob store, which re-checks
+    // ownership. A blob id from another account resolves to nothing.
+    if (document.blobId) {
+      if (!this.blobs) return null;
+      const stored = await this.blobs.get(ownerId, document.blobId);
+      if (!stored) return null;
+      return {
+        buffer: stored.buffer,
+        mimeType: document.mimeType || stored.metadata.mimeType || 'application/octet-stream',
+        record: document,
+      };
+    }
+
+    if (!document.binaryData) return null;
     const buffer = Buffer.from(document.binaryData, 'base64');
     if (buffer.length === 0) return null;
     if (document.binarySize && buffer.length !== document.binarySize) {

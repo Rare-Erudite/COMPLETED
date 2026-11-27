@@ -64,6 +64,13 @@ const RESEARCH_VERBS = [
   'compare these reports', 'compare the reports', 'cross-check',
   'gather evidence', 'find sources', 'cite sources', 'with sources',
   'according to sources', 'do a deep dive', 'deep dive on',
+  // "produce a sourced report" is a research request even though it names no
+  // research verb. Without this it fell through to conversation and the model
+  // wrote an unsourced answer, which is the exact failure research exists to
+  // prevent.
+  'sourced report', 'sourced analysis', 'sourced summary', 'with citations',
+  'produce a report', 'write a report on', 'report on this topic',
+  'search for this topic', 'search the web for', 'look this up',
 ];
 
 /** Wording that asks for breadth and depth, not a single lookup. */
@@ -168,6 +175,13 @@ const DOCUMENT_VERBS = [
   'summarise this document', 'summarize this document', 'summarise the pdf',
   'summarize the pdf', 'extract from this document', 'analyse this document',
   'analyze this document', 'read this file', 'what does this document say',
+  // Finding and converting a stored document is a Documents action, not a
+  // question. Without these, "find my document and convert it to PDF" fell
+  // through to conversation and the model described the steps instead.
+  'find my document', 'find the document', 'find my file', 'find the file',
+  'convert it to pdf', 'convert this to pdf', 'convert to pdf', 'export to pdf',
+  'convert my document', 'convert the document', 'convert this document',
+  'open my document', 'open the document', 'my documents',
 ];
 
 const URL_PATTERN = /https?:\/\/[^\s<>"')]+/g;

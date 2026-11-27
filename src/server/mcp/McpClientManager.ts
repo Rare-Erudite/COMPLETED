@@ -28,6 +28,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import fs from 'fs';
+import path from 'path';
+import { withRetry } from '../services/Resilience.js';
 
 export type McpTransportKind = 'stdio' | 'sse' | 'http';
 
@@ -122,6 +125,35 @@ export function parseServerConfig(raw: string | undefined): { servers: McpServer
   }
 }
 
+/**
+ * The bundled reference server, used when the operator configured none.
+ *
+ * It is a real MCP server (scripts/mcp_reference_server.mjs) that speaks the
+ * protocol over stdio and exposes deterministic tools. It needs no account, no
+ * API key and no network, so it satisfies the zero-cost constraint while still
+ * proving the full handshake → discovery → invocation path.
+ *
+ * Set RARE_DISABLE_REFERENCE_MCP=true to opt out.
+ */
+function defaultReferenceServer(env: NodeJS.ProcessEnv): McpServerConfig | null {
+  if (env.RARE_DISABLE_REFERENCE_MCP === 'true') return null;
+  const root = env.RARE_APP_ROOT || process.cwd();
+  const script = path.join(root, 'scripts', 'mcp_reference_server.mjs');
+  try {
+    if (!fs.existsSync(script)) return null;
+  } catch {
+    return null;
+  }
+  return {
+    id: 'rare-reference',
+    name: 'RARE Reference Tools',
+    transport: 'stdio',
+    target: process.execPath,
+    args: [script],
+    description: 'Bundled reference MCP server: echo, add, now, word_count, sha256, rare_version.',
+  };
+}
+
 export class McpClientManager {
   private connections = new Map<string, Connection>();
   private configError?: string;
@@ -133,6 +165,15 @@ export class McpClientManager {
   /** Builds a manager from the environment. */
   static fromEnvironment(env: NodeJS.ProcessEnv = process.env): McpClientManager {
     const { servers, error } = parseServerConfig(env.RARE_MCP_SERVERS);
+    // When the operator has configured nothing, fall back to the bundled
+    // reference server. It is a real MCP server over stdio with no account, no
+    // API key and no network dependency, so the integration is exercisable out
+    // of the box rather than only in a deployment that happens to set a
+    // variable. An explicit RARE_MCP_SERVERS always wins.
+    if (servers.length === 0 && !error) {
+      const reference = defaultReferenceServer(env);
+      if (reference) return new McpClientManager([reference], undefined);
+    }
     return new McpClientManager(servers, error);
   }
 
@@ -282,10 +323,26 @@ export class McpClientManager {
       return { ok: false, error: `MCP server "${serverId}" is not connected.` };
     }
     try {
-      const result = await withTimeout(
-        connection.client.callTool({ name: toolName, arguments: args }),
-        CALL_TIMEOUT_MS,
-        `MCP call ${qualifiedName}`
+      // A dropped transport or a transient server error is worth one more
+      // attempt; a tool that reports isError is a real result and is not
+      // retried, because repeating a side-effecting tool would run it twice.
+      const result = await withRetry(
+        () => withTimeout(
+          connection.client.callTool({ name: toolName, arguments: args }),
+          CALL_TIMEOUT_MS,
+          `MCP call ${qualifiedName}`,
+        ),
+        {
+          attempts: 2,
+          baseDelayMs: 300,
+          label: `mcp:${qualifiedName}`,
+          shouldRetry: (error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            // A timeout or a closed transport may recover; a protocol error
+            // from the server will not.
+            return /timed out|ECONNRESET|EPIPE|socket|closed|disconnected/i.test(message);
+          },
+        },
       );
       const isError = (result as { isError?: boolean }).isError === true;
       return {

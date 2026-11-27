@@ -23,6 +23,7 @@ import { DurableStateStore } from './src/server/storage/DurableStateStore.js';
 import { PersistentJsonStore } from './src/server/storage/PersistentJsonStore.js';
 import { DocumentStore } from './src/server/storage/DocumentStore.js';
 import { DocumentsService, DocumentPathError, normalizeDocumentPath } from './src/server/services/DocumentsService.js';
+import { BlobStore } from './src/server/storage/BlobStore.js';
 import { DeepResearchEngine } from './src/server/services/DeepResearchEngine.js';
 import { listProviders as listResearchProviders } from './src/server/services/ResearchProviders.js';
 import { OwnerSearchIndexRegistry } from './src/server/content/SearchIndex.js';
@@ -61,6 +62,8 @@ import { buildRareSystemPrompt } from './src/server/providers/RarePrompt.js';
 import { prepareConversationContext } from './src/server/providers/ConversationContext.js';
 import { extractMemories } from './src/server/chat/MemoryExtractor.js';
 import { routeChatIntent, capabilitiesForIntent } from './src/server/chat/IntentRouter.js';
+import { executeIntent, type IntentExecutionDeps } from './src/server/chat/IntentExecutor.js';
+import { recentFailures } from './src/server/services/Resilience.js';
 import {
   runDeliveryWorkflow,
   summariseDelivery,
@@ -202,6 +205,8 @@ const searchIndexes = new OwnerSearchIndexRegistry();
 const deepResearchEngine = new DeepResearchEngine();
 /** Documents service is constructed once storage is ready (see startServer). */
 let documentsService: DocumentsService | undefined;
+/** Out-of-line storage for large document payloads. */
+let blobStore: BlobStore | undefined;
 const toolExecutor = new ToolExecutor(memoryStore, checkpointStore);
 const providerRegistry = new ProviderRegistry(memoryStore, toolExecutor);
 const selfDevEngine = new SelfDevelopmentEngine(checkpointStore, trajectoryStore, toolExecutor);
@@ -1400,6 +1405,43 @@ app.post('/api/conversations/:id', async (req, res) => {
     // answered from the model's memory just because the client used the
     // non-streaming endpoint.
     const decision = routeChatIntent(text);
+
+    // Device, schedule and plugin requests are actions. The non-streaming
+    // endpoint must execute them too, or the same message would work in one
+    // client and be refused in another.
+    if (decision.intent === 'device' || decision.intent === 'schedule' || decision.intent === 'plugin' || decision.intent === 'documents') {
+      const outcome = await executeIntent(decision, text, res.locals.rareUserId, await buildIntentDeps(), {
+        confirmed: req.body?.confirmed === true,
+      });
+      if (outcome) {
+        const actionMessage = { id: `msg_${crypto.randomUUID()}`, role: 'assistant', content: outcome.reply, timestamp: new Date().toISOString() };
+        let actionUpdated: any = null;
+        await persistentStorage!.updateOwnedState<any[]>(res.locals.rareUserId, 'conversations', [], (current) => current.map((item) => {
+          if (item.id !== conversation.id) return item;
+          const title = !item.customTitle && (!item.title || item.title === 'New Chat') ? text.replace(/[^\w\s]/g, '').trim().slice(0, 34) || 'Chat' : item.title;
+          actionUpdated = { ...item, title, messages: [...item.messages, userMessage, actionMessage], messageCount: item.messages.length + 2 };
+          return actionUpdated;
+        }));
+        return res.json({
+          user_message: userMessage,
+          assistant_message: actionMessage,
+          reply: actionMessage,
+          conversationTitle: actionUpdated?.title,
+          conversation: actionUpdated,
+          memoriesStored: 0,
+          intent: { intent: decision.intent, reason: decision.reason },
+          action: {
+            intent: decision.intent,
+            status: outcome.status,
+            ok: outcome.ok,
+            needsConfirmation: Boolean(outcome.needsConfirmation),
+            confirmationPrompt: outcome.confirmationPrompt,
+            data: outcome.data,
+          },
+        });
+      }
+    }
+
     if (decision.intent === 'research') {
       const report = await deepResearchEngine.research({
         question: decision.question,
@@ -1789,6 +1831,52 @@ app.post('/api/conversations/:id/stream', async (req, res) => {
       send('done', { user_message: userMessage, assistant_message: selfBuildMessage, reply: selfBuildMessage, memoriesStored: 0 });
       res.end();
       return;
+    }
+
+    // A device, schedule or plugin request is an ACTION, not a question. The
+    // router already classified it correctly; before this branch existed the
+    // handler ignored that decision and let the model improvise a refusal
+    // ("I can't directly open apps"), which was both wrong and dishonest.
+    if (decision.intent === 'device' || decision.intent === 'schedule' || decision.intent === 'plugin' || decision.intent === 'documents') {
+      send('intent', { intent: decision.intent, reason: decision.reason });
+      const outcome = await executeIntent(decision, text, ownerId, await buildIntentDeps(), {
+        confirmed: req.body?.confirmed === true,
+      });
+      if (outcome) {
+        const actionMessage = {
+          id: `msg_${crypto.randomUUID()}`,
+          role: 'assistant',
+          content: outcome.reply,
+          timestamp: new Date().toISOString(),
+        };
+        for (let offset = 0; offset < outcome.reply.length; offset += 400) {
+          send('delta', { text: outcome.reply.slice(offset, offset + 400) });
+        }
+        let actionUpdated: any = null;
+        await persistentStorage!.updateOwnedState<any[]>(ownerId, 'conversations', [], (current) => current.map((item) => {
+          if (item.id !== conversation.id) return item;
+          const title = !item.customTitle && (!item.title || item.title === 'New Chat') ? text.replace(/[^\w\s]/g, '').trim().slice(0, 34) || 'Chat' : item.title;
+          actionUpdated = { ...item, title, messages: [...item.messages, userMessage, actionMessage], messageCount: item.messages.length + 2 };
+          return actionUpdated;
+        }));
+        send('done', {
+          user_message: userMessage,
+          assistant_message: actionMessage,
+          reply: actionMessage,
+          conversationTitle: actionUpdated?.title,
+          memoriesStored: 0,
+          action: {
+            intent: decision.intent,
+            status: outcome.status,
+            ok: outcome.ok,
+            needsConfirmation: Boolean(outcome.needsConfirmation),
+            confirmationPrompt: outcome.confirmationPrompt,
+            data: outcome.data,
+          },
+        });
+        res.end();
+        return;
+      }
     }
 
     let fullReply = '';
@@ -6344,6 +6432,43 @@ function schedulerBinding(): SchedulerBinding | undefined {
   };
 }
 
+/**
+ * The dependencies the chat intent executor needs.
+ *
+ * Built lazily on each call because the scheduler and device queue are
+ * initialised after the HTTP routes are declared — capturing them at module
+ * load would freeze `undefined` into the closure.
+ */
+async function buildIntentDeps(): Promise<IntentExecutionDeps> {
+  // The MCP manager connects lazily. A plugin request that arrives before any
+  // /api/mcp call would otherwise see every server as "not connected yet" and
+  // report that no plugin exists — which is wrong, not merely unhelpful. The
+  // connect is awaited so the statuses read below are the real ones.
+  await ensureMcpConnected();
+  return {
+    deviceQueue: deviceCommandQueue,
+    scheduler: schedulerBinding(),
+    pluginRegistry: getPluginRegistry(),
+    mcp: mcpManager,
+    documents: documentsService
+      ? {
+          list: (ownerId: string) => documentsService!.list(ownerId),
+          export: async (ownerId: string, documentPath: string, format: string) => {
+            // Route through the capability so the export path, format
+            // validation and binary handling stay in one place.
+            const result = await capabilityRegistry.invoke('documents.export', { path: documentPath, format }, {
+              ownerId,
+              actor: 'chat',
+            } as any);
+            if (!result.ok) throw new Error(result.summary || 'Export failed.');
+            const data = result.data as { path: string; bytes: number; format: string };
+            return { path: data.path, bytes: data.bytes, format: data.format };
+          },
+        }
+      : undefined,
+  };
+}
+
 app.get('/api/schedules', async (req, res) => {
   try {
     res.json(await listOwnerSchedules(res.locals.rareUserId));
@@ -6656,14 +6781,18 @@ const pluginsDirectory: PluginDef[] = [
   },
   {
     id: 'plugin_visioncraft',
-    name: 'VisionCraft Studio (Gemini 3 Pro & Nano Banana)',
+    name: 'VisionCraft Studio',
     category: 'media',
-    description: 'High-fidelity generative images in 1K, 2K, 4K with Nano Banana prompt editing.',
-    version: '3.1.0',
-    author: 'Google AI & RARE',
+    description: 'AI image generation and prompt-guided editing, served by a free provider with no API key or billing.',
+    version: '3.2.0',
+    author: 'RARE',
     installed: true,
     icon: 'ImageIcon',
-    capabilities: ['Gemini 3 Pro Image (1K/2K/4K)', 'Nano Banana 2.1 Editing', 'Aspect ratio presets'],
+    // The previous label advertised "Gemini 3 Pro Image (1K/2K/4K)" and "Nano
+    // Banana 2.1 Editing". Gemini's image endpoint returns HTTP 429 with a
+    // free-tier quota of 0, so that capability was never available. The
+    // catalogue now names what actually runs.
+    capabilities: ['AI image generation (free provider)', 'Prompt-guided editing', 'Aspect ratio presets'],
   },
   {
     id: 'plugin_live_audio',
@@ -6736,6 +6865,8 @@ const pluginsDirectory: PluginDef[] = [
 app.get('/api/plugins', async (req, res) => {
   try {
     const settings = await persistentStorage!.getOwnedState<Record<string, boolean>>(res.locals.rareUserId, 'plugin_settings', {});
+    // A flat array, kept for existing clients. The split between built-in
+    // capabilities and real integrations lives at /api/plugins/catalog.
     res.json(pluginsDirectory.map((plugin) => ({
       ...plugin,
       installed: Object.prototype.hasOwnProperty.call(settings, plugin.id) ? settings[plugin.id] : plugin.installed,
@@ -6743,6 +6874,63 @@ app.get('/api/plugins', async (req, res) => {
   } catch (error) {
     console.error('[Plugins] Private plugin settings read failed:', error);
     res.status(503).json({ error: { message: 'Plugin settings are unavailable.' } });
+  }
+});
+
+/**
+ * The plugin catalogue, split into what RARE ships and what is actually
+ * connected.
+ *
+ * `/api/plugins` stays a flat array for existing clients; this is the endpoint
+ * the Plugins page reads, because a badge must reflect a real connection rather
+ * than a hardcoded `installed: true`.
+ */
+app.get('/api/plugins/catalog', async (req, res) => {
+  try {
+    const settings = await persistentStorage!.getOwnedState<Record<string, boolean>>(res.locals.rareUserId, 'plugin_settings', {});
+    const builtIn = pluginsDirectory.map((plugin) => ({
+      ...plugin,
+      installed: Object.prototype.hasOwnProperty.call(settings, plugin.id) ? settings[plugin.id] : plugin.installed,
+      kind: 'builtin' as const,
+      connected: true,
+    }));
+
+    await ensureMcpConnected();
+    const servers = mcpManager.statuses();
+    const tools = mcpManager.listTools();
+    const integrations = servers.map((server) => ({
+      id: server.id,
+      name: server.name,
+      category: 'tools' as const,
+      description: server.error
+        ? `MCP server (${server.transport}) — not connected: ${server.error}`
+        : `MCP server (${server.transport}) with ${server.toolCount} tool(s).`,
+      version: server.serverInfo?.version || '—',
+      author: 'MCP',
+      installed: true,
+      icon: 'Plug',
+      capabilities: tools.filter((tool) => tool.serverId === server.id).map((tool) => tool.name),
+      kind: 'integration' as const,
+      connected: server.connected,
+      toolCount: server.toolCount,
+      transport: server.transport,
+      error: server.error ?? null,
+    }));
+
+    res.json({
+      builtIn,
+      integrations,
+      summary: {
+        builtInCount: builtIn.length,
+        integrationCount: integrations.length,
+        connectedIntegrations: integrations.filter((item) => item.connected).length,
+        discoveredTools: tools.length,
+        configurationError: mcpManager.configurationError ?? null,
+      },
+    });
+  } catch (error) {
+    console.error('[Plugins] Catalogue read failed:', error);
+    res.status(503).json({ error: { message: 'Plugin catalogue is unavailable.' } });
   }
 });
 
@@ -7477,6 +7665,29 @@ app.post('/api/images/edit', async (req, res) => {
 // go through the same CapabilityRegistry, so a capability cannot work in one
 // screen and be missing in another.
 
+/**
+ * Observability: what has actually been failing.
+ *
+ * Capability invocations were already audited in memory; provider and MCP
+ * failures were not, so a failure at 03:00 left no trace. This surfaces both,
+ * plus the live provider and MCP state, in one place an operator can read.
+ */
+app.get('/api/observability/failures', (req, res) => {
+  ensureCapabilitiesRegistered();
+  const limit = Number.isFinite(Number(req.query.limit)) ? Math.min(200, Number(req.query.limit)) : 50;
+  const audit = capabilityRegistry.recentAudit(limit);
+  res.json({
+    failures: recentFailures(limit),
+    capabilityFailures: audit.filter((entry) => entry.ok === false),
+    recentInvocations: audit,
+    mcp: {
+      servers: mcpManager.statuses(),
+      toolCount: mcpManager.listTools().length,
+      configurationError: mcpManager.configurationError ?? null,
+    },
+  });
+});
+
 app.get('/api/capabilities', (req, res) => {
   ensureCapabilitiesRegistered();
   const department = typeof req.query.department === 'string' ? req.query.department : undefined;
@@ -7581,7 +7792,8 @@ async function startServer() {
 
   // The Documents service shares the same owner-scoped store and the shared
   // content engine, so Documents and Research never diverge.
-  documentsService = new DocumentsService(persistentStorage, searchIndexes);
+  blobStore = new BlobStore(persistentStorage);
+  documentsService = new DocumentsService(persistentStorage, searchIndexes, blobStore);
 
   // Jobs persist through the same store, and every department publishes its
   // real capabilities to the one registry Chat and the Assistant both use.
