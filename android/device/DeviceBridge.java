@@ -54,6 +54,13 @@ public class DeviceBridge {
         json.put("platform", "android");
         json.put("sdk", android.os.Build.VERSION.SDK_INT);
         json.put("accessibility", RareAccessibilityService.isConnected());
+        // Why accessibility is unavailable, when it was lost mid-session. Null
+        // while connected. Lets the server report "permission revoked" instead
+        // of a generic failure.
+        String lostReason = RareDeviceService.getAccessibilityLostReason();
+        if (lostReason != null) {
+            json.put("accessibilityLostReason", lostReason);
+        }
         json.put("notifications", RareNotificationListener.isConnected());
         json.put("overlay", RareOverlay.canDraw(context));
         json.put("foregroundService", RareDeviceService.isRunning());

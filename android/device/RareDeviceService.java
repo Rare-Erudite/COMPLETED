@@ -28,8 +28,41 @@ public class RareDeviceService extends Service {
 
     private static volatile boolean running = false;
 
+    /**
+     * Reason the accessibility channel last went away, or null while it is up.
+     *
+     * Kept here rather than in the accessibility service because the service
+     * object is destroyed on revocation: the record has to outlive it so the
+     * orchestration layer can report WHY it cannot act, instead of a bare
+     * "unavailable".
+     */
+    private static volatile String accessibilityLostReason = null;
+
     public static boolean isRunning() {
         return running;
+    }
+
+    /**
+     * Called by RareAccessibilityService when the accessibility channel dies.
+     *
+     * This is the honest-failure hook. A command in flight can no longer be
+     * completed, so the layer records the reason and clears the connected flag;
+     * the server then reports a permission failure rather than letting the
+     * command time out or, worse, appear to succeed.
+     */
+    public static void onAccessibilityLost(String reason) {
+        accessibilityLostReason = reason == null ? "disconnected" : reason;
+        Log.w(TAG, "Accessibility lost (" + accessibilityLostReason + ") — device actions unavailable");
+    }
+
+    /** The reason for the last accessibility loss, or null if connected. */
+    public static String getAccessibilityLostReason() {
+        return accessibilityLostReason;
+    }
+
+    /** Cleared when the service successfully reconnects. */
+    public static void onAccessibilityRestored() {
+        accessibilityLostReason = null;
     }
 
     @Override

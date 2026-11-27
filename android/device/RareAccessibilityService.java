@@ -71,6 +71,13 @@ public class RareAccessibilityService extends AccessibilityService {
         setServiceInfo(info);
         Log.i(TAG, "Accessibility service connected");
         DeviceState.setAccessibility(true);
+        // A reconnect (often after the user re-granted the permission) clears
+        // the recorded failure so status reports reflect the real state.
+        try {
+            RareDeviceService.onAccessibilityRestored();
+        } catch (Throwable ignored) {
+            // Not fatal: the flag just stays set until the next connect.
+        }
     }
 
     @Override
@@ -86,14 +93,46 @@ public class RareAccessibilityService extends AccessibilityService {
 
     @Override
     public void onInterrupt() {
-        Log.w(TAG, "Accessibility service interrupted");
+        // Called when the system stops feeding this service events — the
+        // accessibility connection is no longer usable even though the object
+        // still exists. Without clearing the flag, commands would be accepted
+        // and then fail deep inside the tree walk, reporting a confusing error
+        // (or worse, a stale success) instead of "permission revoked".
+        Log.w(TAG, "Accessibility service interrupted — treating as disconnected");
+        markDisconnected("interrupted");
     }
 
     @Override
     public boolean onUnbind(Intent intent) {
+        Log.i(TAG, "Accessibility service unbound");
+        markDisconnected("unbound");
+        return super.onUnbind(intent);
+    }
+
+    @Override
+    public void onDestroy() {
+        markDisconnected("destroyed");
+        super.onDestroy();
+    }
+
+    /**
+     * Single place where "the accessibility channel is gone" is recorded.
+     *
+     * Called from onInterrupt, onUnbind and onDestroy so every way the service
+     * can end up unusable is covered. Pending device commands are told to stop
+     * rather than being left to time out, and the connected state is cleared so
+     * the orchestration layer reports an honest failure instead of attempting
+     * an action it cannot complete.
+     */
+    private void markDisconnected(String reason) {
         instance = null;
         DeviceState.setAccessibility(false);
-        return super.onUnbind(intent);
+        try {
+            // Any command waiting on this service can no longer be served.
+            RareDeviceService.onAccessibilityLost(reason);
+        } catch (Throwable t) {
+            Log.w(TAG, "Could not notify the device service of disconnection: " + t);
+        }
     }
 
     // ------------------------------------------------------------------
