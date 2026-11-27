@@ -42,7 +42,21 @@ export interface DocumentRecord {
   /** Previous contents, newest first, capped. */
   history?: Array<{ content: string; updatedAt: string; version: number }>;
   /** How this document came to exist. */
-  origin?: 'manual' | 'upload' | 'url' | 'transcript' | 'research' | 'conversion';
+  origin?: 'manual' | 'upload' | 'url' | 'transcript' | 'research' | 'conversion' | 'image';
+  /**
+   * Base64 of the ORIGINAL bytes, for binary documents (images, PDFs).
+   *
+   * Documents storage was text-only, so exporting an image stored the text
+   * extracted from it — a description of a picture is not the picture. Binary
+   * formats now keep their real bytes here and `content` stays the extracted
+   * text, so search and summarisation keep working while a download returns
+   * the actual file.
+   */
+  binaryData?: string;
+  /** Byte length of the decoded binary payload. */
+  binarySize?: number;
+  /** MIME type of the binary payload, as sniffed from the bytes. */
+  mimeType?: string;
 }
 
 export interface DocumentSummary {
@@ -78,12 +92,34 @@ export interface ImportOutcome {
 const MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 const MAX_HISTORY_ENTRIES = 5;
 const GUEST_DOCUMENT_LIMIT = 20;
+/**
+ * Ceiling for a binary document. Base64 inflates by ~33%, and the whole
+ * document list is one JSON value, so this stays modest on purpose.
+ */
+const MAX_BINARY_BYTES = 6 * 1024 * 1024;
 
 /** Extensions we can store as editable text. */
 const TEXT_EXTENSIONS = new Set([
   '.md', '.txt', '.text', '.json', '.html', '.htm', '.csv', '.xml', '.yaml', '.yml', '.log',
   '.tsv', '.srt', '.vtt', '.rtf', '.eml',
 ]);
+
+/**
+ * Formats stored as their original bytes rather than as editable text.
+ * `content` still holds the extracted text so they remain searchable.
+ */
+export const BINARY_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.avif',
+  '.pdf', '.docx', '.xlsx', '.pptx', '.odt', '.ods', '.odp',
+  '.zip', '.gz', '.tar',
+  '.mp3', '.wav', '.m4a', '.ogg', '.flac',
+  '.mp4', '.webm', '.mov', '.mkv',
+]);
+
+/** True when a path names a binary document format. */
+export function isBinaryDocumentPath(value: string): boolean {
+  return BINARY_EXTENSIONS.has(path.posix.extname(value).toLowerCase());
+}
 
 export class DocumentPathError extends Error {}
 
@@ -99,9 +135,12 @@ export function normalizeDocumentPath(value: unknown): string {
   if (normalized === '.' || normalized === '..' || normalized.startsWith('../') || normalized.split('/').includes('..')) {
     throw new DocumentPathError('Document path must stay inside your document space.');
   }
-  if (!TEXT_EXTENSIONS.has(path.posix.extname(normalized).toLowerCase())) {
+  const extension = path.posix.extname(normalized).toLowerCase();
+  if (!TEXT_EXTENSIONS.has(extension) && !BINARY_EXTENSIONS.has(extension)) {
     throw new DocumentPathError(
-      `Only text-based document formats can be stored (${[...TEXT_EXTENSIONS].join(', ')}). Convert other formats first.`,
+      `Unsupported document format "${extension || '(none)'}". ` +
+      `Text formats: ${[...TEXT_EXTENSIONS].join(', ')}. ` +
+      `Binary formats: ${[...BINARY_EXTENSIONS].join(', ')}.`,
     );
   }
   return normalized;
@@ -173,6 +212,20 @@ export class DocumentsService {
     return documents.find((document) => document.path === documentPath) || null;
   }
 
+  /**
+   * A document with the raw base64 payload removed, for JSON responses.
+   *
+   * A 5 MB image would otherwise be inlined into every document read and
+   * listing, which both bloats the payload and leaks the file into places
+   * that only need metadata. Callers that need the bytes use readBinary().
+   */
+  async readWithoutBinary(ownerId: string, rawPath: string): Promise<DocumentRecord | null> {
+    const document = await this.read(ownerId, rawPath);
+    if (!document) return null;
+    const { binaryData, ...rest } = document;
+    return rest as DocumentRecord;
+  }
+
   /** Save text, keeping a bounded version history so edits are recoverable. */
   async save(
     ownerId: string,
@@ -181,6 +234,11 @@ export class DocumentsService {
     options: { isGuest?: boolean; origin?: DocumentRecord['origin']; derivedFrom?: string } = {},
   ): Promise<DocumentRecord> {
     const documentPath = normalizeDocumentPath(rawPath);
+    if (isBinaryDocumentPath(documentPath)) {
+      throw new DocumentPathError(
+        `"${path.posix.extname(documentPath)}" is a binary format. Use saveBinary() with the original bytes.`,
+      );
+    }
     if (typeof text !== 'string') throw new DocumentPathError('Document text must be a string.');
     if (Buffer.byteLength(text, 'utf8') > MAX_DOCUMENT_BYTES) {
       throw new DocumentPathError('Document text must be at most 2 MB.');
@@ -213,6 +271,120 @@ export class DocumentsService {
     if (!saved) throw new Error('The document could not be saved.');
     this.indexDocument(ownerId, saved);
     return saved;
+  }
+
+  /**
+   * Save a document as its ORIGINAL bytes.
+   *
+   * Used for images, PDFs and other formats that cannot be represented as
+   * editable text. The bytes are kept base64-encoded in `binaryData` so a
+   * download returns a file identical to the source, while `text` (when the
+   * content engine could extract any) stays in `content` for search, ask and
+   * summarisation. An empty or undecodable buffer is rejected rather than
+   * stored, so a "saved" record always has real content behind it.
+   */
+  async saveBinary(
+    ownerId: string,
+    rawPath: string,
+    buffer: Buffer,
+    options: {
+      isGuest?: boolean;
+      mimeType?: string;
+      text?: string;
+      origin?: DocumentRecord['origin'];
+      title?: string;
+      /** Page-level text, preserved so a stored PDF keeps real provenance. */
+      pages?: Array<{ page: number; text: string }>;
+      kind?: string;
+      label?: string;
+      method?: string;
+      ocr?: boolean;
+      warnings?: string[];
+    } = {},
+  ): Promise<DocumentRecord> {
+    const documentPath = normalizeDocumentPath(rawPath);
+    if (!isBinaryDocumentPath(documentPath)) {
+      throw new DocumentPathError(
+        `"${path.posix.extname(documentPath)}" is a text format. Use save() for text documents.`,
+      );
+    }
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+      throw new DocumentPathError('The uploaded file was empty.');
+    }
+    if (buffer.length > MAX_BINARY_BYTES) {
+      throw new DocumentPathError(
+        `The file is ${(buffer.length / 1024 / 1024).toFixed(1)} MB; the limit is ` +
+        `${MAX_BINARY_BYTES / 1024 / 1024} MB.`,
+      );
+    }
+
+    const mimeType = options.mimeType || 'application/octet-stream';
+    let saved: DocumentRecord | undefined;
+    await this.storage.updateOwnedState<DocumentRecord[]>(ownerId, 'documents', [], (documents) => {
+      const existing = documents.find((document) => document.path === documentPath);
+      if (options.isGuest && !existing && documents.length >= GUEST_DOCUMENT_LIMIT) {
+        throw new Error('RARE_GUEST_LIMIT');
+      }
+      const version = (existing?.version || 0) + 1;
+      saved = {
+        ...(existing || {}),
+        path: documentPath,
+        // Extracted text stays available for search; it is NOT the file.
+        content: options.text || existing?.content || '',
+        format: path.posix.extname(documentPath).slice(1).toLowerCase(),
+        updatedAt: new Date().toISOString(),
+        version,
+        history: [],
+        origin: options.origin || existing?.origin || 'upload',
+        binaryData: buffer.toString('base64'),
+        binarySize: buffer.length,
+        mimeType,
+        ...(options.title ? { title: options.title } : {}),
+        // Extraction metadata travels with the file. A PDF that kept its bytes
+        // but lost its pages would be a worse document than the text-only one
+        // it replaced, so these are carried over, not discarded.
+        ...(options.pages ? { pages: options.pages } : {}),
+        ...(options.kind ? { kind: options.kind } : {}),
+        ...(options.label ? { label: options.label } : {}),
+        ...(options.method ? { method: options.method } : {}),
+        ...(options.ocr !== undefined ? { ocr: options.ocr } : {}),
+        ...(options.warnings ? { warnings: options.warnings } : {}),
+      };
+      return [saved, ...documents.filter((document) => document.path !== documentPath)];
+    });
+
+    if (!saved) throw new Error('The document could not be saved.');
+    this.indexDocument(ownerId, saved);
+    return saved;
+  }
+
+  /**
+   * Read a binary document's original bytes back.
+   *
+   * Returns null for a text document or a missing one, so a caller can fall
+   * back to the text path instead of mistaking an empty buffer for a valid
+   * file.
+   */
+  async readBinary(
+    ownerId: string,
+    rawPath: string,
+  ): Promise<{ buffer: Buffer; mimeType: string; record: DocumentRecord } | null> {
+    const document = await this.read(ownerId, rawPath);
+    if (!document || !document.binaryData) return null;
+    const buffer = Buffer.from(document.binaryData, 'base64');
+    if (buffer.length === 0) return null;
+    if (document.binarySize && buffer.length !== document.binarySize) {
+      // Corruption must surface as an error, never as a truncated file.
+      throw new Error(
+        `Stored bytes for "${document.path}" are inconsistent: ` +
+        `${buffer.length} present, ${document.binarySize} recorded.`,
+      );
+    }
+    return {
+      buffer,
+      mimeType: document.mimeType || 'application/octet-stream',
+      record: document,
+    };
   }
 
   /** Import a URL through the shared content engine. */

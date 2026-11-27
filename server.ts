@@ -4683,6 +4683,46 @@ function readDocumentPayload(body: any): { text?: string; url?: string; fileBase
   };
 }
 
+/** A filename turned into a safe, collision-resistant document path segment. */
+function slugifyName(filename: string): string {
+  const extension = path.posix.extname(filename).toLowerCase();
+  const stem = path.posix.basename(filename, extension)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60) || 'upload';
+  return `${stem}-${Date.now()}${extension}`;
+}
+
+/** MIME type for a filename, used when a client uploads without one. */
+function mimeTypeForName(filename: string): string {
+  const extension = path.posix.extname(filename).toLowerCase();
+  const map: Record<string, string> = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.bmp': 'image/bmp',
+    '.avif': 'image/avif',
+    '.pdf': 'application/pdf',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    '.zip': 'application/zip',
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
+    '.m4a': 'audio/mp4',
+    '.ogg': 'audio/ogg',
+    '.flac': 'audio/flac',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mov': 'video/quicktime',
+    '.mkv': 'video/x-matroska',
+  };
+  return map[extension] || 'application/octet-stream';
+}
+
 app.get('/api/documents', async (_req, res) => {
   try {
     res.json(await requireDocumentsService().list(res.locals.rareUserId));
@@ -4860,9 +4900,52 @@ app.get('/api/documents/capabilities', async (_req, res) => {
   }
 });
 
+/**
+ * Download a document's ORIGINAL bytes.
+ *
+ * Registered BEFORE the `/api/documents/*` reader, because that wildcard would
+ * otherwise match `.../download` and return JSON metadata instead of the file.
+ * Text documents are served as UTF-8; binary documents (images, PDFs) return
+ * the exact bytes that were stored, so an exported image opens as an image.
+ */
+app.get('/api/documents/*/download', async (req, res) => {
+  const documentPath = (req.params as any)[0];
+  try {
+    const service = requireDocumentsService();
+    const binary = await service.readBinary(res.locals.rareUserId, documentPath);
+    if (binary) {
+      const filename = path.posix.basename(binary.record.path);
+      res.setHeader('Content-Type', binary.mimeType);
+      res.setHeader('Content-Length', String(binary.buffer.length));
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.end(binary.buffer);
+      return;
+    }
+
+    // Not binary: fall back to the text document, served as a real file.
+    const document = await service.read(res.locals.rareUserId, documentPath);
+    if (!document) {
+      res.status(404).json({ error: { message: 'Document not found' } });
+      return;
+    }
+    const buffer = Buffer.from(document.content || '', 'utf8');
+    const filename = path.posix.basename(document.path);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Length', String(buffer.length));
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.end(buffer);
+  } catch (error) {
+    console.error('[Documents] Download failed:', error);
+    res.status(503).json({ error: { message: 'Document storage is unavailable.' } });
+  }
+});
+
 app.get('/api/documents/*', async (req, res) => {
   try {
-    const document = await requireDocumentsService().read(res.locals.rareUserId, (req.params as any)[0]);
+    // readWithoutBinary keeps a multi-megabyte base64 payload out of the JSON
+    // response; the bytes are available from the /download route above.
+    const document = await requireDocumentsService().readWithoutBinary(res.locals.rareUserId, (req.params as any)[0]);
     if (!document) {
       res.status(404).json({ error: { message: 'Document not found' } });
       return;
@@ -4913,7 +4996,53 @@ app.post('/api/documents', async (req, res) => {
         res.status(413).json({ error: { message: 'Files must be 25 MB or smaller.' } });
         return;
       }
-      const outcome = await service.importBuffer(res.locals.rareUserId, buffer, payload.filename || 'upload', {
+      // Binary uploads previously went straight to importBuffer(), which keeps
+      // only the extracted text. That silently discarded the file itself, so a
+      // re-download of an uploaded PDF or screenshot was impossible. Binary
+      // formats now keep their original bytes; the text stays for search.
+      const uploadName = payload.filename || 'upload';
+      const uploadPath = /\.(png|jpe?g|webp|gif|bmp|avif|pdf|docx|xlsx|pptx|odt|ods|odp|zip|gz|tar|mp3|wav|m4a|ogg|flac|mp4|webm|mov|mkv)$/i.test(uploadName)
+        ? normalizeDocumentPath(`uploads/${slugifyName(uploadName)}`)
+        : null;
+
+      if (uploadPath) {
+        let uploadText = '';
+        let uploadMeta: { pages?: Array<{ page: number; text: string }>; kind?: string; label?: string; method?: string; ocr?: boolean; warnings?: string[] } = {};
+        try {
+          const processed = await processBuffer(buffer, { filename: uploadName, mimeType: payload.mimeType });
+          if (processed.ok) {
+            uploadText = processed.text || '';
+            uploadMeta = {
+              pages: processed.pages,
+              kind: processed.kind,
+              label: processed.label,
+              method: processed.method,
+              ocr: processed.ocr,
+              warnings: processed.warnings,
+            };
+          }
+        } catch {
+          /* extraction is optional; the file is the deliverable */
+        }
+        const savedBinary = await service.saveBinary(res.locals.rareUserId, uploadPath, buffer, {
+          isGuest: res.locals.rareIsGuest,
+          mimeType: payload.mimeType || mimeTypeForName(uploadName),
+          text: uploadText,
+          title: uploadName,
+          ...uploadMeta,
+        });
+        res.status(201).json({
+          ok: true,
+          path: savedBinary.path,
+          bytes: buffer.length,
+          mimeType: savedBinary.mimeType,
+          chars: uploadText.length,
+          downloadUrl: `/api/documents/${encodeURIComponent(savedBinary.path)}/download`,
+        });
+        return;
+      }
+
+      const outcome = await service.importBuffer(res.locals.rareUserId, buffer, uploadName, {
         isGuest: res.locals.rareIsGuest,
         mimeType: payload.mimeType,
       });
@@ -6865,27 +6994,38 @@ app.post('/api/images/export', async (req, res) => {
       : `visioncraft/${safeName}-${record.id.slice(-6)}.${ext}`;
 
     const service = requireDocumentsService();
-    const outcome = await service.importBuffer(res.locals.rareUserId, buffer, targetPath, {
+
+    // Store the ORIGINAL bytes. Previously this called importBuffer(), which
+    // ran text extraction and saved only the extracted text — so "exporting"
+    // an image produced a description of a picture, not the picture. The
+    // binary path keeps the real file and still records any extracted text
+    // for search.
+    let extractedText = '';
+    try {
+      const processed = await processBuffer(buffer, { filename: targetPath, mimeType });
+      if (processed.ok) extractedText = processed.text || '';
+    } catch {
+      // Extraction is a bonus; the file itself is what matters here.
+    }
+
+    const saved = await service.saveBinary(res.locals.rareUserId, targetPath, buffer, {
       isGuest: res.locals.rareIsGuest,
       mimeType,
+      text: extractedText,
+      origin: 'image',
+      title: record.prompt || 'VisionCraft image',
     });
-
-    if (!outcome.ok) {
-      return res.status(422).json({
-        error: {
-          message: outcome.error?.message || 'The image could not be exported to Documents.',
-          code: outcome.error?.code,
-        },
-      });
-    }
 
     res.status(201).json({
       success: true,
-      path: targetPath,
+      path: saved.path,
       bytes: buffer.length,
       mimeType,
       source: record.source,
       aiGenerated: record.aiGenerated === true,
+      // The exported document is a real file: this is where to fetch it.
+      downloadUrl: `/api/documents/${encodeURIComponent(saved.path)}/download`,
+      extractedChars: extractedText.length,
     });
   } catch (error) {
     console.error('[Images] Export to Documents failed:', error);
