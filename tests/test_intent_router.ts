@@ -71,6 +71,42 @@ export function runIntentRouterTests(): void {
     selfCaps.join(','),
   );
 
+  // --- Device, schedule and plugin routing ---------------------------------
+  // These are the intents that previously fell through to conversation, so a
+  // request to act on the phone was answered with prose instead of executed.
+  check('"open WhatsApp" routes to device', intent('Open WhatsApp') === 'device', intent('Open WhatsApp'));
+  check('"describe my screen" routes to device', intent('Describe what is on my screen') === 'device', intent('Describe what is on my screen'));
+  check('"scroll down" routes to device', intent('Scroll down') === 'device', intent('Scroll down'));
+  check('"check my notifications" routes to device', intent('Check my notifications') === 'device', intent('Check my notifications'));
+  check('"turn on wifi" routes to device', intent('Open Settings and turn on Wi-Fi') === 'device', intent('Open Settings and turn on Wi-Fi'));
+
+  check('"remind me every morning" routes to schedule', intent('Remind me every morning') === 'schedule', intent('Remind me every morning'));
+  check('"every two minutes" routes to schedule', intent('Every two minutes, check WhatsApp for new messages') === 'schedule', intent('Every two minutes, check WhatsApp for new messages'));
+  check('"pause my reminder" routes to schedule', intent('Pause my existing reminder') === 'schedule', intent('Pause my existing reminder'));
+  check('"in 30 minutes" routes to schedule', intent('In 30 minutes, remind me to check this document') === 'schedule', intent('In 30 minutes, remind me to check this document'));
+
+  check('"use the connected plugin" routes to plugin', intent('Use the connected plugin to perform this task') === 'plugin', intent('Use the connected plugin to perform this task'));
+  check('"list my plugins" routes to plugin', intent('List my plugins') === 'plugin', intent('List my plugins'));
+
+  // A recurring device monitor is a schedule, not a one-off device action.
+  check(
+    'a recurring device check is a schedule, not a device action',
+    intent('Check my notifications every 5 minutes') === 'schedule',
+    intent('Check my notifications every 5 minutes'),
+  );
+
+  // The new intents must not steal ordinary conversation.
+  check('a question about WhatsApp is not a device action', intent('what is WhatsApp?') === 'conversation', intent('what is WhatsApp?'));
+  check('a question about reminders is not a schedule', intent('how do reminders work?') === 'conversation', intent('how do reminders work?'));
+
+  // Capability mapping for the new intents. These assert against the ids that
+  // are actually registered in registerCapabilities.ts — a mapping to a
+  // capability that does not exist would be filtered out at runtime and the
+  // request would silently fall back to conversation.
+  check('device maps to a device capability', capabilitiesForIntent(routeChatIntent('Open WhatsApp')).includes('device.plan'));
+  check('schedule maps to a scheduler capability', capabilitiesForIntent(routeChatIntent('Remind me every morning')).includes('scheduler.manage'));
+  check('plugin maps to a plugin capability', capabilitiesForIntent(routeChatIntent('List my plugins')).includes('plugins.list'));
+
   console.log(`\nIntent router: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
 }

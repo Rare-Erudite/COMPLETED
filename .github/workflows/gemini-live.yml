@@ -1,0 +1,93 @@
+name: Gemini Live Verification
+
+# Exercises the REAL Gemini provider through all four conversation modes.
+#
+# Why this exists: scripts/verify_gemini_modes_live.ts was a manual script that
+# no workflow referenced, so "Gemini works" rested on one hand-run. This makes
+# it an automated gate that runs on demand and on pull requests.
+#
+# Cost discipline: this makes exactly four small text calls per run. It never
+# touches image generation (which is quota-blocked and would fail for reasons
+# unrelated to the text provider), and it does not run on every push.
+#
+# Secret handling: the key is read from GitHub Actions secrets and passed as an
+# environment variable. It is never echoed, never written to an artifact, and
+# never placed in a URL. The script prints only model names, latencies and
+# response text.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/server/providers/**'
+      - 'src/engine/persona.ts'
+      - 'scripts/verify_gemini_modes_live.ts'
+      - '.github/workflows/gemini-live.yml'
+
+concurrency:
+  group: gemini-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Four modes against the live provider
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Check the key is configured
+        id: keycheck
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::warning::GEMINI_API_KEY is not set. Skipping the live test — this is a SKIP, not a pass."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run the four-mode live test
+        if: steps.keycheck.outputs.configured == 'true'
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: npx tsx scripts/verify_gemini_modes_live.ts
+
+      - name: Report the outcome
+        if: always()
+        run: |
+          {
+            echo "### Gemini live verification"
+            echo ""
+            if [ "${{ steps.keycheck.outputs.configured }}" != "true" ]; then
+              echo "**SKIPPED** — no \`GEMINI_API_KEY\` secret is configured."
+              echo ""
+              echo "This is not a pass. Add the secret under Settings > Secrets and variables > Actions."
+            else
+              echo "- Result: **${{ job.status }}**"
+              echo "- Modes tested: casual, professional, creative, concise"
+              echo "- Model, latency and response text are in the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload raw results
+        if: steps.keycheck.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-mode-results
+          path: gemini_mode_results.json
+          retention-days: 14
+          if-no-files-found: warn

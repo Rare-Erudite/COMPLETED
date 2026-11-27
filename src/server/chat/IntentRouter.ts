@@ -23,7 +23,10 @@ export type ChatIntent =
   | 'repository'
   | 'deploy'
   | 'self_build'
-  | 'documents';
+  | 'documents'
+  | 'device'
+  | 'schedule'
+  | 'plugin';
 
 export interface IntentDecision {
   intent: ChatIntent;
@@ -169,6 +172,75 @@ const DOCUMENT_VERBS = [
 
 const URL_PATTERN = /https?:\/\/[^\s<>"')]+/g;
 
+/**
+ * Device-control verbs. These ask RARE to act on the phone itself, not to
+ * describe an action. Kept separate from every other verb set so "open
+ * WhatsApp" can never be answered with a paragraph about WhatsApp.
+ */
+const DEVICE_VERBS = [
+  'open whatsapp', 'open the whatsapp', 'open my whatsapp',
+  'open settings', 'open the settings', 'open my settings',
+  'open the browser', 'open my browser', 'open chrome',
+  'open the app', 'open this app', 'open my email', 'open gmail',
+  'open the camera', 'open the gallery', 'open the calculator',
+  'describe my screen', 'describe the screen', 'what is on my screen',
+  "what's on my screen", 'read my screen', 'read the screen',
+  'scroll down', 'scroll up', 'scroll to the top', 'scroll to the bottom',
+  'tap on', 'tap the', 'click on', 'click the',
+  'type into', 'type in the', 'enter the text',
+  'go back', 'press back', 'navigate back',
+  'check my notifications', 'read my notifications', 'read the notification',
+  'what notifications', 'any new notifications',
+  'turn on wifi', 'turn off wifi', 'turn on wi-fi', 'turn off wi-fi',
+  'turn on bluetooth', 'turn off bluetooth', 'enable wifi', 'disable wifi',
+  'take a screenshot', 'switch to', 'go home', 'press home',
+];
+
+/**
+ * Scheduling verbs. A request to create, change or inspect an automation is a
+ * scheduler action, not a conversation — "remind me every morning" must
+ * produce a real recurring task, not a promise to remember.
+ */
+const SCHEDULE_VERBS = [
+  'remind me', 'set a reminder', 'set an alarm', 'schedule a', 'schedule an',
+  'schedule this', 'every morning', 'every evening', 'every night',
+  'every day at', 'every week', 'every monday', 'every tuesday',
+  'every wednesday', 'every thursday', 'every friday', 'every saturday',
+  'every sunday', 'every month', 'every hour', 'every two minutes',
+  'every 2 minutes', 'every five minutes', 'every 5 minutes',
+  'every ten minutes', 'every 10 minutes', 'every 15 minutes',
+  'every 30 minutes', 'in 30 minutes', 'in an hour', 'in 10 minutes',
+  'pause my reminder', 'pause the reminder', 'pause my schedule',
+  'resume my reminder', 'resume the reminder', 'cancel my reminder',
+  'cancel the reminder', 'delete my reminder', 'list my reminders',
+  'my scheduled tasks', 'my reminders', 'my automations',
+  'check whatsapp every', 'check my email every', 'monitor',
+];
+
+/**
+ * Managing an existing automation, allowing the object to be qualified.
+ *
+ * The literal phrases above miss "pause my *existing* reminder", where a word
+ * sits between the verb and the noun. A bare `'pause my'` match would be worse:
+ * "cancel my subscription" is not a scheduler request. So the verb and the
+ * automation noun are matched together, with at most a few words between them.
+ */
+const SCHEDULE_MANAGEMENT_PATTERN =
+  /\b(pause|resume|cancel|delete|remove|stop|list|show|edit|change)\s+(my|the|all)\s+(?:\w+\s+){0,3}(reminders?|schedules?|automations?|scheduled\s+tasks?|alarms?)\b/i;
+
+/**
+ * Plugin / MCP verbs. "Use the connected plugin" must reach the plugin
+ * executor, not be answered as if RARE had no tools.
+ */
+const PLUGIN_VERBS = [
+  'use the plugin', 'use the connected plugin', 'use my plugin',
+  'run the plugin', 'call the plugin', 'invoke the plugin',
+  'use the mcp', 'use the connected mcp', 'call the mcp tool',
+  'run the mcp tool', 'use the tool', 'use the connected tool',
+  'list my plugins', 'list the plugins', 'what plugins',
+  'list my mcp', 'what mcp servers', 'connected integrations',
+];
+
 function normalize(text: string): string {
   return text.toLowerCase().replace(/\s+/g, ' ').trim();
 }
@@ -213,6 +285,10 @@ export function routeChatIntent(message: string): IntentDecision {
   const deployVerb = DEPLOY_VERBS.find((phrase) => lower.includes(phrase));
   const selfBuildVerb = SELF_BUILD_VERBS.find((phrase) => lower.includes(phrase));
   const documentVerb = DOCUMENT_VERBS.find((phrase) => lower.includes(phrase));
+  const deviceVerb = DEVICE_VERBS.find((phrase) => lower.includes(phrase));
+  const scheduleVerb = SCHEDULE_VERBS.find((phrase) => lower.includes(phrase))
+    || (SCHEDULE_MANAGEMENT_PATTERN.test(text) ? 'schedule management' : undefined);
+  const pluginVerb = PLUGIN_VERBS.find((phrase) => lower.includes(phrase));
 
   const actions = {
     build: Boolean(buildVerb),
@@ -270,6 +346,47 @@ export function routeChatIntent(message: string): IntentDecision {
     return {
       intent: 'documents',
       reason: `Matched the document phrase "${documentVerb}".`,
+      confidence: 0.85,
+      depth: 'standard',
+      seedUrls,
+      question: text,
+    };
+  }
+
+  // ---- Device, schedule and plugin intents --------------------------------
+  // These are checked before research and conversation because each one asks
+  // for an ACTION. Answering "open WhatsApp" with prose about WhatsApp is the
+  // exact failure this routing exists to prevent.
+  //
+  // Order matters where phrases overlap: "check my notifications every 5
+  // minutes" contains both a device verb and a schedule verb, and the schedule
+  // is the real request (a recurring monitor), so schedule is tested first.
+  if (scheduleVerb) {
+    return {
+      intent: 'schedule',
+      reason: `Matched the scheduling phrase "${scheduleVerb}".`,
+      confidence: 0.9,
+      depth: 'standard',
+      seedUrls,
+      question: text,
+    };
+  }
+
+  if (deviceVerb) {
+    return {
+      intent: 'device',
+      reason: `Matched the device phrase "${deviceVerb}".`,
+      confidence: 0.9,
+      depth: 'standard',
+      seedUrls,
+      question: text,
+    };
+  }
+
+  if (pluginVerb) {
+    return {
+      intent: 'plugin',
+      reason: `Matched the plugin phrase "${pluginVerb}".`,
       confidence: 0.85,
       depth: 'standard',
       seedUrls,
@@ -351,6 +468,16 @@ export function capabilitiesForIntent(decision: IntentDecision): string[] {
       return ['deployment.static'];
     case 'self_build':
       return ['builder.toolchains'];
+    case 'device':
+      // device.plan is the registered capability that turns an objective plus
+      // the current screen into the next concrete action. The actual tap is
+      // performed by the phone through the device command channel, which the
+      // orchestrator drives after planning.
+      return ['device.plan'];
+    case 'schedule':
+      return ['scheduler.manage'];
+    case 'plugin':
+      return ['plugins.list'];
     case 'conversation':
     default:
       return [];

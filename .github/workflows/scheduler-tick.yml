@@ -1,0 +1,98 @@
+name: Scheduler Tick
+
+# Drives RARE's scheduled-task engine in production.
+#
+# Why this exists: ScheduleEngine.start() is deliberately skipped when the app
+# runs on Vercel (a serverless function has no long-lived process to hold a
+# timer), and vercel.json has no `crons` entry. So schedules were stored and
+# never evaluated. This workflow is the durable trigger: it calls the
+# secret-protected /api/scheduler/tick endpoint on a fixed cadence.
+#
+# GitHub Actions is used rather than Vercel Cron because the Hobby plan allows
+# only one cron run per day, which cannot serve a "every two minutes" task.
+# Actions scheduled workflows are free for public repositories and need no
+# payment method.
+#
+# IMPORTANT: GitHub's scheduler is best-effort and can be delayed under load.
+# The engine is written to tolerate that — a late tick still evaluates every
+# due task and applies the missed-run policy — so a delayed run degrades
+# latency, never correctness.
+
+on:
+  schedule:
+    # Every 5 minutes. GitHub is the floor here, not the engine's limit: the
+    # engine itself can run any interval, and a self-hosted runner or an
+    # external pinger can drive it faster.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+# Never let two ticks overlap: a second concurrent tick would be harmless
+# (claims are atomic) but would waste a run and muddy the logs.
+concurrency:
+  group: scheduler-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    name: Invoke /api/scheduler/tick
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check the secret is configured
+        env:
+          SCHEDULER_SECRET: ${{ secrets.RARE_SCHEDULER_SECRET }}
+        run: |
+          if [ -z "$SCHEDULER_SECRET" ]; then
+            echo "::error::RARE_SCHEDULER_SECRET is not set. Add it under Settings > Secrets and variables > Actions."
+            echo "The tick endpoint is secret-protected; without the secret this workflow cannot run."
+            exit 1
+          fi
+          echo "Secret is present."
+
+      - name: Call the tick endpoint
+        id: tick
+        env:
+          SCHEDULER_SECRET: ${{ secrets.RARE_SCHEDULER_SECRET }}
+          TARGET: ${{ vars.RARE_BASE_URL || 'https://rareproject.vercel.app' }}
+        run: |
+          set -o pipefail
+
+          # The secret travels in a header, never in the URL, so it cannot leak
+          # into access logs, referrers or the run summary.
+          HTTP_CODE=$(curl -sS \
+            --max-time 60 \
+            --retry 2 --retry-delay 5 --retry-connrefused \
+            -o /tmp/tick.json \
+            -w '%{http_code}' \
+            -H "x-rare-scheduler-secret: ${SCHEDULER_SECRET}" \
+            "${TARGET}/api/scheduler/tick" || echo "000")
+
+          echo "HTTP ${HTTP_CODE}"
+          echo "http_code=${HTTP_CODE}" >> "$GITHUB_OUTPUT"
+
+          # The response body is engine output (counts, execution ids), never
+          # the secret, so it is safe to print for the run log.
+          if [ -s /tmp/tick.json ]; then
+            head -c 4000 /tmp/tick.json
+            echo
+          fi
+
+          case "$HTTP_CODE" in
+            200) echo "Tick completed." ;;
+            403) echo "::error::The scheduler secret was rejected (403). Check RARE_SCHEDULER_SECRET matches the deployment."; exit 1 ;;
+            503) echo "::error::The scheduler is not initialised on the deployment (503)."; exit 1 ;;
+            000) echo "::error::The deployment was unreachable."; exit 1 ;;
+            *)   echo "::error::Tick failed with HTTP ${HTTP_CODE}."; exit 1 ;;
+          esac
+
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "### Scheduler tick"
+            echo ""
+            echo "- Target: \`${{ vars.RARE_BASE_URL || 'https://rareproject.vercel.app' }}\`"
+            echo "- HTTP: \`${{ steps.tick.outputs.http_code }}\`"
+            echo "- Result: ${{ steps.tick.outcome }}"
+          } >> "$GITHUB_STEP_SUMMARY"

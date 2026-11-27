@@ -56,6 +56,21 @@ export interface DepartmentBindings {
   pluginRegistry: PluginRegistry;
   /** Multi-agent runtime (section 23). */
   agentRuntime: AgentRuntime;
+  /**
+   * Scheduler surface, so Chat and the Assistant can create, list, pause and
+   * resume automations through the same engine the HTTP routes use.
+   * Optional because the engine is only constructed once storage is ready.
+   */
+  scheduler?: () => SchedulerBinding | undefined;
+}
+
+/** The slice of the scheduler the capability layer needs. */
+export interface SchedulerBinding {
+  list(ownerId: string): Promise<Array<Record<string, unknown>>>;
+  create(ownerId: string, input: { title: string; instruction: string; schedule: string; type?: string }): Promise<Record<string, unknown>>;
+  setEnabled(ownerId: string, id: string, enabled: boolean): Promise<boolean>;
+  remove(ownerId: string, id: string): Promise<boolean>;
+  runNow(ownerId: string, id: string): Promise<Record<string, unknown>>;
 }
 
 function ok(summary: string, data: unknown, started: number, limitations?: string[]): CapabilityResult {
@@ -85,7 +100,7 @@ function groundingProvider(providers: ProviderRegistry): GroundingProvider {
  * again replaces the descriptors (hot reload) rather than duplicating them.
  */
 export function registerDepartmentCapabilities(bindings: DepartmentBindings): void {
-  const { documents, research, mcp, devicePlanner, benchmark, providers, workspaceRoot, modelCatalogue, pluginRegistry, agentRuntime } = bindings;
+  const { documents, research, mcp, devicePlanner, benchmark, providers, workspaceRoot, modelCatalogue, pluginRegistry, agentRuntime, scheduler } = bindings;
 
   const requireDocuments = (): DocumentsService => {
     const service = documents();
@@ -686,6 +701,81 @@ export function registerDepartmentCapabilities(bindings: DepartmentBindings): vo
           data: result,
           durationMs: Date.now() - started,
         };
+      },
+    },
+
+    // ---------------------------------------------------------------- Scheduler
+    {
+      id: 'scheduler.manage',
+      department: 'scheduler',
+      title: 'Manage scheduled automations',
+      description:
+        'Create, list, pause, resume, run or delete a scheduled task. The task is stored by the real ' +
+        'ScheduleEngine and executed by it on its durable tick — creating one here is not a promise, ' +
+        'it is a persisted job the engine will actually run.',
+      permission: 'write',
+      idempotent: false,
+      cost: 'free',
+      args: [
+        { name: 'operation', type: 'string', required: true, description: 'list | create | pause | resume | run | delete' },
+        { name: 'id', type: 'string', required: false, description: 'Task id, for pause/resume/run/delete.' },
+        { name: 'title', type: 'string', required: false, description: 'Short title, for create.' },
+        { name: 'instruction', type: 'string', required: false, description: 'What the task should actually do when it fires.' },
+        { name: 'schedule', type: 'string', required: false, description: 'When it runs, e.g. "every 2 minutes", "every day at 08:00", "10:30".' },
+      ],
+      async handler(args, ctx) {
+        const started = Date.now();
+        const binding = scheduler?.();
+        if (!binding) {
+          return fail('The scheduler is not initialised yet (storage still starting).', 'scheduler_unavailable', started);
+        }
+        const operation = String(args.operation || '').toLowerCase();
+
+        try {
+          switch (operation) {
+            case 'list': {
+              const tasks = await binding.list(ctx.ownerId);
+              return ok(`${tasks.length} scheduled task(s).`, { count: tasks.length, tasks }, started);
+            }
+            case 'create': {
+              if (!args.instruction || !args.schedule) {
+                return fail('Creating a task needs both an instruction and a schedule.', 'invalid_args', started);
+              }
+              const task = await binding.create(ctx.ownerId, {
+                title: String(args.title || args.instruction).slice(0, 80),
+                instruction: String(args.instruction),
+                schedule: String(args.schedule),
+              });
+              return ok(`Scheduled "${task.title}". It will run on the engine's next tick.`, task, started);
+            }
+            case 'pause':
+            case 'resume': {
+              if (!args.id) return fail(`"${operation}" needs a task id.`, 'invalid_args', started);
+              const changed = await binding.setEnabled(ctx.ownerId, String(args.id), operation === 'resume');
+              return changed
+                ? ok(`Task ${operation}d.`, { id: args.id, enabled: operation === 'resume' }, started)
+                : fail(`No task with id "${args.id}".`, 'not_found', started);
+            }
+            case 'run': {
+              if (!args.id) return fail('"run" needs a task id.', 'invalid_args', started);
+              const result = await binding.runNow(ctx.ownerId, String(args.id));
+              return ok('Task executed now.', result, started);
+            }
+            case 'delete': {
+              if (!args.id) return fail('"delete" needs a task id.', 'invalid_args', started);
+              const removed = await binding.remove(ctx.ownerId, String(args.id));
+              return removed ? ok('Task deleted.', { id: args.id }, started) : fail(`No task with id "${args.id}".`, 'not_found', started);
+            }
+            default:
+              return fail(`Unknown operation "${operation}". Use list, create, pause, resume, run or delete.`, 'invalid_args', started);
+          }
+        } catch (error) {
+          return fail(
+            error instanceof Error ? error.message : 'The scheduler operation failed.',
+            'scheduler_error',
+            started,
+          );
+        }
       },
     },
 

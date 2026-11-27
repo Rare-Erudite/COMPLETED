@@ -32,6 +32,7 @@ export type CapabilityDepartment =
   | 'deployment'
   | 'device'
   | 'plugins'
+  | 'scheduler'
   | 'intelligence'
   | 'self-build'
   | 'memory'

@@ -158,6 +158,13 @@ export interface SchedulePersistence {
   claim(taskId: string, workerId: string, leaseMs: number, now: number): Promise<ScheduledTask | null>;
   /** Release a lease without changing anything else. */
   release(taskId: string, workerId: string): Promise<void>;
+  /**
+   * Delete a task, scoped to its owner.
+   *
+   * Optional because the interface is also implemented by test doubles that
+   * only need the execution path; the real stores both implement it.
+   */
+  delete?(taskId: string, ownerId: string): Promise<boolean>;
 }
 
 const DEFAULT_TICK_MS = 15_000;

@@ -80,7 +80,7 @@ import { notificationDeliveryService } from './src/server/providers/Notification
 import { oAuthVerificationService } from './src/server/providers/OAuthVerificationService.js';
 import { resolveWritableAppRoot } from './src/server/storage/PersistentJsonStore.js';
 import { capabilityRegistry } from './src/server/orchestration/CapabilityRegistry.js';
-import { registerDepartmentCapabilities } from './src/server/orchestration/registerCapabilities.js';
+import { registerDepartmentCapabilities, type SchedulerBinding } from './src/server/orchestration/registerCapabilities.js';
 import { jobStore } from './src/server/orchestration/JobStore.js';
 import { startJob, resumeJob, shouldRunAsJob } from './src/server/orchestration/JobRunner.js';
 import { ModelCatalogue } from './src/server/intelligence/ModelCatalogue.js';
@@ -255,6 +255,7 @@ function ensureCapabilitiesRegistered(): void {
     modelCatalogue,
     pluginRegistry: getPluginRegistry(),
     agentRuntime,
+    scheduler: schedulerBinding,
   });
   capabilitiesRegistered = true;
 }
@@ -6277,6 +6278,70 @@ async function listOwnerSchedules(ownerId: string): Promise<ScheduledTaskView[]>
   return all
     .filter((task) => (task as any).owner_id === ownerId)
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+}
+
+/**
+ * The scheduler as the capability layer sees it.
+ *
+ * Chat and the Assistant reach automations through this, so a natural-language
+ * "remind me every morning" creates the SAME persisted task the HTTP route
+ * would — one engine, one store, no parallel path that could drift.
+ */
+function schedulerBinding(): SchedulerBinding | undefined {
+  if (!scheduleStore) return undefined;
+  return {
+    async list(ownerId) {
+      return (await listOwnerSchedules(ownerId)) as unknown as Array<Record<string, unknown>>;
+    },
+    async create(ownerId, input) {
+      const expression = input.schedule.trim();
+      const init = initialiseTask({
+        id: `sch_${crypto.randomUUID()}`,
+        title: input.title.trim().slice(0, 160),
+        time: expression.slice(0, 80),
+        type: 'recurring',
+        action: input.instruction.slice(0, 2000),
+        enabled: true,
+        repeat: expression.slice(0, 120),
+        created_at: new Date().toISOString(),
+        schedule: expression,
+        timezone: 'UTC',
+        action_kind: 'report',
+        action_config: {},
+        owner_id: ownerId,
+      } as any);
+      if ('error' in init) throw new Error(init.error);
+      await scheduleStore!.save(init.task as any);
+      return init.task as unknown as Record<string, unknown>;
+    },
+    async setEnabled(ownerId, id, enabled) {
+      const all = await scheduleStore!.listAll();
+      const task = all.find((item) => item.id === id && (item as any).owner_id === ownerId);
+      if (!task) return false;
+      const updated: any = { ...task, status: enabled ? 'active' : 'paused', enabled };
+      if (enabled) {
+        const parsed = parseSchedule(updated.schedule ?? updated.time ?? '');
+        if (parsed.ok) {
+          const tz = updated.timezone && isValidTimeZone(updated.timezone) ? updated.timezone : 'UTC';
+          const next = nextRunAfter(parsed, Date.now(), tz);
+          updated.next_run_at = next ? new Date(next).toISOString() : null;
+        }
+      }
+      await scheduleStore!.save(updated);
+      return true;
+    },
+    async remove(ownerId, id) {
+      if (!scheduleStore!.delete) throw new Error('This schedule store does not support deletion.');
+      return scheduleStore!.delete(id, ownerId);
+    },
+    async runNow(ownerId, id) {
+      if (!scheduleEngine) throw new Error('The scheduler engine is not initialised.');
+      const all = await scheduleStore!.listAll();
+      const task = all.find((item) => item.id === id && (item as any).owner_id === ownerId);
+      if (!task) throw new Error(`No task with id "${id}".`);
+      return (await scheduleEngine.runNow(id)) as unknown as Record<string, unknown>;
+    },
+  };
 }
 
 app.get('/api/schedules', async (req, res) => {

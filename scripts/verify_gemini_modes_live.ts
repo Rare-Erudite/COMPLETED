@@ -40,9 +40,11 @@ async function main() {
   }
 
   console.log('\n\n=== SUMMARY ===');
+  let failedModes = 0;
   for (const mode of PERSONA_MODES) {
     const r = results[mode];
     const sentences = r.text ? r.text.split(/(?<=[.!?])\s+/).filter(Boolean).length : 0;
+    if (!r.text) failedModes += 1;
     console.log(
       `${mode.padEnd(13)} model=${r.model.padEnd(20)} chars=${String(r.text.length).padStart(5)} sentences=${String(sentences).padStart(3)} ms=${r.ms}`
     );
@@ -55,6 +57,16 @@ async function main() {
     JSON.stringify({ prompt: PROMPT, results }, null, 2)
   );
   console.log('\nRaw results written to gemini_mode_results.json');
+
+  // A run where a mode returned nothing is a FAILED run. Previously this
+  // script always exited 0, so a CI job built on it would have gone green
+  // while the provider was down — the exact "test passes without exercising
+  // the real workflow" failure this project is trying to eliminate.
+  if (failedModes > 0) {
+    console.error(`\nFAILED: ${failedModes} of ${PERSONA_MODES.length} mode(s) returned no text.`);
+    process.exit(1);
+  }
+  console.log(`\nPASSED: all ${PERSONA_MODES.length} modes returned real text.`);
 }
 
 main().catch((e) => {

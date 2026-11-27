@@ -61,6 +61,7 @@ import { runPersonaModeTests } from './test_persona_modes.js';
 import { runAuthInterfaceTests } from './test_auth_interface.js';
 import { runPersonaPropagationTests } from './test_persona_propagation.js';
 import { runGeminiModelSelectionTests } from './test_gemini_model_selection.js';
+import { runSchedulerCapabilityTests } from './test_scheduler_capability.js';
 
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -266,6 +267,11 @@ async function main() {
     const research = await runResearchIncrementTests();
     if (research.failed > 0) {
       throw new Error(`Research increment: ${research.failed} assertion(s) failed.`);
+    }
+    console.log();
+    const schedulerCapability = await runSchedulerCapabilityTests();
+    if (schedulerCapability.failed > 0) {
+      throw new Error(`Scheduler capability: ${schedulerCapability.failed} assertion(s) failed.`);
     }
     console.log();
     console.log('=====================================================');
