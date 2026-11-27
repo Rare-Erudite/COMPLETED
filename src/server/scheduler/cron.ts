@@ -193,6 +193,25 @@ export function parseSchedule(expression: string, now: number = Date.now()): Par
     return { h, m: min };
   };
 
+  // Bare time of day: "10:30" / "8am" / "17:45".
+  // The /api/schedules contract has always accepted a plain `time` field, and
+  // existing clients send exactly this. Treat it as a daily recurrence at that
+  // wall-clock time rather than rejecting it.
+  if (/^\d{1,2}(?::\d{2})?\s*(?:am|pm)?$/.test(text)) {
+    const t = parseTimeOfDay(text);
+    if (t) {
+      return {
+        ok: true,
+        kind: 'cron',
+        cron: {
+          minutes: [t.m], hours: [t.h], daysOfMonth: range(1, 31), months: range(1, 12),
+          daysOfWeek: range(0, 6), domRestricted: false, dowRestricted: false,
+        },
+        expression: raw,
+      };
+    }
+  }
+
   // Daily: "every day at 08:00" / "daily at 8am"
   const daily = text.match(/^(?:every day|daily)(?: at)? (.+)$/);
   if (daily) {

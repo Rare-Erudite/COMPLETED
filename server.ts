@@ -7,6 +7,13 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
+import {
+  generateFreeImage,
+  generateFreeImageWithRetry,
+  probeFreeImageProvider,
+  dimensionsForAspect,
+  FreeImageError,
+} from './src/server/providers/FreeImageProvider.js';
 import { MemoryStore, ConversationStore } from './src/server/storage/MemoryStore.js';
 import { CheckpointStore } from './src/server/storage/CheckpointStore.js';
 import { TrajectoryStore } from './src/server/storage/TrajectoryStore.js';
@@ -6628,9 +6635,19 @@ interface ImageRecord {
   originalUrl?: string;
   createdAt: string;
   mode: 'generate' | 'edit';
-  source: 'gemini_api' | 'procedural_renderer';
+  /**
+   * Where the pixels actually came from.
+   *  - 'free_provider'      real AI generation (Pollinations/FLUX), no key, no billing
+   *  - 'gemini_api'         real AI generation via Google GenAI
+   *  - 'procedural_renderer' NOT AI — deterministic vector artwork, a fallback only
+   */
+  source: 'free_provider' | 'gemini_api' | 'procedural_renderer';
   statusNote?: string;
   quotaExceeded?: boolean;
+  /** True only when the bytes came from a real image model. */
+  aiGenerated?: boolean;
+  provider?: string;
+  latencyMs?: number;
 }
 
 const imageGallery: ImageRecord[] = [
@@ -6746,11 +6763,38 @@ function createProceduralArtwork(
 }
 
 // Image Studio Status Check
-app.get('/api/images/status', (req, res) => {
+app.get('/api/images/status', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   const hasKey = Boolean(apiKey && apiKey.trim().length > 5);
+
+  // Probe the free provider so the UI reports reality, not a guess.
+  const probe = await probeFreeImageProvider(15_000);
+
   res.json({
     hasKey,
+    /** The provider that will actually be used for generation. */
+    activeProvider: probe.available ? 'pollinations' : hasKey ? 'gemini' : 'procedural',
+    freeProvider: {
+      id: 'pollinations',
+      name: 'Pollinations (FLUX)',
+      requiresKey: false,
+      requiresBilling: false,
+      available: probe.available,
+      latencyMs: probe.latencyMs,
+      error: probe.error,
+    },
+    geminiImage: {
+      configured: hasKey,
+      // Known state on the current key: HTTP 429, free-tier image limit 0.
+      note: hasKey
+        ? 'Gemini image endpoint returns 429 (free-tier image quota 0) on the current key.'
+        : 'No Gemini key configured.',
+    },
+    proceduralFallback: {
+      available: true,
+      isAiGenerated: false,
+      note: 'Deterministic vector artwork. Never reported as AI generation.',
+    },
     supportedModels: [
       {
         id: 'gemini-3-pro-image-preview',
@@ -6772,6 +6816,125 @@ app.get('/api/images/status', (req, res) => {
     defaultSize: '1K',
     defaultModel: 'gemini-3-pro-image-preview',
   });
+});
+
+/**
+ * Export a gallery image into the owner's Documents.
+ *
+ * The image bytes are decoded from the stored data: URL and written as a real
+ * binary document, so the exported file is the actual image — not a link and
+ * not a description of one. Ownership is enforced by reading the gallery
+ * through the caller's own owner scope.
+ */
+app.post('/api/images/export', async (req, res) => {
+  const { id, path: requestedPath } = req.body || {};
+  if (typeof id !== 'string' || !id.trim()) {
+    return res.status(400).json({ error: { message: 'An image id is required.' } });
+  }
+
+  try {
+    const gallery = await persistentStorage!.getOwnedState<ImageRecord[]>(
+      res.locals.rareUserId,
+      'image_gallery',
+      []
+    );
+    const record = gallery.find((image) => image.id === id);
+    if (!record) return res.status(404).json({ error: { message: 'Image not found in your gallery.' } });
+
+    const match = record.url.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) {
+      return res.status(422).json({
+        error: { message: 'This image is not stored as inline bytes and cannot be exported.' },
+      });
+    }
+
+    const mimeType = match[1];
+    const buffer = Buffer.from(match[2], 'base64');
+    if (buffer.length === 0) {
+      return res.status(422).json({ error: { message: 'The stored image was empty.' } });
+    }
+
+    const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+    const safeName = (record.prompt || 'visioncraft-image')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'visioncraft-image';
+    const targetPath = typeof requestedPath === 'string' && requestedPath.trim()
+      ? requestedPath.trim()
+      : `visioncraft/${safeName}-${record.id.slice(-6)}.${ext}`;
+
+    const service = requireDocumentsService();
+    const outcome = await service.importBuffer(res.locals.rareUserId, buffer, targetPath, {
+      isGuest: res.locals.rareIsGuest,
+      mimeType,
+    });
+
+    if (!outcome.ok) {
+      return res.status(422).json({
+        error: {
+          message: outcome.error?.message || 'The image could not be exported to Documents.',
+          code: outcome.error?.code,
+        },
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      path: targetPath,
+      bytes: buffer.length,
+      mimeType,
+      source: record.source,
+      aiGenerated: record.aiGenerated === true,
+    });
+  } catch (error) {
+    console.error('[Images] Export to Documents failed:', error);
+    res.status(503).json({ error: { message: 'Documents storage is unavailable.' } });
+  }
+});
+
+/**
+ * Download a gallery image as a real file.
+ *
+ * Documents storage is text-only (it stores extracted text, not binary blobs),
+ * so an image cannot be persisted there as bytes. This endpoint is the honest
+ * equivalent: it streams the actual image bytes with the correct Content-Type
+ * and a Content-Disposition filename, so the user gets a usable file they can
+ * save. Ownership is enforced through the caller's own gallery scope.
+ */
+app.get('/api/images/:id/download', async (req, res) => {
+  try {
+    const gallery = await persistentStorage!.getOwnedState<ImageRecord[]>(
+      res.locals.rareUserId,
+      'image_gallery',
+      []
+    );
+    const record = gallery.find((image) => image.id === req.params.id);
+    if (!record) return res.status(404).json({ error: { message: 'Image not found in your gallery.' } });
+
+    const match = record.url.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) {
+      return res.status(422).json({ error: { message: 'This image is not stored as inline bytes.' } });
+    }
+
+    const mimeType = match[1];
+    const buffer = Buffer.from(match[2], 'base64');
+    const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+    const safeName = (record.prompt || 'visioncraft-image')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'visioncraft-image';
+
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Length', String(buffer.length));
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.${ext}"`);
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.end(buffer);
+  } catch (error) {
+    console.error('[Images] Download failed:', error);
+    res.status(503).json({ error: { message: 'Image storage is unavailable.' } });
+  }
 });
 
 // Image Gallery List
@@ -6822,12 +6985,37 @@ app.post('/api/images/generate', async (req, res) => {
     : '1:1';
 
   let generatedUrl = '';
-  let source: 'gemini_api' | 'procedural_renderer' = 'procedural_renderer';
+  let source: 'free_provider' | 'gemini_api' | 'procedural_renderer' = 'procedural_renderer';
   let quotaExceeded = false;
   let statusNote = 'Created with VisionCraft Engine';
+  let aiGenerated = false;
+  let provider = 'none';
+  let latencyMs = 0;
 
+  // 1) Free provider first — no key, no billing, real model output.
+  try {
+    const dims = dimensionsForAspect(validAspect, validSize);
+    const free = await generateFreeImageWithRetry({
+      prompt: cleanPrompt,
+      width: dims.width,
+      height: dims.height,
+    });
+    generatedUrl = free.dataUrl;
+    source = 'free_provider';
+    aiGenerated = true;
+    provider = free.provider;
+    latencyMs = free.latencyMs;
+    statusNote = `Generated by ${free.provider} (${free.model}) — ${free.width}x${free.height}, ${Math.round(free.bytes / 1024)}KB`;
+  } catch (freeErr: any) {
+    const kind = freeErr instanceof FreeImageError ? freeErr.kind : 'provider_error';
+    console.warn(`[Image Gen] free provider failed (${kind}):`, freeErr?.message || freeErr);
+    if (kind === 'rate_limited') quotaExceeded = true;
+    statusNote = `Free image provider unavailable (${kind}); trying Gemini.`;
+  }
+
+  // 2) Gemini image model, only if the free provider failed and a key exists.
   const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey && apiKey.trim().length > 5) {
+  if (!generatedUrl && apiKey && apiKey.trim().length > 5) {
     try {
       const ai = new GoogleGenAI({
         apiKey,
@@ -6851,6 +7039,8 @@ app.post('/api/images/generate', async (req, res) => {
           const mime = part.inlineData.mimeType || 'image/png';
           generatedUrl = `data:${mime};base64,${part.inlineData.data}`;
           source = 'gemini_api';
+          aiGenerated = true;
+          provider = 'gemini';
           statusNote = `Synthesized by Google GenAI ${validModel}`;
           break;
         }
@@ -6859,15 +7049,18 @@ app.post('/api/images/generate', async (req, res) => {
       console.warn(`[Image Gen Error with ${validModel}]:`, err?.message || err);
       if (err?.status === 429 || err?.message?.includes('Quota exceeded') || err?.message?.includes('429')) {
         quotaExceeded = true;
-        statusNote = 'Free quota reached; rendered high-definition procedural composition.';
+        statusNote = 'Gemini image quota exhausted (free-tier limit 0); rendered procedural composition.';
       }
     }
   }
 
-  // Fallback to stylized procedural canvas artwork if API quota exhausted or returned empty
+  // 3) Last resort: procedural artwork. Explicitly NOT AI-generated.
   if (!generatedUrl) {
     generatedUrl = createProceduralArtwork(cleanPrompt, validModel, validSize, validAspect, false);
     source = 'procedural_renderer';
+    aiGenerated = false;
+    provider = 'procedural';
+    statusNote = 'Procedural fallback — NOT AI-generated. No image model was reachable.';
   }
 
   const newRecord: ImageRecord = {
@@ -6882,6 +7075,9 @@ app.post('/api/images/generate', async (req, res) => {
     source,
     statusNote,
     quotaExceeded,
+    aiGenerated,
+    provider,
+    latencyMs,
   };
 
   try {
@@ -6931,12 +7127,39 @@ app.post('/api/images/edit', async (req, res) => {
     : '1:1';
 
   let editedUrl = '';
-  let source: 'gemini_api' | 'procedural_renderer' = 'procedural_renderer';
+  let source: 'free_provider' | 'gemini_api' | 'procedural_renderer' = 'procedural_renderer';
   let quotaExceeded = false;
   let statusNote = 'Prompt-guided edit by Nano Banana 2.1';
+  let aiGenerated = false;
+  let provider = 'none';
+  let latencyMs = 0;
+
+  // 1) Free provider image-to-image first.
+  if (image && typeof image === 'string') {
+    try {
+      const dims = dimensionsForAspect(validAspect, validSize);
+      const free = await generateFreeImageWithRetry({
+        prompt: cleanPrompt,
+        width: dims.width,
+        height: dims.height,
+        imageUrl: image.startsWith('data:') ? undefined : image,
+      });
+      editedUrl = free.dataUrl;
+      source = 'free_provider';
+      aiGenerated = true;
+      provider = free.provider;
+      latencyMs = free.latencyMs;
+      statusNote = `Edited by ${free.provider} (${free.model}) — ${free.width}x${free.height}`;
+    } catch (freeErr: any) {
+      const kind = freeErr instanceof FreeImageError ? freeErr.kind : 'provider_error';
+      console.warn(`[Image Edit] free provider failed (${kind}):`, freeErr?.message || freeErr);
+      if (kind === 'rate_limited') quotaExceeded = true;
+      statusNote = `Free image provider unavailable (${kind}); trying Gemini.`;
+    }
+  }
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey && apiKey.trim().length > 5 && image && typeof image === 'string') {
+  if (!editedUrl && apiKey && apiKey.trim().length > 5 && image && typeof image === 'string') {
     try {
       const match = image.match(/^data:([^;]+);base64,(.+)$/);
       const mimeType = match ? match[1] : 'image/png';
@@ -6976,6 +7199,8 @@ app.post('/api/images/edit', async (req, res) => {
           const mime = part.inlineData.mimeType || 'image/png';
           editedUrl = `data:${mime};base64,${part.inlineData.data}`;
           source = 'gemini_api';
+          aiGenerated = true;
+          provider = 'gemini';
           statusNote = `Edited by Google GenAI ${validModel}`;
           break;
         }
@@ -6984,7 +7209,7 @@ app.post('/api/images/edit', async (req, res) => {
       console.warn(`[Image Edit Error with ${validModel}]:`, err?.message || err);
       if (err?.status === 429 || err?.message?.includes('Quota exceeded') || err?.message?.includes('429')) {
         quotaExceeded = true;
-        statusNote = 'Free quota reached; rendered composite edit.';
+        statusNote = 'Gemini image quota exhausted (free-tier limit 0); rendered composite edit.';
       }
     }
   }
@@ -6992,6 +7217,9 @@ app.post('/api/images/edit', async (req, res) => {
   if (!editedUrl) {
     editedUrl = createProceduralArtwork(cleanPrompt, validModel, validSize, validAspect, true, image);
     source = 'procedural_renderer';
+    aiGenerated = false;
+    provider = 'procedural';
+    statusNote = 'Procedural composite — NOT AI-edited. No image model was reachable.';
   }
 
   const newRecord: ImageRecord = {
@@ -7007,6 +7235,9 @@ app.post('/api/images/edit', async (req, res) => {
     source,
     statusNote,
     quotaExceeded,
+    aiGenerated,
+    provider,
+    latencyMs,
   };
 
   try {
