@@ -86,11 +86,30 @@ The accessibility-loss handling added in `c49b66c` is genuinely inside the shipp
 
 | Test | Status | Evidence |
 |---|---|---|
-| Installs on API 33 emulator | **PASS** | Workflow job "Install and launch on an Android emulator" |
+| Installs on API 33 emulator | **PASS** | Job "Install and launch on an Android emulator" — `success` |
 | Launches without crash | **PASS** | Launch screenshot uploaded by the workflow |
 | Installs on physical Infinix Smart 8 | **NOT TESTED** | Needs the owner |
 
+Both jobs in run `46000640566` completed `success`:
+`Build, sign and verify the APK` and `Install and launch on an Android emulator`.
+
 Emulator install-and-launch is **not** physical-device acceptance and is not counted as such.
+
+---
+
+## 3b. Production deployment
+
+| Check | Result |
+|---|---|
+| `GET /` | 200 |
+| `GET /api/health` | 200, `commit_sha: 8df9029247cfc5adfe2880b9016d5e42fc1bd92f` |
+| `GET /api/scheduler/status` (no auth) | 401 — gate works |
+| `GET /api/capabilities` (real session) | 200, `scheduler` department present |
+| `scheduler.manage` create in production | 200, real task with computed `next_run_at` |
+| `GET /api/schedules` | 1 task, active |
+| `scheduler.manage` delete | 200, task removed |
+
+The live deployment is running the final commit and the new scheduler capability is reachable there.
 
 ---
 

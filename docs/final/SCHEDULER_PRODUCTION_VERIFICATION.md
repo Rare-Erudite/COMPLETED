@@ -60,6 +60,27 @@ Status labels: **PASS** · **PARTIAL** · **BLOCKED** · **NOT IMPLEMENTED** · 
 
 Chat and the Assistant previously had no route to the scheduler. `scheduler.manage` is now a registered capability backed by the same engine and store the HTTP routes use.
 
+### Verified in PRODUCTION (`rareproject.vercel.app`, commit `8df9029`)
+
+Real guest session, real CSRF, real deployment:
+
+```
+POST /api/capabilities/invoke
+{"capabilityId":"scheduler.manage","args":{"operation":"create",
+ "title":"Prod WhatsApp watch",
+ "instruction":"Check WhatsApp for new incoming messages and tell me what has arrived.",
+ "schedule":"every 2 minutes"}}
+
+→ 200 {"ok":true,"summary":"Scheduled \"Prod WhatsApp watch\"...",
+   "data":{"id":"sch_e2aa2323-...","schedule":"every 2 minutes",
+           "status":"active","next_run_at":"2026-11-27T12:50:56.999Z"}}
+
+GET /api/schedules → 1 task, active, next run computed
+POST ... {"operation":"delete"} → {"ok":true,"summary":"Task deleted."}
+```
+
+The `scheduler` department is live in the production capability catalogue (`count: 1`).
+
 `tests/test_scheduler_capability.ts` — **24 passed, 0 failed**, through a real server:
 
 ```
