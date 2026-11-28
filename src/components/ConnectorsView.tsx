@@ -93,7 +93,25 @@ export function ConnectorsView({ t }: { t: ThemeConfig }) {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const data = await safeFetch<{ connectors: ConnectorView[]; summary: ConnectorSummary }>('/api/connectors');
+
+    // The catalogue is the whole page, so a single transient failure (a cold
+    // serverless function, a session cookie that was still being issued on the
+    // very first request of a session) must not leave the user staring at
+    // "unavailable" with an empty list. Retry a few times with a short backoff
+    // before reporting the failure.
+    let data: { connectors: ConnectorView[]; summary: ConnectorSummary } | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      data = await safeFetch<{ connectors: ConnectorView[]; summary: ConnectorSummary }>(
+        '/api/connectors',
+        undefined,
+        undefined,
+        1,
+        20000,
+      );
+      if (data && Array.isArray(data.connectors) && data.connectors.length > 0) break;
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+    }
+
     if (data && Array.isArray(data.connectors)) {
       setConnectors(data.connectors);
       setSummary(data.summary);
