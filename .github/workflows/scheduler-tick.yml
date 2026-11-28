@@ -73,7 +73,11 @@ jobs:
 
           # The secret travels in a header, never in the URL, so it cannot leak
           # into access logs, referrers or the run summary.
+          # The tick route is POST-only. A GET returns 404 "API endpoint not
+          # found", which is indistinguishable from a missing route and sent
+          # earlier runs chasing the wrong cause.
           HTTP_CODE=$(curl -sS \
+            -X POST \
             --max-time 60 \
             --retry 2 --retry-delay 5 --retry-connrefused \
             -o /tmp/tick.json \
