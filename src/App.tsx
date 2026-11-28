@@ -70,6 +70,7 @@ import { themes, ThemeKey, ThemeConfig } from './theme';
 import { DocumentsWorkspaceView } from './components/DocumentsWorkspaceView';
 import { ResearchWorkspaceView } from './components/ResearchWorkspaceView';
 import { AssistantStudioView } from './components/AssistantStudioView';
+import { ConnectorsView } from './components/ConnectorsView';
 
 import {
   safeFetch,
@@ -328,6 +329,12 @@ export default function App() {
     }, []),
   );
   const [health, setHealth] = useState<any>(null);
+  // Live badge values for the sidebar. These are read from the real APIs, not
+  // hardcoded: the Plugins badge is the number of genuinely connected
+  // connectors, and the VisionCraft badge reflects the image engine's real
+  // capability rather than a static "4K AI" label.
+  const [connectorBadge, setConnectorBadge] = useState<string>('—');
+  const [imageBadge, setImageBadge] = useState<string>('AI');
   const [assistantName, setAssistantName] = useState('RARE');
   const [autonomyLevel, setAutonomyLevel] = useState(2);
   const [thinkHarder, setThinkHarder] = useState(false);
@@ -538,9 +545,11 @@ useEffect(() => {
   };
 
   const fetchHealthAndSettings = async () => {
-    const [hData, sData] = await Promise.all([
+    const [hData, sData, cData, iData] = await Promise.all([
       safeFetch<any>('/api/health'),
       safeFetch<any>('/api/settings'),
+      safeFetch<any>('/api/connectors/summary'),
+      safeFetch<any>('/api/images/status'),
     ]);
     if (hData) {
       setHealth(hData);
@@ -549,6 +558,19 @@ useEffect(() => {
     }
     if (sData && sData.developer_authenticated !== undefined) {
       setIsDeveloperAuthed(sData.developer_authenticated);
+    }
+    // Live sidebar badges — never hardcoded.
+    if (cData && typeof cData.connected === 'number') {
+      setConnectorBadge(`${cData.connected} connected`);
+    }
+    if (iData) {
+      // The badge reflects the provider that will actually run, not a static
+      // "4K AI" claim. Gemini's image endpoint is quota-blocked on the current
+      // key, so the honest label is the real active provider.
+      const provider = iData.activeProvider;
+      if (provider === 'pollinations') setImageBadge('FLUX');
+      else if (provider === 'gemini') setImageBadge('Gemini');
+      else setImageBadge('Local');
     }
   };
 
@@ -803,8 +825,8 @@ useEffect(() => {
     { id: 'research', label: 'Research', icon: Compass, badge: 'Deep' },
     { id: 'projects', label: 'Projects', icon: Package, badge: 'APK • EXE • Web' },
     { id: 'scheduled', label: 'Scheduled', icon: Clock, badge: 'Alarms' },
-    { id: 'plugins', label: 'Plugins', icon: Puzzle, badge: '8 Installed' },
-    { id: 'images', label: 'VisionCraft Studio', icon: ImageIcon, badge: '4K AI' },
+    { id: 'plugins', label: 'Plugins', icon: Puzzle, badge: connectorBadge },
+    { id: 'images', label: 'VisionCraft Studio', icon: ImageIcon, badge: imageBadge },
   ];
 
   return (
@@ -1410,7 +1432,7 @@ useEffect(() => {
           {activeTab === 'research' && <ResearchWorkspaceView t={t} onNavigate={setActiveTab} />}
           {activeTab === 'projects' && <CollaborativeBuildWorkspaceView t={t} />}
           {activeTab === 'scheduled' && <ScheduledWorkspaceView t={t} onNavigate={setActiveTab} />}
-          {activeTab === 'plugins' && <PluginsDirectoryView t={t} onNavigate={setActiveTab} />}
+          {activeTab === 'plugins' && <ConnectorsView t={t} />}
           {activeTab === 'images' && (
             <ImageStudioWorkspaceView
               t={t}

@@ -114,7 +114,7 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/rare-keystore/release.keystore"
           export STORE_PASS="$KEYSTORE_PASSWORD"
           fingerprint="$(keytool -exportcert -keystore "$RUNNER_TEMP/rare-keystore/release.keystore" -alias "$KEY_ALIAS" -storepass:env STORE_PASS | openssl dgst -sha256 -binary | od -An -vtx1 | tr -d ' \n' | tr '[:lower:]' '[:upper:]')"
-          [[ "$fingerprint" == '37BE10E99449FBC5F90331965905E8D2CCD31A446301EAFA20620F11BADEE1DF' ]] || { echo "::error::Configured signing key does not match the verified replacement RARE release certificate."; exit 1; }
+          [[ "$fingerprint" == '9A0AC0ED15D6210B2D91553B85C7C40886925CCB4E4478227BB71B22CCE4883D' ]] || { echo "::error::Configured signing key does not match the verified replacement RARE release certificate."; exit 1; }
           export KEY_PASS="$KEY_PASSWORD"
           mkdir -p "$RUNNER_TEMP/signing-check"
           printf 'Manifest-Version: 1.0\n\n' > "$RUNNER_TEMP/signing-check/MANIFEST.MF"
@@ -142,7 +142,7 @@ jobs:
           apk="exports/rare-v${RARE_APP_VERSION_NAME}-release.apk"
           test -s "$apk"
           apksigner verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/final-signature.txt"
-          grep -qi '37be10e99449fbc5f90331965905e8d2ccd31a446301eafa20620f11badee1df' "$RUNNER_TEMP/final-signature.txt"
+          grep -qi '9a0ac0ed15d6210b2d91553b85c7c40886925ccb4e4478227bb71b22cce4883d' "$RUNNER_TEMP/final-signature.txt"
           aapt dump badging "$apk" | grep -q "package: name='com.rare.ai.intelligence'"
           aapt dump badging "$apk" | grep -q "versionName='${RARE_APP_VERSION_NAME}'"
           unzip -p "$apk" assets/www/index.html | grep -Fq 'https://rareproject.vercel.app'

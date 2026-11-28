@@ -88,6 +88,7 @@ import { jobStore } from './src/server/orchestration/JobStore.js';
 import { startJob, resumeJob, shouldRunAsJob } from './src/server/orchestration/JobRunner.js';
 import { ModelCatalogue } from './src/server/intelligence/ModelCatalogue.js';
 import { PluginRegistry } from './src/server/plugins/PluginRegistry.js';
+import { ConnectorRegistry } from './src/server/connectors/ConnectorRegistry.js';
 import { AgentRuntime } from './src/server/agents/AgentRuntime.js';
 
 const app = express();
@@ -247,6 +248,9 @@ function getPluginRegistry(): PluginRegistry {
   if (!pluginRegistryInstance) pluginRegistryInstance = new PluginRegistry(mcpManager);
   return pluginRegistryInstance;
 }
+// Real app/service connectors (GitHub, Vercel, Supabase, Hugging Face, Gemini,
+// plus the OAuth catalogue). Distinct from the MCP tool-server registry above.
+const connectorRegistry = new ConnectorRegistry();
 function ensureCapabilitiesRegistered(): void {
   if (capabilitiesRegistered) return;
   registerDepartmentCapabilities({
@@ -7021,6 +7025,131 @@ app.post('/api/plugins/:id/toggle', async (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
+// Connectors — real app/service connections
+//
+// This is the model the Plugins page is built around: an app or service RARE
+// is connected to (GitHub, Vercel, Supabase, Hugging Face, Gemini, Gmail,
+// Slack, Notion, …), each with an identity, auth, a real connection test and
+// real actions that call the service's own API. It is deliberately separate
+// from the MCP tool-server registry above.
+// -----------------------------------------------------------------------------
+app.get('/api/connectors', async (req, res) => {
+  try {
+    const connectors = await connectorRegistry.catalogue(res.locals.rareUserId);
+    const summary = await connectorRegistry.summary(res.locals.rareUserId);
+    res.json({ connectors, summary });
+  } catch (error) {
+    console.error('[Connectors] Catalogue read failed:', error);
+    res.status(503).json({ error: { message: 'Connector catalogue is unavailable.' } });
+  }
+});
+
+app.get('/api/connectors/summary', async (req, res) => {
+  try {
+    res.json(await connectorRegistry.summary(res.locals.rareUserId));
+  } catch (error) {
+    console.error('[Connectors] Summary read failed:', error);
+    res.status(503).json({ error: { message: 'Connector summary is unavailable.' } });
+  }
+});
+
+app.post('/api/connectors/:id/connect', async (req, res) => {
+  const { credentials } = req.body ?? {};
+  if (!credentials || typeof credentials !== 'object') {
+    return res.status(400).json({ error: { message: 'A credentials object is required.' } });
+  }
+  try {
+    const result = await connectorRegistry.connectWithCredentials(
+      res.locals.rareUserId,
+      req.params.id,
+      credentials,
+    );
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (error) {
+    console.error('[Connectors] Connect failed:', error);
+    res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Connect failed.' } });
+  }
+});
+
+app.post('/api/connectors/:id/test', async (req, res) => {
+  try {
+    const result = await connectorRegistry.test(res.locals.rareUserId, req.params.id);
+    res.json(result);
+  } catch (error) {
+    console.error('[Connectors] Test failed:', error);
+    res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Test failed.' } });
+  }
+});
+
+app.post('/api/connectors/:id/disconnect', async (req, res) => {
+  try {
+    await connectorRegistry.disconnect(res.locals.rareUserId, req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[Connectors] Disconnect failed:', error);
+    res.status(400).json({ error: { message: 'Disconnect failed.' } });
+  }
+});
+
+app.post('/api/connectors/:id/action', async (req, res) => {
+  const { action, args } = req.body ?? {};
+  if (typeof action !== 'string' || !action) {
+    return res.status(400).json({ error: { message: 'An action id is required.' } });
+  }
+  try {
+    const result = await connectorRegistry.runAction(
+      res.locals.rareUserId,
+      req.params.id,
+      action,
+      (args && typeof args === 'object') ? args : {},
+    );
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (error) {
+    console.error('[Connectors] Action failed:', error);
+    res.status(400).json({ error: { message: error instanceof Error ? error.message : 'Action failed.' } });
+  }
+});
+
+// OAuth2 authorization-code flow. The redirect URI is derived from the request
+// origin so the same deployment works on any host.
+app.post('/api/connectors/:id/oauth/start', async (req, res) => {
+  try {
+    const origin = `${req.protocol}://${req.get('host')}`;
+    const redirectUri = `${origin}/api/connectors/${req.params.id}/oauth/callback`;
+    const result = connectorRegistry.startOAuth(res.locals.rareUserId, req.params.id, redirectUri);
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (error) {
+    console.error('[Connectors] OAuth start failed:', error);
+    res.status(400).json({ error: { message: 'Could not start the OAuth flow.' } });
+  }
+});
+
+app.get('/api/connectors/:id/oauth/callback', async (req, res) => {
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  const state = typeof req.query.state === 'string' ? req.query.state : '';
+  const origin = `${req.protocol}://${req.get('host')}`;
+  const redirectUri = `${origin}/api/connectors/${req.params.id}/oauth/callback`;
+  if (!code || !state) {
+    return res.status(400).send('Missing OAuth code or state.');
+  }
+  try {
+    const result = await connectorRegistry.completeOAuth(
+      res.locals.rareUserId,
+      req.params.id,
+      code,
+      state,
+      redirectUri,
+    );
+    const status = result.ok ? 'connected' : 'failed';
+    const detail = encodeURIComponent(result.test?.detail || result.error || '');
+    res.redirect(`/?connector=${encodeURIComponent(req.params.id)}&status=${status}&detail=${detail}`);
+  } catch (error) {
+    console.error('[Connectors] OAuth callback failed:', error);
+    res.status(400).send('OAuth callback failed.');
+  }
+});
+
+// -----------------------------------------------------------------------------
 // Image Studio Core (Gemini 3 Pro Image & Nano Banana 2.1)
 // -----------------------------------------------------------------------------
 interface ImageRecord {
@@ -7818,6 +7947,7 @@ async function startServer() {
   // executor, so it is wired here — after all three exist.
   await initialiseScheduler();
   getPluginRegistry().attach(persistentStorage);
+  connectorRegistry.attach(persistentStorage);
   agentRuntime.attach(persistentStorage);
   ensureCapabilitiesRegistered();
 
