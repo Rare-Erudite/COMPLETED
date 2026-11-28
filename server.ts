@@ -1946,6 +1946,9 @@ app.get('/api/health', (_req, res) => {
     name: 'RARE Server',
     timestamp: new Date().toISOString(),
     commit_sha: process.env.VERCEL_GIT_COMMIT_SHA || null,
+    // The build id the *client* should be running. A client whose baked-in
+    // __RARE_BUILD_ID__ differs from this is stale and reloads itself.
+    build_id: process.env.VERCEL_GIT_COMMIT_SHA || process.env.RARE_BUILD_ID || null,
     uptimeSeconds: Math.floor(process.uptime()),
     release: '045',
     status: 'healthy',

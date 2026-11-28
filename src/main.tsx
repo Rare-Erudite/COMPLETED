@@ -63,3 +63,46 @@ if (!rootElement) {
     renderBootFailure(error instanceof Error ? error.message : String(error));
   }
 }
+
+/**
+ * Stale-build self-heal.
+ *
+ * A browser (or an installed WebView) can keep serving a cached index.html that
+ * points at a bundle this deployment no longer ships. The app then renders an
+ * old UI — for example a Plugins page that predates the connector model — while
+ * the server is perfectly healthy. Nothing on the server can fix that, because
+ * the stale client never asks for the new index.html.
+ *
+ * So the client checks itself: the build id baked into this bundle is compared
+ * with the build id the live server reports. On a mismatch the page reloads
+ * once (guarded by a session flag so a genuinely broken deploy cannot loop).
+ */
+const CLIENT_BUILD_ID = typeof __RARE_BUILD_ID__ !== 'undefined' ? __RARE_BUILD_ID__ : null;
+const STALE_RELOAD_KEY = 'rare:stale-build-reload';
+
+async function checkForStaleBuild() {
+  if (!CLIENT_BUILD_ID) return;
+  try {
+    const res = await fetch('/api/health', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = (await res.json()) as { build_id?: string | null };
+    const serverBuildId = data?.build_id;
+    if (!serverBuildId || serverBuildId === CLIENT_BUILD_ID) return;
+
+    // Only reload once per session, and never in a loop.
+    if (sessionStorage.getItem(STALE_RELOAD_KEY) === serverBuildId) return;
+    sessionStorage.setItem(STALE_RELOAD_KEY, serverBuildId);
+    window.location.reload();
+  } catch {
+    // Offline or the endpoint is unreachable — leave the running app alone.
+  }
+}
+
+if (typeof window !== 'undefined') {
+  // Check shortly after first paint so the app is usable immediately, and again
+  // when the tab becomes visible (a long-lived tab left open for days).
+  window.setTimeout(checkForStaleBuild, 4000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkForStaleBuild();
+  });
+}
