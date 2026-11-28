@@ -47,7 +47,7 @@ const TOKEN_CONNECTORS: ConnectorDefinition[] = [
 /** All connectors: verified token connectors first, then the OAuth catalogue. */
 const ALL_CONNECTORS: ConnectorDefinition[] = [
   ...TOKEN_CONNECTORS,
-  ...OAUTH_SERVICES.map(makeOAuthConnector),
+  ...OAUTH_SERVICES.map((spec) => makeOAuthConnector(spec)),
 ];
 
 const BY_ID = new Map(ALL_CONNECTORS.map((c) => [c.id, c]));
@@ -63,7 +63,7 @@ export interface OAuthStartResult {
 export class ConnectorRegistry {
   private storage: PersistentJsonStore | undefined;
   /** Short-lived OAuth state values, keyed by state → { connectorId, ownerId, verifier }. */
-  private oauthStates = new Map<string, { connectorId: string; ownerId: string; createdAt: number }>();
+  private oauthStates = new Map<string, { connectorId: string; ownerId: string; createdAt: number; tenant?: string }>();
 
   attach(storage: PersistentJsonStore): void {
     this.storage = storage;
@@ -267,11 +267,18 @@ export class ConnectorRegistry {
   // ---------------------------------------------------------------------------
 
   /** Build the provider authorize URL and remember the state. */
-  startOAuth(ownerId: string, connectorId: string, redirectUri: string): OAuthStartResult {
-    const def = this.get(connectorId);
-    if (!def || def.authKind !== 'oauth2' || !def.oauth) {
+  startOAuth(ownerId: string, connectorId: string, redirectUri: string, tenant?: string): OAuthStartResult {
+    const base = this.get(connectorId);
+    if (!base || base.authKind !== 'oauth2' || !base.oauth) {
       return { ok: false, error: 'This connector does not use OAuth.' };
     }
+    // Tenant-hosted services need the tenant before any URL is valid.
+    const spec = OAUTH_SERVICES.find((s) => s.id === connectorId);
+    if (spec?.tenantPlaceholder && !(tenant || '').trim()) {
+      return { ok: false, error: `Enter your ${spec.tenantLabel || 'tenant'} first.` };
+    }
+    const def = spec ? makeOAuthConnector(spec, tenant) : base;
+    if (!def.oauth) return { ok: false, error: 'This connector does not use OAuth.' };
     const clientId = process.env[def.oauth.clientIdEnv];
     const clientSecret = process.env[def.oauth.clientSecretEnv];
     if (!clientId || !clientSecret) {
@@ -282,7 +289,7 @@ export class ConnectorRegistry {
       };
     }
     const state = crypto.randomBytes(24).toString('base64url');
-    this.oauthStates.set(state, { connectorId, ownerId, createdAt: Date.now() });
+    this.oauthStates.set(state, { connectorId, ownerId, createdAt: Date.now(), tenant });
     // Prune old states.
     const cutoff = Date.now() - 10 * 60 * 1000;
     for (const [k, v] of this.oauthStates) if (v.createdAt < cutoff) this.oauthStates.delete(k);
@@ -306,13 +313,16 @@ export class ConnectorRegistry {
     state: string,
     redirectUri: string,
   ): Promise<{ ok: boolean; test?: ConnectorTestResult; error?: string }> {
-    const def = this.get(connectorId);
-    if (!def || def.authKind !== 'oauth2' || !def.oauth) return { ok: false, error: 'Not an OAuth connector.' };
+    const base = this.get(connectorId);
+    if (!base || base.authKind !== 'oauth2' || !base.oauth) return { ok: false, error: 'Not an OAuth connector.' };
     const pending = this.oauthStates.get(state);
     if (!pending || pending.connectorId !== connectorId || pending.ownerId !== ownerId) {
       return { ok: false, error: 'Invalid or expired OAuth state. Start the flow again.' };
     }
     this.oauthStates.delete(state);
+    const spec = OAUTH_SERVICES.find((s) => s.id === connectorId);
+    const def = spec ? makeOAuthConnector(spec, pending.tenant) : base;
+    if (!def.oauth) return { ok: false, error: 'Not an OAuth connector.' };
 
     const clientId = process.env[def.oauth.clientIdEnv];
     const clientSecret = process.env[def.oauth.clientSecretEnv];

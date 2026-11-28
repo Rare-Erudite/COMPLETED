@@ -300,7 +300,9 @@ function ConnectorDetail({
   const doOAuth = async () => {
     setBusy('oauth');
     setMessage(null);
-    const res = await safePost<any>(`/api/connectors/${connector.id}/oauth/start`, {});
+    const res = await safePost<any>(`/api/connectors/${connector.id}/oauth/start`, {
+      tenant: values.tenant || undefined,
+    });
     if (res?.authorizeUrl) {
       window.location.href = res.authorizeUrl;
       return;
@@ -384,6 +386,22 @@ function ConnectorDetail({
             <div className={`text-[11px] ${t.textDim} flex items-center gap-1`}>
               <ShieldCheck className="w-3.5 h-3.5" /> OAuth 2.0 authorisation
             </div>
+            {connector.credentialFields.map((field) => (
+              <div key={field.key} className="space-y-1">
+                <label className={`text-[11px] ${t.textMuted}`}>
+                  {field.label}
+                  {field.required && <span className="text-rose-400"> *</span>}
+                </label>
+                <input
+                  type="text"
+                  value={values[field.key] || ''}
+                  onChange={(e) => setValues((v) => ({ ...v, [field.key]: e.target.value }))}
+                  placeholder={field.placeholder}
+                  className={`w-full ${t.inputBg} border ${t.inputBorder} rounded-lg px-3 py-1.5 text-xs focus:outline-none`}
+                />
+                {field.help && <p className={`text-[10px] ${t.textDim}`}>{field.help}</p>}
+              </div>
+            ))}
             <button
               onClick={doOAuth}
               disabled={busy === 'oauth'}

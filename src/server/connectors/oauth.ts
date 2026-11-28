@@ -42,6 +42,29 @@ export interface OAuthServiceSpec {
   extraAuthParams?: Record<string, string>;
   /** Some providers need the token in a header other than Authorization. */
   authHeader?: 'bearer' | 'token' | 'none';
+  /**
+   * When the service is tenant-hosted (e.g. {shop}.myshopify.com), the user
+   * supplies the tenant value and it is substituted into every URL. The key
+   * names the placeholder, e.g. 'shop' for {shop}.
+   */
+  tenantPlaceholder?: string;
+  tenantLabel?: string;
+  tenantPlaceholderHint?: string;
+}
+
+/** Substitute a tenant placeholder into every URL of a spec. */
+function resolveSpec(spec: OAuthServiceSpec, tenant?: string): OAuthServiceSpec {
+  if (!spec.tenantPlaceholder) return spec;
+  const value = (tenant || '').trim();
+  if (!value) return spec;
+  const sub = (u: string) => u.split(`{${spec.tenantPlaceholder}}`).join(value);
+  return {
+    ...spec,
+    authorizeUrl: sub(spec.authorizeUrl),
+    tokenUrl: sub(spec.tokenUrl),
+    testUrl: sub(spec.testUrl),
+    apiBase: sub(spec.apiBase),
+  };
 }
 
 function getPath(obj: any, path?: string): string | undefined {
@@ -57,7 +80,20 @@ function authHeaders(spec: OAuthServiceSpec, ctx: ConnectorContext): Record<stri
   return h;
 }
 
-export function makeOAuthConnector(spec: OAuthServiceSpec): ConnectorDefinition {
+export function makeOAuthConnector(rawSpec: OAuthServiceSpec, tenant?: string): ConnectorDefinition {
+  const spec = resolveSpec(rawSpec, tenant);
+  const tenantField = rawSpec.tenantPlaceholder
+    ? [
+        {
+          key: 'tenant',
+          label: rawSpec.tenantLabel || 'Tenant',
+          secret: false,
+          required: true,
+          placeholder: rawSpec.tenantPlaceholderHint,
+          help: `Your ${rawSpec.name} tenant, substituted into the service URLs.`,
+        },
+      ]
+    : [];
   return {
     id: spec.id,
     name: spec.name,
@@ -65,7 +101,7 @@ export function makeOAuthConnector(spec: OAuthServiceSpec): ConnectorDefinition 
     description: spec.description,
     docsUrl: spec.docsUrl,
     authKind: 'oauth2',
-    credentialFields: [],
+    credentialFields: tenantField,
     oauth: {
       authorizeUrl: spec.authorizeUrl,
       tokenUrl: spec.tokenUrl,
@@ -564,6 +600,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{shop}.myshopify.com/admin/api/2024-01/shop.json',
     accountPath: 'shop.name',
     apiBase: 'https://{shop}.myshopify.com/admin/api/2024-01',
+    tenantPlaceholder: 'shop',
+    tenantLabel: 'Shop subdomain',
+    tenantPlaceholderHint: 'your-store (from your-store.myshopify.com)',
   },
   // ---- Zoom ----
   {
@@ -692,6 +731,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{subdomain}.zendesk.com/api/v2/users/me.json',
     accountPath: 'user.email',
     apiBase: 'https://{subdomain}.zendesk.com/api/v2',
+    tenantPlaceholder: 'subdomain',
+    tenantLabel: 'Zendesk subdomain',
+    tenantPlaceholderHint: 'yourcompany (from yourcompany.zendesk.com)',
   },
   // ---- Intercom ----
   {
@@ -884,6 +926,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{site}.ghost.io/ghost/api/admin/site/',
     accountPath: 'site.title',
     apiBase: 'https://{site}.ghost.io/ghost/api/admin',
+    tenantPlaceholder: 'site',
+    tenantLabel: 'Ghost site',
+    tenantPlaceholderHint: 'yoursite (from yoursite.ghost.io)',
   },
   // ---- Medium ----
   {
@@ -1076,6 +1121,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://portal.sso.{region}.amazonaws.com/federation/credentials',
     accountPath: 'roleName',
     apiBase: 'https://portal.sso.{region}.amazonaws.com',
+    tenantPlaceholder: 'region',
+    tenantLabel: 'AWS region',
+    tenantPlaceholderHint: 'eu-west-1',
   },
   // ---- Azure ----
   {
@@ -1173,6 +1221,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{host}/rest/login',
     accountPath: 'data.email',
     apiBase: 'https://{host}/api/v1',
+    tenantPlaceholder: 'host',
+    tenantLabel: 'n8n host',
+    tenantPlaceholderHint: 'n8n.example.com',
   },
   // ---- IFTTT ----
   {
@@ -1205,6 +1256,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{host}/api/',
     accountPath: 'message',
     apiBase: 'https://{host}/api',
+    tenantPlaceholder: 'host',
+    tenantLabel: 'Home Assistant host',
+    tenantPlaceholderHint: 'homeassistant.local:8123',
   },
   // ---- Philips Hue ----
   {
@@ -1273,37 +1327,7 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     apiBase: 'https://api.getpostman.com',
   },
   // ---- Swagger / OpenAPI (generic) ----
-  {
-    id: 'openapi',
-    name: 'OpenAPI / Swagger',
-    category: 'dev',
-    description: 'Any OpenAPI-described service.',
-    docsUrl: 'https://swagger.io/specification/',
-    authorizeUrl: 'https://example.com/oauth/authorize',
-    tokenUrl: 'https://example.com/oauth/token',
-    scopes: [],
-    clientIdEnv: 'OPENAPI_CLIENT_ID',
-    clientSecretEnv: 'OPENAPI_CLIENT_SECRET',
-    testUrl: 'https://example.com/api',
-    accountPath: 'name',
-    apiBase: 'https://example.com',
-  },
   // ---- GraphQL (generic) ----
-  {
-    id: 'graphql',
-    name: 'GraphQL',
-    category: 'dev',
-    description: 'Any GraphQL endpoint.',
-    docsUrl: 'https://graphql.org/',
-    authorizeUrl: 'https://example.com/oauth/authorize',
-    tokenUrl: 'https://example.com/oauth/token',
-    scopes: [],
-    clientIdEnv: 'GRAPHQL_CLIENT_ID',
-    clientSecretEnv: 'GRAPHQL_CLIENT_SECRET',
-    testUrl: 'https://example.com/graphql',
-    accountPath: 'data',
-    apiBase: 'https://example.com',
-  },
   // ---- RSS (no OAuth; token-less) skipped ----
   // ---- Zoom done; add Google Meet (Calendar-based) skipped ----
   // ---- Todoist done; add Evernote done ----
@@ -1421,6 +1445,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{store}/wp-json/wc/v3/products?per_page=1',
     accountPath: '0.name',
     apiBase: 'https://{store}/wp-json/wc/v3',
+    tenantPlaceholder: 'store',
+    tenantLabel: 'Store URL',
+    tenantPlaceholderHint: 'https://shop.example.com',
   },
   // ---- Substack ----
   {
@@ -1929,6 +1956,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{host}/v1/meta',
     accountPath: 'version',
     apiBase: 'https://{host}/v1',
+    tenantPlaceholder: 'host',
+    tenantLabel: 'Weaviate host',
+    tenantPlaceholderHint: 'your-cluster.weaviate.network',
   },
   // ---- Qdrant ----
   {
@@ -1945,6 +1975,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{host}/collections',
     accountPath: 'result.collections.0.name',
     apiBase: 'https://{host}',
+    tenantPlaceholder: 'host',
+    tenantLabel: 'Qdrant host',
+    tenantPlaceholderHint: 'your-cluster.cloud.qdrant.io',
   },
   // ---- Redis ----
   {
@@ -1996,6 +2029,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{host}/api',
     accountPath: 'gitVersion',
     apiBase: 'https://{host}/api',
+    tenantPlaceholder: 'host',
+    tenantLabel: 'Kubernetes API host',
+    tenantPlaceholderHint: 'k8s.example.com',
   },
   // ---- Twilio ----
   {
@@ -2386,6 +2422,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{domain}.okta.com/oauth2/v1/userinfo',
     accountPath: 'email',
     apiBase: 'https://{domain}.okta.com/api/v1',
+    tenantPlaceholder: 'domain',
+    tenantLabel: 'Okta domain',
+    tenantPlaceholderHint: 'yourcompany (from yourcompany.okta.com)',
   },
   {
     id: 'auth0',
@@ -2401,6 +2440,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{domain}.auth0.com/userinfo',
     accountPath: 'email',
     apiBase: 'https://{domain}.auth0.com/api/v2',
+    tenantPlaceholder: 'domain',
+    tenantLabel: 'Auth0 domain',
+    tenantPlaceholderHint: 'yourtenant (from yourtenant.auth0.com)',
   },
   // ---- Governance/Policy/Risk/Threat/Incident/Response/Forensics done ----
   // ---- Backup/Recovery/DR/HA/Scaling/Autoscaling/Orchestration/Scheduling ----
@@ -2419,6 +2461,9 @@ export const OAUTH_SERVICES: OAuthServiceSpec[] = [
     testUrl: 'https://{account}.snowflakecomputing.com/api/v2/statements',
     accountPath: 'message',
     apiBase: 'https://{account}.snowflakecomputing.com/api/v2',
+    tenantPlaceholder: 'account',
+    tenantLabel: 'Snowflake account',
+    tenantPlaceholderHint: 'xy12345.eu-west-1',
   },
   {
     id: 'bigquery',

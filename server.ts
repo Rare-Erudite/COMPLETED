@@ -7116,7 +7116,12 @@ app.post('/api/connectors/:id/oauth/start', async (req, res) => {
   try {
     const origin = `${req.protocol}://${req.get('host')}`;
     const redirectUri = `${origin}/api/connectors/${req.params.id}/oauth/callback`;
-    const result = connectorRegistry.startOAuth(res.locals.rareUserId, req.params.id, redirectUri);
+    const result = connectorRegistry.startOAuth(
+      res.locals.rareUserId,
+      req.params.id,
+      redirectUri,
+      typeof req.body?.tenant === 'string' ? req.body.tenant : undefined,
+    );
     res.status(result.ok ? 200 : 400).json(result);
   } catch (error) {
     console.error('[Connectors] OAuth start failed:', error);
