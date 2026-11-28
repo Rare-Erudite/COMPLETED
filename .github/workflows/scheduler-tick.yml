@@ -44,8 +44,21 @@ jobs:
           SCHEDULER_SECRET: ${{ secrets.RARE_SCHEDULER_SECRET }}
         run: |
           if [ -z "$SCHEDULER_SECRET" ]; then
-            echo "::error::RARE_SCHEDULER_SECRET is not set. Add it under Settings > Secrets and variables > Actions."
-            echo "The tick endpoint is secret-protected; without the secret this workflow cannot run."
+            echo "::error title=RARE_SCHEDULER_SECRET missing::The repository secret RARE_SCHEDULER_SECRET is not set, so the tick endpoint cannot be authenticated. Add it under Settings > Secrets and variables > Actions. Its value must be identical to the RARE_SCHEDULER_SECRET environment variable on the Vercel deployment."
+            {
+              echo "### Scheduler tick — BLOCKED"
+              echo ""
+              echo "The repository secret \`RARE_SCHEDULER_SECRET\` is **not set**."
+              echo ""
+              echo "This is an owner action, not a code defect:"
+              echo ""
+              echo "1. Generate a long random value (e.g. \`openssl rand -hex 32\`)."
+              echo "2. Add it as a repository secret named \`RARE_SCHEDULER_SECRET\`."
+              echo "3. Set the **same** value as \`RARE_SCHEDULER_SECRET\` in the Vercel project environment variables."
+              echo "4. Re-run this workflow."
+              echo ""
+              echo "Never paste the value into an issue, a commit or a chat message."
+            } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           echo "Secret is present."

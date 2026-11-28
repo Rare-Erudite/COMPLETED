@@ -610,6 +610,12 @@ const PUBLIC_API_PATHS = new Set([
   '/api/user/guest-session', '/api/user/signup', '/api/user/login',
   '/api/user/oauth', '/api/user/send-otp', '/api/user/verify-otp',
   '/api/user/send-email-otp', '/api/user/verify-email-otp',
+  // The scheduler tick is machine-to-machine: GitHub Actions has no user
+  // session. It carries its own secret gate inside the route, which is the
+  // only credential it can present. Without this entry the global session
+  // middleware rejected every tick with 401 before the secret was ever read,
+  // so the production trigger could never succeed even with a correct secret.
+  '/api/scheduler/tick',
 ]);
 
 app.use('/api', async (req, res, next) => {
@@ -6492,10 +6498,20 @@ app.get('/api/scheduler/status', (_req, res) => {
  */
 app.post('/api/scheduler/tick', async (req, res) => {
   const secret = process.env.RARE_SCHEDULER_SECRET;
-  if (secret) {
-    const provided = req.header('x-rare-scheduler-secret');
-    if (provided !== secret) return res.status(403).json({ error: { message: 'Invalid scheduler secret.' } });
+  // Fail closed. Previously an unset secret meant "no gate at all", so a
+  // deployment that forgot the variable exposed an unauthenticated endpoint
+  // that runs every due task. A missing secret is a misconfiguration, not
+  // permission.
+  if (!secret) {
+    return res.status(503).json({
+      error: {
+        message:
+          'Scheduler tick is disabled: RARE_SCHEDULER_SECRET is not configured on this deployment.',
+      },
+    });
   }
+  const provided = req.header('x-rare-scheduler-secret');
+  if (provided !== secret) return res.status(403).json({ error: { message: 'Invalid scheduler secret.' } });
   if (!scheduleEngine) return res.status(503).json({ error: { message: 'Scheduler is not initialised.' } });
   try {
     const report = await scheduleEngine.tick();

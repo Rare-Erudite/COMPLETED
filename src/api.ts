@@ -334,6 +334,10 @@ const PUBLIC_API_PATHS = new Set([
   '/api/user/guest-session', '/api/user/signup', '/api/user/login',
   '/api/user/oauth', '/api/user/send-otp', '/api/user/verify-otp',
   '/api/user/send-email-otp', '/api/user/verify-email-otp',
+  // Machine-to-machine: the scheduler tick carries its own secret header and
+  // has no user session. Listed here so the client does not try to bootstrap a
+  // session before calling it, and so this list keeps mirroring server.ts.
+  '/api/scheduler/tick',
 ]);
 
 /**
